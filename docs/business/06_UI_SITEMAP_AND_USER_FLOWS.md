@@ -1,304 +1,240 @@
-# 06 — UI SITEMAP, USER JOURNEYS, MERMAID FLOWS
+# 06 — Ekranlar va foydalanuvchi oqimlari
 
-**Version:** v1.0 | **Business UI specification** — pixel-perfect design later, route/actions/fallback now.
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). Dizayn (ranglar, aniq joylashuv) keyinroq; bu yerda qaysi ekranlar borligi, ularda nima qilinishi va foydalanuvchi qanday ketma-ketlikda ishlashi yozilgan.
 
-## Stage 1 merchant app routes
+## Bu hujjat nima uchun
+
+Dizayner va frontend dasturchi shu hujjatga qarab ekranlarni chizadi. Ega va operator esa tizimda qanday ishlashini oldindan ko'radi.
+
+Tizimda ikki xil ilova bor:
+1. **Shop paneli** — xodimlar ishlaydigan joy (inbox, buyurtmalar, katalog, hisobotlar).
+2. **Shop sayti** — xaridor ko'radigan sayt (katalog, buyurtma berish, chat).
+
+---
+
+## 1. Shop paneli sahifalari (Stage 1)
+
+Manzil: `app.<platforma>.uz/{shop}/...`
+
+| Sahifa | Manzil | Nima uchun | Kim ishlatadi | Modul |
+|---|---|---|---|---|
+| Bosh sahifa | `/overview` | Bugungi raqamlar, tasdiq kutayotgan buyurtmalar, ogohlantirishlar | ega, menejer | M18 |
+| Ishga tushirish | `/setup` | Yangi shopni sozlash bosqichlari | ega | M01, M03, M07, M09 |
+| Inbox | `/inbox` | Barcha suhbatlar, AI'dan suhbatni olish | operator, menejer | M10, M11 |
+| Buyurtmalar | `/orders` | Buyurtmalar ro'yxati va kartochkasi, tasdiqlash | operator, menejer, omborchi | M13 |
+| Leadlar va takliflar | `/leads` | Qiziqqan xaridorlar, PC takliflari | operator, menejer | M12 |
+| PC yig'ish | `/pc-builder` | Qismlarni tanlash va moslikni tekshirish | operator, menejer | M08 |
+| Katalog | `/catalog` | Mahsulotlar, fayldan yuklash | katalog xodimi, menejer | M04 |
+| Narxlar | `/prices` | Narxlar, kurslar, chegirma tasdiqlari | ega, menejer | M05 |
+| Ombor | `/inventory` | Qoldiq, band qilinganlar, tuzatishlar, **"tez sotuv"** | omborchi, menejer, operator | M06 |
+| Kafolat | `/support` | Kafolat va qaytarish murojaatlari | operator, menejer | M16 |
+| Hisobotlar | `/reports` | Raqamlar, savol-javob, eksport | ega, menejer | M18 |
+| Shop sayti sozlamalari | `/storefront` | Logotip, ranglar, manzil, saytni chiqarish | ega | M07 |
+| Kanallar | `/channels` | Telegram, Instagram, web chat ulanishi | ega | M09 |
+| Xodimlar | `/team` | Xodimlar, rollar, filiallar | ega | M02 |
+| Filiallar | `/branches` | Manzil, ish vaqti | ega, menejer | M03 |
+| Xabarnomalar | `/notifications` | Bildirishnomalar, xabar matnlari | hamma (ega — matnlar) | M17 |
+| AI sozlamalari | `/settings/ai` | AI rejimi, shop ma'lumotlari, sinov oynasi | ega | M19 |
+| Tarif va limitlar | `/settings/billing` | Ishlatish, limitlar, tarif | ega | M19 |
+| Tarix | `/audit` | Kim nima o'zgartirgani | ega | M20 |
+
+**Hozir yo'q:** to'lovlar sahifasi (DEC-100) va yetkazish sahifasi (DEC-113). Yetkazish holati buyurtma kartochkasida ko'rinadi.
+
+**Telefonda:** inbox, buyurtmalar, "tez sotuv" va hisobotlar telefonda qulay ishlashi shart. Qolgan sahifalar asosan kompyuterda ishlatiladi.
+
+## 2. Shop sayti sahifalari
+
+Manzil: `{shop}.<platforma>.uz/...` (yoki shopning o'z domeni)
+
+| Sahifa | Manzil | Nima uchun |
+|---|---|---|
+| Bosh sahifa va katalog | `/` | Mahsulotlar, qidiruv, kategoriyalar |
+| Mahsulot sahifasi | `/p/{mahsulot}` | Rasm, tavsif, narx, mavjudligi, "savatga" tugmasi |
+| Savatcha va buyurtma | `/cart` | Kontakt, olib ketish yoki yetkazish, manzil → buyurtma so'rovi (to'lovsiz, DEC-115) |
+| PC taklifi | `/quote/{kod}` | Operator yoki AI yuborgan PC taklifini ko'rish va qabul qilish |
+| Buyurtma holati | `/orders/{kod}` | Xaridor o'z buyurtmasi qayerdaligini ko'radi |
+| Chat | barcha sahifalarda | AI sotuvchi bilan yozishish |
+
+---
+
+## 3. Asosiy oqimlar
+
+Belgilar `05` dagi kabi: `──(kim nima qiladi)──▶`, `[tizim nima qiladi]`.
+
+### Oqim 1 — Shopni ishga tushirish
+
+```
+Platforma jamoasi shop yaratadi ──▶ Ega tizimga kiradi
+  ──▶ Filiallar va xodimlar qo'shiladi
+  ──▶ Katalog fayldan yuklanadi   [xato qatorlar ko'rsatiladi, tuzatiladi]
+  ──▶ PC qismlari texnik kutubxonaga bog'lanadi
+  ──▶ 20 ta mahsulot narxi va qoldig'i ega bilan birga tekshiriladi
+  ──▶ Telegram bot, Instagram va sayt ulanadi
+  ──▶ AI sozlanadi va sinov oynasida sinaladi
+  ──▶ Jamoa o'qitiladi
+  ──▶ Platforma jamoasi shopni faollashtiradi   [AI xaridorlarga javob bera boshlaydi]
+```
+
+Batafsil reja va tekshiruv ro'yxati: `13`.
+
+### Oqim 2 — Savdo: xabardan topshirishgacha (asosiy oqim, DEC-100)
+
+**Chat orqali (Telegram, Instagram, saytdagi chat):**
+
+```
+Xaridor yozadi ──▶ AI javob beradi   [tilini aniqlaydi, ehtiyojni so'raydi]
+  ──▶ AI shu shop katalogidan mos mahsulot topadi   [narx va mavjudlik tizimdan]
+  ──(PC yig'ma bo'lsa)──▶ AI yig'ma tuzadi   [moslik tekshiriladi]
+        ──▶ Menejer taklifni tasdiqlaydi ──▶ Xaridorga taklif havolasi ketadi (24 soat amal qiladi)
+  ──(xaridor "olaman" dedi)──▶ AI buyurtma qoralamasini yaratadi va operatorni chaqiradi
+                                [xaridorga: "buyurtmangiz qabul qilindi, operator bog'lanadi"]
+```
+
+**Sayt orqali:**
+
+```
+Xaridor savatga soladi ──▶ Kontakt va manzilni kiritadi ──▶ "Buyurtma berish"
+  [buyurtma "tasdiq kutilmoqda" holatida, operatorga vazifa]
+```
+
+**Keyin ikkala yo'l bir xil davom etadi:**
+
+```
+Operator suhbatni oladi   [AI endi yozmaydi]
+  ──▶ Operator xaridor bilan kelishadi: narx, olib ketish yoki yetkazish, vaqt (chat yoki telefon)
+  ──▶ Operator (yoki menejer) "Tasdiqlash"ni bosadi
+        [tizim mahsulot borligini tekshiradi]
+        ├─ bor ──▶ Tasdiqlandi   [mahsulot band qilinadi, xaridorga xabar]
+        └─ yo'q ──▶ "Mahsulot qolmagan" ──▶ operator muqobil taklif qiladi yoki menejer bekor qiladi
+  ──▶ Tayyorlanmoqda   [xaridorga xabar; olib ketish bo'lsa "tayyor" xabari]
+  ──▶ Xaridor mahsulotni oladi ──▶ Topshirildi   [mahsulot ombordan chiqadi]
+  ──▶ Pulni shop o'zi oladi   [xohlasa "to'landi" deb belgilaydi]
+```
+
+**Kutib qolsa:** buyurtma 24 soat tasdiqlanmasa — operator va menejerga eslatma. Mahsulot 72 soat band turib, xaridor kelmasa — menejerga "bekor qilinsinmi?" vazifasi (DEC-104).
+
+### Oqim 3 — Oxirgi mahsulot: online buyurtma va do'kondagi sotuv
+
+```
+Omborda 1 ta RTX 4060.
+  Operator A online buyurtmani tasdiqlamoqchi ─┐
+  Do'konda xodim "tez sotuv" qilmoqchi ────────┼──▶ Tizim bitta-bitta tekshiradi
+  Operator B boshqa buyurtmani tasdiqlamoqchi ─┘
+        ──▶ Birinchisi o'tadi
+        ──▶ Qolganlariga "mahsulot qolmagan" ──▶ operatorlar muqobil taklif qiladi
+```
+
+### Oqim 4 — Ega hisobot so'raydi
+
+```
+Ega yozadi: "Oxirgi 7 kunda nechta buyurtma topshirildi?"
+  ──▶ Tizim savolni ruxsat etilgan ko'rsatkichga aylantiradi
+  ──▶ Ega bu raqamni ko'rishga ruxsati bormi?
+        ├─ yo'q ──▶ "Ruxsat yo'q", raqam aytilmaydi
+        └─ ha ──▶ Raqam + davr + "ma'lumot 14:30 holatiga" + grafik
+```
+
+Ovozli variant (keyinroq, DEC-112): ega gapiradi → matn ekranda ko'rsatiladi va tasdiqlanadi → shundan keyin xuddi yuqoridagidek.
+
+### Oqim 5 — Ishlamay qolganda
+
+```
+AI ishlamayapti yoki limiti tugadi ──▶ Xabarlar operatorga   [xaridorga: "operator javob beradi"]
+Telegram yoki Instagram uzildi ──▶ Egaga ogohlantirish, kanal sahifasida "qayta ulash"
+Instagram'da 24 soat o'tdi ──▶ AI yozmaydi, operatorga "boshqa kanal orqali bog'laning"
+```
+
+### Keyingi bosqichlar oqimlari (qisqa)
+
+- **Stage 2 — mahsulotni global qidiruvga chiqarish:** shop mahsulotni tanlaydi → qaysi ma'lumot ochiq bo'lishini ko'radi → tizim uni umumiy katalogdagi modelga bog'laydi (shubha bo'lsa odam ko'radi) → chiqariladi. Shop qaytarib olsa, darhol ko'rinmay qoladi.
+- **Stage 3 — xaridor global qidiruvda:** "RTX 5060 yaqin atrofda" → aynan shu model va variant bo'yicha takliflar → narx, yetkazish, kafolat, oxirgi yangilanish → xaridor roziligi bilan shop chatiga o'tadi.
+
+---
+
+## 4. Har ekranda bo'lishi shart holatlar
+
+| Holat | Ekranda nima ko'rinadi |
+|---|---|
+| Yuklanmoqda | Kulrang shablon yoki aylanuvchi belgi; uzoq ishda "bekor qilish" |
+| Bo'sh | Nima qilish kerakligi: "Katalog bo'sh — fayl yuklang" kabi tugma bilan |
+| Xato kiritildi | Har maydon ostida tushunarli xabar (foydalanuvchi tilida) |
+| Ma'lumot eski | "14:30 holatiga" va "yangilash" tugmasi |
+| Boshqa odam o'zgartirdi | "Bu ma'lumot o'zgardi" va yangi holatni ko'rsatish; eski ma'lumot bilan ustidan yozilmaydi |
+| Tashqi servis ishlamayapti | Nima ishlamayotgani va keyingi qadam |
+| Ruxsat yo'q | "Ruxsat yo'q" — maxfiy ma'lumot ko'rsatilmaydi |
+| Tugma ikki marta bosildi | Bitta natija, ikkinchi buyurtma yoki band yaratilmaydi |
+| Uzoq ish (fayl yuklash, eksport) | Jarayon holati; sahifa yangilansa ham davom etadi |
+
+Barcha matnlar uch tilda (o'zbek, rus, ingliz) — `engineering/24` §5.
+
+---
+
+## 5. Ekran eskizlari
+
+### Inbox
 
 ```text
-/app/{merchant_slug}
-  /overview                        -> M18: dashboard and reports
-  /setup                           -> M01 + M03 + M07 + M09: onboarding wizard
-  /team                            -> M02: role and branch management
-  /branches                        -> M03: branch and coverage
-  /catalog                         -> M04: product list and imports
-  /catalog/new                     -> M04: product editor
-  /prices                          -> M05: price history and approval
-  /inventory                       -> M06: branch-SKU stock, ledger, reserves, "tez sotuv" (DEC-123)
-  /pc-builder                      -> M08: compatible PC quote wizard
-  /storefront                      -> M07: theme, domain, publish
-  /channels                        -> M09: bot/widget/Meta connect status
-  /inbox                           -> M10+M11: chat queue, assign, AI handoff
-  /leads                           -> M12: funnel and quote
-  /orders                          -> M13: order board, exceptions
-  /payments                        -> M14: DEFERRED (DEC-100) — Stage 1 da yo'q
-  /fulfillment                     -> M15: DEFERRED (DEC-113) — holat /orders ichida
-  /support                         -> M16: warranty and returns
-  /notifications                   -> M17: template, task, failure logs
-  /reports                         -> M18: analytics, saved reports, exports
-  /voice                           -> M18: S5 da matnli hisobot-chat; mikrofon — beta (DEC-112)
-  /settings/ai                     -> M19: tool/prompt/policy and usage
-  /settings/billing                -> M19: plan, payments, quotas
-  /audit                           -> M20: object actions, security logs
-
-Storefront: /s/{merchant_slug}/, /p/{merchant_slug}/{product_slug}, /cart (→ buyurtma so'rovi, to'lovsiz — DEC-115), /quote/{token} (faqat PC), /orders/{tracking_token}
-```
-
-## Stage 2 network admin and merchant routes
-
-```text
-/signup, /activate/{token}         -> M21
-/app/integrations                  -> M22
-/app/public-offers                 -> M24
-/app/stock/transfers               -> M25
-/app/knowledge                     -> M27
-/app/developer                     -> M30
-/platform/tenants                  -> M26
-/platform/canonical-products       -> M23
-/platform/index-health             -> M28
-/platform/verification             -> M29
-```
-
-## Stage 3 buyer app
-
-```text
-/                                   -> Global home/search
-/search?q=...                       -> M31, filters/search results
-/products/{canonical_slug}         -> M32, offers & evidence
-/compare?ids=...                    -> M32, side-by-side compare
-/nearby                             -> M33, location permission/map
-/ai-shopping                        -> M34, public evidence advisor
-/shops/{merchant_slug}             -> M35, verified merchant details
-/account/saved                      -> M36, watchlist
-/account/alerts                     -> M36
-/transparency                       -> M37, ads/ranking disclosure
-/help/report-offer                  -> M32/M37, wrong-price report
-```
-
-## Screen ownership crosswalk: every module must have UI
-
-| Module              | User-visible pages/components                                                                                                                | Primary business action                                  | Exception and feedback                                           |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- |
-| `M01`             | Onboarding wizard, Merchant profile, Account status and review                                                                               | Email/telefon verifikatsiyasi va egani aniqlash          | takrorlangan tashkilot / error, retry, human help                |
-| `M02`             | Team list, Invite panel, Role/scope editor, Approval queue                                                                                   | Invite va accept                                         | o‘zini oxirgi ownerlikdan o‘chirish / error, retry, human help |
-| `M03`             | Branch list/map, Schedule editor, Service radius, Pickup rules                                                                               | filial yaratish/archivlash                               | noto‘g‘ri geolokatsiya / error, retry, human help              |
-| `M04`             | Products table, Product editor, Import preview, Publish validation                                                                           | mahsulot+variant/SKU                                     | dublikat SKU / error, retry, human help                          |
-| `M05`             | Pricing table, Change price dialog, History, Price approval                                                                                  | bazaviy narx va price-list                               | narx almashgan paytdagi eski quote / error, retry, human help    |
-| `M06`             | Stock list, SKU stock ledger, Adjustment approval, Reservation monitor, "Tez sotuv" tugmasi (desktop + mobil)                                | filial-SKU fizik qoldiq                                  | ikki parallel rezerv / error, retry, human help                  |
-| `M07`             | Storefront builder, Website preview, Public catalog, Product detail, Cart/request                                                            | subdomain va brand theme                                 | subdomain conflict / error, retry, human help                    |
-| `M08`             | PC Builder, Compatibility findings, Budget alternatives, Quote action                                                                        | ready PC builds                                          | unknown BIOS / error, retry, human help                          |
-| `M09`             | Channel connect wizard, Permission status, Webhook health, Disconnect                                                                        | Telegram bot / Business bog‘lash                        | provider ruxsat bermaydi / error, retry, human help              |
-| `M10`             | Unified inbox, Conversation detail, Human takeover, Assignments, Escalation queue                                                            | inbound normalization/dedup                              | takrorlangan xabar / error, retry, human help                    |
-| `M11`             | AI agent config, Tool permissions, Test playground, Conversation explanation, Fallback                                                       | uz/ru/en niyat va tilni aniqlash                         | LLM hallucinated SKU / error, retry, human help                  |
-| `M12`             | Lead pipeline, Lead detail, Quote builder, Quote preview, Approval                                                                           | lead dedup va source attribution                         | operator forgot lead / error, retry, human help                  |
-| `M13`             | Order list, Order detail (fulfillment method, manzil, kelishuv izohi, "to'landi" belgisi), Confirm/cancel dialog, Timeline, Order exceptions | AI/sayt DRAFT → operator tasdig'i → topshirish (UX-02) | parallel confirm / error, retry, human help                      |
-| `M14` — DEFERRED | Payments list, Review receipt, Payment detail, Reconciliation, Refund approval                                                               | pay link yoki merchant rekvizitlari                      | screenshot forged / error, retry, human help                     |
-| `M15` — DEFERRED | Fulfillment board, Shipment timeline, Courier view, Tracking page                                                                            | pickup vs local delivery                                 | noto‘g‘ri address / error, retry, human help                   |
-| `M16`             | Support inbox, RMA case, Warranty detail, Resolution history                                                                                 | warranty terms snapshot                                  | warranty ambiguous / error, retry, human help                    |
-| `M17`             | Notification center, Template editor, Task queue, Delivery log                                                                               | notification template va locale                          | takror notification / error, retry, human help                   |
-| `M18`             | Overview dashboard, Report builder, Voice mic/transcript, Chart/export                                                                       | KPI: orders/paid turnover/margin only if COGS exists     | ASR currency mistake / error, retry, human help                  |
-| `M19`             | Plan/usage, Settings, Billing, Support center, AI safe mode                                                                                  | AI enable/disable/policy                                 | over-quota conversation / error, retry, human help               |
-| `M20`             | Audit search, Object activity timeline, Security event view                                                                                  | who/when/why/change trace                                | logga PII tushishi / error, retry, human help                    |
-| `M21`             | Public signup, Provision checklist, Retry setup                                                                                              | public signup and anti-fraud                             | fraud signup / error, retry, human help                          |
-| `M22`             | Integration catalog, Mapping wizard, Sync health, Conflict resolution                                                                        | connector registry and credentials                       | API credentials revoked / error, retry, human help               |
-| `M23`             | Global product review, Merge diff, Provenance audit                                                                                          | brand/model/MPN/GTIN normalize                           | false merge / error, retry, human help                           |
-| `M24`             | Public listings settings, Offer publish preview, Freshness report                                                                            | per-SKU public opt-in/out                                | merchant revokes permission / error, retry, human help           |
-| `M25`             | Branch stock matrix, Transfer order, Transfer audit                                                                                          | branch stock splits                                      | transfer and reservation collide / error, retry, human help      |
-| `M26`             | Billing console, Tenant fleet, Usage analytics                                                                                               | plan self-service changes                                | billing webhook replay / error, retry, human help                |
-| `M27`             | Knowledge hub, Agent sandbox, Policy release                                                                                                 | FAQ/returns/warranty knowledge                           | policy contradicts merchant terms / error, retry, human help     |
-| `M28`             | Index health, Publish queue, Quality diagnostics                                                                                             | incremental index from public offers                     | lost event / error, retry, human help                            |
-| `M29`             | Trust center, Verification queue, Appeals                                                                                                    | merchant business verification                           | fake business document / error, retry, human help                |
-| `M30`             | Developer settings, API usage, Webhook tester                                                                                                | API key/service account with scopes                      | leaked key / error, retry, human help                            |
-| `M31`             | Global home/search, Results, Filters, No results                                                                                             | query uz/ru/en/translit                                  | query ambiguity / error, retry, human help                       |
-| `M32`             | Compare table, Merchant offer card, Price history, Report issue                                                                              | same variant normalization                               | comparison variant mismatch / error, retry, human help           |
-| `M33`             | Map + list, Nearby merchants, Pickup selector                                                                                                | city and neighborhood query                              | precise location denied / error, retry, human help               |
-| `M34`             | AI search chat, Evidence drawer, Compare recommendation, Feedback                                                                            | intent and budget clarifying                             | LLM recommends private SKU / error, retry, human help            |
-| `M35`             | Merchant page, Contact CTA, Lead routing receipt                                                                                             | merchant profile and offers                              | merchant ignores referral / error, retry, human help             |
-| `M36`             | Saved items, Alert preferences, Account privacy                                                                                              | guest browsing                                           | price changed but out of stock / error, retry, human help        |
-| `M37`             | Search placements, Sponsor disclosure, Ranking explanation                                                                                   | organic ranking relevance rules                          | seller pays to fake quality / error, retry, human help           |
-| `M38`             | Product landing, Merchant landing, SEO preview                                                                                               | canonical product public pages                           | thin duplicate pages / error, retry, human help                  |
-| `M39`             | Global bot, Results cards, Merchant link                                                                                                     | global query in Telegram                                 | merchant AI leaks private data / error, retry, human help        |
-
-## 7 asosiy end-to-end UX flow (business order)
-
-### UX-01: Merchant onboard → mini sayt
-
-```mermaid
-flowchart TD
- A[Owner signs up] --> B[Verify merchant]
- B --> C[Branch and staff]
- C --> D[Import SKU CSV / manual]
- D --> E{Valid product and price?}
- E -- No --> F[Preview errors, edit]
- F --> D
- E -- Yes --> G[Publish catalogue]
- G --> H[Generate branded mini-store]
- H --> I[Connect Telegram / web widget]
- I --> J[Test AI in sandbox]
- J --> K[Enable merchant live sales]
-```
-
-### UX-02: Stage 1 savdo oqimi — xabar yoki sayt → buyurtma → operator → tasdiq → topshirish (DEC-100)
-
-Bu Stage 1 ning **yagona canonical savdo oqimi**. To'lov tizimdan tashqarida, do'kon o'zi oladi; yetkazishni do'kon o'zi tashkil qiladi.
-
-```mermaid
-flowchart TD
- A1[Telegram / Instagram / web chat xabari] --> B[Webhook tekshiruvi + dedupe → inbox]
- B --> C{AI yoqilgan va ruxsat bormi?}
- C -- Yo'q --> H[Operator vazifasi]
- C -- Ha --> D[AI: til, ehtiyoj, byudjet; faqat shu do'kon katalogi, narx, stok]
- D --> E{PC yig'mami?}
- E -- Ha --> Q[Compatibility PASS / REVIEW_REQUIRED / BLOCK → quote DRAFT]
- Q --> QA{Quote tasdig'i: pilotda har doim Manager/Owner}
- QA --> QS[Quote xaridorga yuboriladi, 24 soat amal qiladi]
- QS --> F{Xaridor 'olaman' dedimi?}
- E -- Yo'q --> F
- F -- Yo'q --> L[Lead: sabab yoki follow-up]
- F -- Ha --> G[AI buyurtma qoralamasi DRAFT: mahsulot, kontakt, olib ketish/yetkazish, manzil]
- A2[Sayt: savatcha → buyurtma so'rovi] --> G2[Order DRAFT → PENDING_CONFIRMATION]
- G --> H
- G2 --> H
- H --> I[Operator suhbatni oladi: AI javob yozmaydi; chat yoki telefon; narx, yetkazish, vaqt kelishiladi]
- I --> J{Sotuvchi: mahsulot bormi? stok qulf bilan tekshiriladi}
- J -- Yo'q --> K[Muqobil taklif yoki CANCELLED + sabab]
- J -- Ha --> M[Order CONFIRMED + rezerv]
- M --> N[PROCESSING: yig'ish / tayyorlash / yo'lda; xaridorga status xabari]
- N --> O[Topshirildi → COMPLETED: stok kamayadi, lead WON]
- O --> P[To'lovni do'kon o'zi oladi; ixtiyoriy 'to'landi' belgisi]
-```
-
-| Qadam                            | Kim                                    | Holat                                                         | DEC                     |
-| -------------------------------- | -------------------------------------- | ------------------------------------------------------------- | ----------------------- |
-| Xabar keladi, AI maslahat beradi | AI                                     | Conversation `AI_ACTIVE`, Lead `QUALIFIED`                | —                      |
-| PC yig'ma uchun taklif           | AI → Manager/Owner                    | Quote `DRAFT → APPROVED → SENT`                           | DEC-100e, 102, 103, 109 |
-| "Olaman" — buyurtma qoralamasi  | AI yoki sayt                           | Order `DRAFT` (stok band emas)                              | DEC-100c, 115           |
-| Operator ulanadi                 | Sales                                  | Conversation `HUMAN_ACTIVE`, Order `PENDING_CONFIRMATION` | DEC-100d, 100g          |
-| Mahsulot borligi tasdiqlanadi    | Sales (o'ziga biriktirilgan) / Manager | Order `CONFIRMED`, rezerv `ACTIVE`                        | DEC-105, 108            |
-| Tayyorlash / yo'lda              | Sales / ombor                          | Order `PROCESSING`, rezerv `ALLOCATED`                    | DEC-113                 |
-| Topshirildi                      | Sales / Manager                        | Order `COMPLETED`, stok kamayadi                            | DEC-105                 |
-| Bekor qilish                     | Manager / Owner                        | Order `CANCELLED`, rezerv bo'shaydi                         | DEC-108                 |
-| Kutib qolgan buyurtma            | Tizim → Manager                       | 24 soat eslatma, 72 soat "bekor qilinsinmi?"                  | DEC-104                 |
-
-### UX-03: Bitta qolgan mahsulot — parallel tasdiq va offline sotuv
-
-```mermaid
-flowchart TD
- A[Omborda 1 dona] --> B[Operator A buyurtmani tasdiqlaydi]
- A --> C[Operator B tasdiqlaydi yoki do'konda 'tez sotuv']
- B --> D[Stock row lock / version]
- C --> D
- D --> E[Faqat bittasi muvaffaqiyatli]
- E --> F[G'olib: rezerv ACTIVE yoki OFFLINE_SALE]
- E --> G[Yutqazgan: stok yetarli emas → muqobil taklif]
- F --> H{Buyurtma bekor bo'ldimi?}
- H -- Ha --> I[Rezerv idempotent bo'shatiladi]
- H -- Yo'q --> J[ALLOCATED → CONSUMED]
-```
-
-### UX-04: To'lov va yetkazish — `DEFERRED` (DEC-100, DEC-113)
-
-Stage 1 da to'lov tekshiruvi va yetkazish moduli yo'q. To'lov provayderi yoki yetkazish hamkori bilan shartnoma bo'lganda bu oqim qayta yoziladi (eski variant git tarixida, commit `58809a4`).
-
-### UX-05: Voice owner report in UZ/RU/EN
-
-```mermaid
-flowchart TD
- A[Owner presses mic] --> B[STT transcript]
- B --> C{Confidence high?}
- C -- No --> D[Show text, ask correction]
- D --> B
- C -- Yes --> E[Resolve user tenant role + metric]
- E --> F{Can access this metric?}
- F -- No --> G[Permission denied, no data]
- F -- Yes --> H[Typed allowed reporting query]
- H --> I[Verified number + period + freshness]
- I --> J[Chart + source metric definition]
- J --> K[TTS explanation, optional export]
-```
-
-### UX-06: Merchant publishes offer to global network
-
-```mermaid
-flowchart TD
- A[Merchant SKU] --> B[Manual public opt-in]
- B --> C[Show fields and terms preview]
- C --> D[Canonical candidate matching]
- D --> E{Product identity reliable?}
- E -- No --> F[Catalog review queue]
- E -- Yes --> G[Publish public offer]
- F --> G
- G --> H[Outbox indexing]
- H --> I[Buyer search preview]
- I --> J{Merchant withdraws offer?}
- J -- Yes --> K[Immediate visibility deny + index removal]
-```
-
-### UX-07: Global buyer AI compare → local seller
-
-```mermaid
-flowchart TD
- A[Buyer query: RTX 5060 near me] --> B[Public product search]
- B --> C[Normalize same model, variant, condition]
- C --> D[Get current offers]
- D --> E[Optional location consent]
- E --> F[Price + known delivery + warranty compare]
- F --> G[AI explains evidence and unknowns]
- G --> H[Merchant detail + contact]
- H --> I[Buyer consent to referral]
- I --> J[Merchant inbox receives scoped lead]
- J --> K[Merchant response / sale / lost]
-```
-
-## UI obligatory states checklist
-
-| UI state               | Mandatory design                                                          |
-| ---------------------- | ------------------------------------------------------------------------- |
-| Loading                | Skeleton/spinner and cancel where long job                                |
-| Empty                  | Actionable import/create/permission instructions                          |
-| Validation failure     | Inline field errors, backend code mapped to clear user language           |
-| Stale data             | Last updated time and refresh/reconfirm control                           |
-| Conflict (409)         | Show new entity version, «reload / review changes», no silent overwrite |
-| Offline/provider error | Retry when safe, contact operator, job status                             |
-| Permission denied      | Access request option, no sensitive data flashed                          |
-| Duplicate submission   | Same order/receipt, never second charge or reservation                    |
-| Async processing       | Job reference, progress/state, resume after page reload                   |
-| Partial fulfilment     | Item-level status, human support, explain next step                       |
-| Mobile                 | Touch-first inbox, product search, owner voice/report, courier actions    |
-
-## ASCII wireframe — Merchant inbox
-
-```text
-┌──── AI Commerce Merchant OS ──────────────────────────────────────────────┐
-│ Overview  Catalog  Stock  Inbox  Quotes  Orders  Payments  Reports        │
+┌──── Shop paneli ──────────────────────────────────────────────────────────┐
+│ Bosh sahifa  Inbox  Buyurtmalar  Katalog  Ombor  Hisobotlar              │
 ├───────────────┬─────────────────────────────┬────────────────────────────┤
-│ Conversations │ Customer chat               │ Sale assistant             │
-│ ● New (12)    │ UZ/RU/EN messages           │ Need: PC editing + CS2     │
-│ Human (4)     │ AI state: ACTIVE / HANDOFF  │ Budget: 10m UZS            │
-│ Waiting (7)   │ price and SKU evidence      │ Candidates + stock source  │
-│ Failed (2)    │ [Takeover] [Reply]          │ [Draft quote] [Escalate]   │
+│ Suhbatlar     │ Xaridor bilan yozishma      │ Xaridor va buyurtma        │
+│ ● Yangi (12)  │ Kanal: Telegram · til: uz   │ Ehtiyoj: o'yin + montaj    │
+│ Operator (4)  │ Hozir javob beradi: AI      │ Byudjet: 10 mln so'm       │
+│ Kutilmoqda (7)│ AI tavsiyalari va narxlar   │ Buyurtma qoralamasi: bor   │
+│ Xatolar (2)   │ [Suhbatni olish] [Javob]    │ [PC taklifi] [Buyurtmaga]  │
 └───────────────┴─────────────────────────────┴────────────────────────────┘
 ```
 
-## ASCII wireframe — Merchant order
+### Buyurtma kartochkasi
 
 ```text
-┌──────── Order #ORD-... / tenant: merchant  ───────────────────────────────┐
-│ Status: CONFIRMED   Fulfillment: PICKUP   Paid mark: — (tekshirilmagan) │
-│ Items: SKU / variant / qty / quote price snapshot / fulfilment branch      │
-│ Events: DRAFT → PENDING_CONFIRMATION → CONFIRMED → PROCESSING → COMPLETED │
-│ Exceptions: [Price changed] [Stock conflict] [Reservation review 72h]     │
-│ Actions: [Confirm] [Start processing] [Complete] [Cancel] [Mark paid]    │
+┌──── Buyurtma A-1042 ──────────────────────────────────────────────────────┐
+│ Holat: Tasdiq kutilmoqda      Olib ketish: Chilonzor filiali              │
+│ Mahsulotlar: RTX 4060 8GB × 1 — 4 500 000 so'm (narx muzlatilgan)         │
+│ Kelishuv: "Ertaga 15:00 da olib ketadi" (operator Aziz, telefon)          │
+│ Tarix: Qoralama (AI) → Tasdiq kutilmoqda                                  │
+│ Ogohlantirish: [Narx o'zgargan] [Mahsulot qolmagan]                       │
+│ [Tasdiqlash] [Tayyorlanmoqda] [Topshirildi] [Bekor qilish] [To'landi]     │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-## ASCII wireframe — Global comparison
+Tugmalar faqat ruxsati bor odamga va faqat mumkin bo'lgan holatda ko'rinadi (masalan, "Bekor qilish" — faqat menejer va egaga).
+
+### PC yig'ish
 
 ```text
-┌──── Global AI Shopping ───── Search: RTX 5060 8GB ──────────────────────┐
-│ Product variant exact match / city / stock freshness                      │
-├────────────────┬──────────────┬─────────┬─────────────┬──────────────────┤
-│ Merchant       │ Item price   │ Delivery│ Warranty    │ Last verified    │
-│ Store A        │ 4.4m UZS     │ unknown │ 6 months    │ 15min ago        │
-│ Store B        │ 4.6m UZS     │ free    │ 24 months   │ 2h ago           │
-│ [Compare AI evidence] [Map branches] [Go to seller] [Report incorrect]    │
+┌──── PC yig'ish ───────────────────────────────────────────────────────────┐
+│ Talablar           │ Qismlar                 │ Moslik va narx             │
+│ Byudjet: 10 mln    │ Protsessor [tanlash ▼]  │ ✓ Soket mos                │
+│ Maqsad: o'yin      │ Ona plata  [tanlash ▼]  │ ✓ Xotira turi mos          │
+│ Monitor: kerak emas│ Xotira     [tanlash ▼]  │ ⚠ BIOS ma'lumoti yo'q      │
+│                    │ Videokarta [tanlash ▼]  │ ✓ Korpusga sig'adi         │
+│ [3 ta variant]     │ Blok pitaniya, korpus…  │ Jami: 9 850 000 so'm       │
+│                    │                         │ [Tasdiqqa yuborish]        │
 └───────────────────────────────────────────────────────────────────────────┘
-  Illustrative values only, not live offers.
 ```
 
-## UI may not claim
+Qism almashtirilsa, moslik darhol qayta tekshiriladi. "Mos emas" bo'lsa, yuborish tugmasi ishlamaydi.
 
-- «In stock» if product location lacks fresh evidence.
-- «Cheapest delivered» with unknown shipping amount.
-- «Payment successful» on screenshot alone.
-- «Compatible PC» when a blocking property is unknown.
-- «AI handled everything» if operator is still assigned.
+### Bosh sahifa (ega)
+
+```text
+┌──── Bosh sahifa · 22.10.2026 · Toshkent vaqti ────────────────────────────┐
+│ Topshirildi: 6 ta · 42 mln so'm   │ Tasdiq kutmoqda: 3 ta (1 tasi 24+ soat)│
+│ Suhbatlar: 48 (Telegram 30, Instagram 12, sayt 6) │ Operator kutmoqda: 4   │
+│ Kam qolgan mahsulotlar: 5         │ AI limiti: 62%                         │
+│ [Savol bering: "Kecha nechta buyurtma bo'ldi?"]                           │
+│ Ma'lumot 14:30 holatiga                                                    │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 6. Ekranda aytish taqiqlangan narsalar
+
+- Ma'lumot eskirgan bo'lsa — "omborda bor".
+- Yetkazish narxi noma'lum bo'lsa — "eng arzon".
+- Chek rasmi asosida — "to'lov qabul qilindi".
+- Muhim ma'lumot noma'lum bo'lsa — "PC mos keladi".
+- Operator ishlayotgan suhbatda — "AI hammasini hal qildi".
+- Buyurtma faqat qoralama bo'lsa — "buyurtma tasdiqlandi".
