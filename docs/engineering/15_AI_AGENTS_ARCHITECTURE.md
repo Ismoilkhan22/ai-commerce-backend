@@ -1,6 +1,6 @@
 # TECH-15 — AI agent architecture and tool authorization
 
-**Status:** Candidate Stage 1; Stage 3 separated. **AI is advisory+language orchestration, never authoritative for inventory, pricing, payments or PC hardware compatibility.** **References:** TECH-03/07/10, BL business rules, ADR-011/012.
+**Status:** Baseline Stage 1 (2026-10-22: DEC-009, DEC-016, DEC-100c, K-10, TECH-23); Stage 3 separated. **Agent = merchant profili + prompt versiyasi + RAG scope + tool ruxsatlari + har job uchun yangi ActorContext** — alohida model yoki process emas (TECH-23 §4). **AI is advisory+language orchestration, never authoritative for inventory, pricing, payments or PC hardware compatibility.** **References:** TECH-03/07/10, BL business rules, ADR-011/012.
 
 ## 1. Agent identities and trust boundaries
 | Agent | User | Data access | Allowed actions | Never do |
@@ -30,13 +30,18 @@ flowchart TD
 | Tool name | Inputs (typed) | Output evidence | Authority |
 |---|---|---|---|
 | `catalog.search` | query, constraints, locale, merchant context server side | sku_id, title, variant, price_version, stock_confidence | read public-to-merchant data |
-| `pc.compatibility_check` | proposed SKU IDs, ruleset version | PASS/BLOCK/REVIEW, findings | deterministic only |
-| `quotes.prepare_draft` | SKU/version/qty, verified customer requirements | draft_id, source_refs | write draft, no approval |
+| `pricing.get_price_stock` | sku_id, branch | amount_minor, currency (UZS/USD + kurs snapshot), available, freshness | read |
+| `pc.compatibility_check` | proposed SKU IDs, ruleset version | `PASS / REVIEW_REQUIRED / BLOCK` (K-09), findings; spec manbai — reference library (DEC-011) | deterministic only |
+| `quotes.prepare_draft` | SKU/version/qty, verified customer requirements (faqat PC yig'ma, DEC-100e) | draft_id, source_refs | write draft, no approval |
+| `quotes.request_approval` | quote_id, reason | approval task id | request only (tasdiq — Manager/Owner, DEC-109) |
+| `orders.create_draft` | SKU(lar), qty, contact ref, `fulfillment_method`, address ref, conversation | order_id (`DRAFT`), operator task | write `DRAFT` only — stok band qilmaydi, tasdiqlamaydi (DEC-100c, BL-110) |
+| `orders.lookup_status` | scoped order token / authenticated buyer | FSM-08 status | read |
 | `leads.capture` | consented contact, channel reference | lead_id, status | scoped write with idempotency |
 | `chat.request_handoff` | reason, conversation/version | handoff_task_id | permissible workflow transition |
 | `reports.query_metric` | approved metric IDs, date range, dimension filters | result, currency, data_as_of, quality flags | role-filtered read |
 | `notifications.preview` | recipient opt-in, template | intended message | never bypass channel policy |
 | `public_offers.compare` S3 | canonical_id, authorized filters | offers with source/updated_at | public only |
+| `orders.confirm`, `orders.cancel`, `pricing.write`, `discount.apply`, `inventory.write`, `payments.*` | — | — | **mavjud emas** — AI'ga hech qachon berilmaydi |
 
 ## 4. Tool input/output and execution contract
 All tool calls strictly Pydantic validated: no arbitrary SQL, no arbitrary URL fetch, no browser actions. Tool broker obtains tenant scope from server session, not LLM arguments. Mutation requires `idempotency_key`, actor, policy and possible human approval. Tool output includes `source_id`, `observed_at`, `revision` and `scope`. Rate/budget per merchant: max steps per request, token/time/cost budget. Secrets always server-side. Tool failing must produce typed unavailable/handoff, not hallucinated success.
@@ -48,7 +53,7 @@ Retrieval source: SKU, merchant policy, warranty, delivery regions, accepted FAQ
 Async agent worker receives conversation `speaker_version`; it may take seconds. Before outbound send, compare version; if agent paused or human assigned, cancel send. Tool context must be reauthorized before any write. Every reply has `model_alias`, prompt version, approved evidence refs, failure class and cost, but no raw secret in audit. AI can run in degraded mode: FAQ → request human.
 
 ## 7. Model routing
-Small classifier/structured extraction model when possible; higher-quality hosted LLM for complex PC recommendations, fallback to alternate provider only if data transfer agreements permit. Model alias and evaluation version pinned at deployment; no speculative retrain from raw merchant conversations. Choose per empirical Uzbek/Russian/English accuracy and unit economics.
+**ADR-027 (DEC-009):** provayderdan mustaqil `LLMPort`; S3 dan oldin 1 haftalik bake-off — 200 ta uz/ru/en dialog (tool-calling aniqligi, narx, latency), default nomzod Claude Sonnet (eng so'nggi). **DEC-016:** provayderga PII redaction'dan keyingi matn, zero-retention/no-training shartiga ega provayderlar. Small classifier/structured extraction model when possible; higher-quality hosted LLM for complex PC recommendations, fallback to alternate provider only if data transfer agreements permit. Model alias and evaluation version pinned at deployment; no speculative retrain from raw merchant conversations. Choose per empirical Uzbek/Russian/English accuracy and unit economics.
 
 ## 8. Evaluation golden suites
 - 200+ initial mixed-language user intent cases (UZ Latin/Cyrillic/RU/EN), expanding with consented anonymized conversations.

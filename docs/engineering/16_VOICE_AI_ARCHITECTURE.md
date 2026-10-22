@@ -1,6 +1,6 @@
 # TECH-16 — Business Voice Copilot in Uzbek, Russian and English
 
-**Status:** proposed product/tech design; model/provider quality unverified. **Stage 1:** READ-ONLY reports first. **Not voice identity biometrics** or unconstrained voice-driven money transfer.
+**Status:** baseline (2026-10-22, DEC-112, DEC-010, DEC-117); model/provider quality unverified. **Stage 1:** S5 da avval **matnli** hisobot-chat (xuddi shu metric registry va ruxsatlar); ovoz — STT/TTS bake-off (2–3 provayder, o'zbekcha 300 yozuv + 100 raqam/sana) va golden set'dan keyin feature flag bilan beta. READ-ONLY. **Not voice identity biometrics** or unconstrained voice-driven money transfer.
 
 ## 1. Experience requirements
 Owner opens Voice Copilot in merchant dashboard (staff auth already established), selects or auto-detects `uz/ru/en`, speaks: “Oxirgi 7 kunda qaysi GPU eng ko‘p sotildi?” → sees editable transcript → approved metric resolution → result table/chart + optional spoken answer. If the speaker asks for money/stock mutation, only show a *draft* request for an authorized human confirmation flow, initially disabled.
@@ -10,15 +10,19 @@ Owner opens Voice Copilot in merchant dashboard (staff auth already established)
 sequenceDiagram
  participant U as Merchant user
  participant UI as Voice frontend
+ participant API as Voice API (server)
  participant STT as Speech-to-text
  participant O as Intent/tool broker
  participant Q as Metric registry
  participant TTS as Text-to-speech
  U->>UI: Record / press-to-talk
- UI->>STT: Authorized audio segment
- STT-->>UI: Transcript+language+confidence
+ UI->>API: POST /merchant/voice/transcriptions (audio)
+ API->>STT: Audio (server-side; provider kaliti brauzerga chiqmaydi)
+ STT-->>API: Transcript+language+confidence
+ API-->>UI: Tahrirlanadigan transcript (audio o'chiriladi, DEC-117)
  UI->>U: Preview / correction
- UI->>O: Approved transcript + context
+ UI->>API: POST /merchant/voice/queries (tasdiqlangan transcript)
+ API->>O: Approved transcript + context
  O->>Q: Authorized metric IDs/date filters
  Q-->>O: Facts, units, data_as_of
  O-->>UI: Answer + chart + evidence
@@ -32,9 +36,12 @@ UZ Latin+mixed Cyrillic, Russian, English; code-switch terms GPU/RTX/SSD, spoken
 ## 4. Metric allowlist
 | Approved metric | Definition | Visibility |
 |---|---|---|
-| `orders_paid_count` | distinct orders with verified settlement in period | owner, manager, approved sales |
-| `sales_paid_gross_minor` | verified gross amount by currency | owner, manager, finance |
-| `sales_refunded_minor` | settled refunded amount | owner, finance |
+| `orders_completed_count` | `COMPLETED` buyurtmalar soni (Stage 1 asosiy, DEC-100) | owner, manager, approved sales |
+| `orders_completed_amount_minor` | `COMPLETED` buyurtmalar summasi, valyuta bo'yicha | owner, manager, finance |
+| `orders_paid_marked_amount_minor` | merchant "to'landi" belgilagan summa — **tekshirilmagan** (DEC-100a) | owner, finance |
+| `orders_pending_confirmation_count` | tasdiq kutayotgan buyurtmalar | owner, manager, sales |
+| `leads_by_channel` | kanal bo'yicha leadlar (Telegram / Instagram / web) | owner, manager |
+| `orders_paid_count`, `sales_paid_gross_minor`, `sales_refunded_minor` | verified settlement — `DEFERRED` (DEC-100) | — |
 | `profit_gross_minor` | paid net less captured COGS (explicit missing-data flags) | owner, authorized finance |
 | `top_products_by_units` | unit count on paid/fulfilled policy version | owner, manager, authorized sales |
 | `conversation_first_response_p50` | median first response latency on eligible conversations | owner, manager |
@@ -43,7 +50,7 @@ UZ Latin+mixed Cyrillic, Russian, English; code-switch terms GPU/RTX/SSD, spoken
 Natural language planner maps to these metric IDs. It cannot generate raw SQL from voice. Every response states time range, timezone, currency and data freshness; never mix UZS/USD totals silently.
 
 ## 5. API and privacy
-`POST /voice/query-jobs` accepts secure audio upload reference + locale preference; async job -> text transcript (if permitted), normalized intent, metric IDs, result JSON, optional voice asset TTL. Encrypt audio at rest; default short retention until policy approved, consent UX and deletion controls. No cross-tenant audio used for global training without explicit agreement. If voice input contains customer PII, filter before model provider where feasible.
+Ikki bosqich (TECH-08): `POST /api/v1/merchant/voice/transcriptions` (audio → tahrirlanadigan transcript) va `POST /api/v1/merchant/voice/queries` (tasdiqlangan transcript → intent, metric IDs, result JSON, optional TTS asset TTL). Audio transkripsiyadan keyin o'chiriladi, faqat redact qilingan transcript qoladi (DEC-117); ASR golden set alohida, yozma rozilik bilan. No cross-tenant audio used for global training without explicit agreement. If voice input contains customer PII, filter before model provider where feasible.
 
 ## 6. Speaker authorization
 Voice does not prove identity; current logged-in principal and role decide metric access. Margin/PII sensitive query requires verified session, optionally step-up MFA for exports. Do not interpret someone else's audible command as merchant approval. No always-listening microphone by default; user-initiated press-to-talk, explicit recording indicator.

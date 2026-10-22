@@ -1,30 +1,33 @@
 # TECH-21 — Final architecture cross-review, discrepancies and founder sign-off
 
-**Status:** INITIAL DOCUMENT REVIEW, NOT FINAL APPROVAL. This file explicitly refuses a false 'all production ready' statement. Scope review: written docs TECH-03–TECH-22 against business M01–M39.
+**Status:** REVIEW UPDATED 2026-10-22 — founder baseline qarorlari (`../decisions/DECISION_REGISTER.md`) hujjatlarga kiritildi; production approval emas. This file explicitly refuses a false 'all production ready' statement. Scope review: written docs TECH-03–TECH-22 against business M01–M39.
 
 ## 1. Design-level consistency findings
 | Check | Finding | Severity | Next action |
 |---|---|---|---|
 | 3 product stages across new docs | aligned, Stage 4 ideas explicitly future annex | PASS at concept level | keep legacy 4-stage docs marked superseded |
 | DDD context ownership | C01–C19 reused in architecture docs | PASS at design level | code architecture/import tests |
-| Merchant payment custody | merchant of record throughout | PASS candidate | PSP/legal signoff |
+| Merchant payment custody | Stage 1 da to'lov tizimdan tashqarida (DEC-100) | RESOLVED (baseline) | to'lov moduli qaytganda PSP/legal signoff |
 | Order+stock atomicity | synchronous UoW + outbox, no event-only stock decrement | PASS design | integration race tests |
 | Messaging human/AI speaker | version guard in worker/send | PASS design | gateway race E2E |
 | AI monetary authority | forbidden to mutate price/stock/mark paid | PASS design | tool security test |
-| Broker choice | TECH-05 proposes PG jobs; old TECH-04 notes broker TBD | NEED ADR APPROVAL | approve PG job queue or change C4 |
-| RLS vs app scope | SQLAlchemy async RLS spike still open | OPEN technical risk | establish explicit tested approach |
-| Payment status after expired reserve | exception policy unspecified by merchant | BLOCKER for auto charge/confirmation | owner-approved FSM branch |
-| Voice production quality UZ | evaluation not performed | BLOCKER for auto-speech claims | golden set pilot |
-| Legal/data residency/PSP contracts | externally unverified | BLOCKER for real merchant PII/PSP | legal/provider evidence |
+| Broker choice | PG outbox + PG leased jobs (DEC-003, ADR-005); C4 yangilandi | RESOLVED | S0 da runner, S5 da load benchmark |
+| RLS vs app scope | App-layer + composite FK; RLS spike S0 da (DEC-002, ADR-026, TECH-23 §6) | PLANNED | S0 spike natijasi |
+| Payment status after expired reserve | Stage 1 da to'lov yo'q; rezerv avtomatik tugamaydi, 72 soatlik review (DEC-104, DEC-106 closed) | RESOLVED | — |
+| Voice production quality UZ | S5 da avval matnli hisobot; voice beta bake-off va golden set'dan keyin (DEC-112, DEC-010) | MITIGATED | golden set yig'ish |
+| Legal/data residency | UZ hosting baseline (DEC-013), LLM'ga PII yo'q (DEC-016); huquqshunos xulosasi kutilmoqda | BLOCKER for real merchant PII | huquqshunos xulosasi |
+| PC compatibility data source | reference hardware spec kutubxonasi (DEC-011, DEC-120, ADR-028) | RESOLVED (design) | `PC_COMPATIBILITY_ENGINE` hujjati, boshlang'ich to'ldirish |
+| Meta (Instagram) access | Stage 1 kanali (DEC-116); founder kechikmaydi deb hisoblaydi | RISK | ariza S0 bilan |
+| Cross-doc naming (statuslar, ID'lar, test raqamlari) | K-01…K-10 qo'llandi; engineering test ID'lari business/10 ga birlashtirildi | RESOLVED | — |
 | Search S2 matching, S3 traffic | planned only | DEFERRED | Stage2/3 gates |
 | Full UI screen-by-screen pixel wireframes | page contracts, basic schematic only | OPEN implementation detail | story UI review before sprint |
 | Full executable SQL migrations/OpenAPI source | only design/examples | OPEN implementation | generate from code and contract tests |
 
 ## 2. Pending founder decisions
-`D-01` approve 3-stage scope and first PC/electronics vertical; `D-02` tenant isolation/RLS plan; `D-03` job broker strategy; `D-04` reservation TTL and failed late payments; `D-05` accepted merchant source for stock; `D-06` manual payment process; `D-07` AI/voice data policy; `D-08` first merchant-specific channel access; `D-09` RPO/RTO and hosting; `D-10` legal/privacy data processing.
+2026-10-22: D-01…D-10 `../decisions/DECISION_REGISTER.md` ga ko'chirildi va baseline sifatida hal qilindi (xarita — registr §4). Ochiq qolganlar: huquqshunos xulosasi (DEC-013), RPO/RTO aniq qiymatlari, RLS spike, LLM va STT bake-off natijalari.
 
 ## 3. Code-readiness threshold
-**Architecture base may support scaffold coding after founder confirms ADR-001,002,004,005,008,009 and scope.** External provider integration and money/stock live activity MUST wait until dedicated tests and open blockers resolved. UX can proceed with contract mocks, but exact API specs and flows must be frozen for the slice before production integration.
+**Scaffold (S0) coding uchun shart bajarildi:** ADR-001, 002, 004, 005, 008, 009 va ADR-021…030 baseline sifatida tasdiqlangan (2026-10-22). External provider integration and money/stock live activity MUST wait until dedicated tests and open blockers resolved. UX can proceed with contract mocks, but exact API specs and flows must be frozen for the slice before production integration.
 
 ## 4. Document-to-implementation trace
 | Story | Business | API | Entity | Events/jobs | UI | Acceptance |

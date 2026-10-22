@@ -6,7 +6,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 **Muhim (founder, 2026-10-22):** `APPROVED` qarorlar — **ishchi baseline**. Ular bo'yicha hujjatlar va kod ishlab chiqiladi, lekin pilot, intervyu yoki texnik spike natijasiga qarab o'zgartirilishi mumkin. O'zgartirish tartibi: registrda yangi variant va sabab yoziladi (`CHANGED (sana): eski → yangi`), so'ng 4-bo'limdagi ta'sirlangan hujjatlar yangilanadi.
 
-**Hujjatlarga kiritish holati:** 2026-10-22 dan barcha `APPROVED` qarorlar `business/` va `engineering/` hujjatlariga kiritilmoqda (5-bo'lim).
+**Hujjatlarga kiritish holati:** ✅ 2026-10-22 — barcha `APPROVED` qarorlar `business/` va `engineering/` hujjatlariga kiritildi. Qolgan ish: 5-bo'lim, 4-band (yangi hujjatlar).
 
 ---
 

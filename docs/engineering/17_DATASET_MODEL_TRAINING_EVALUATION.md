@@ -1,6 +1,6 @@
 # TECH-17 — Dataset governance, model strategy and evaluation
 
-**Status:** dataset/model program design; no model currently trained. **Primary objective:** product matching and multilingual sales/voice accuracy that outperforms baseline, not train large foundation LLM prematurely.
+**Status:** dataset/model program design; no model currently trained. **Baseline (2026-10-22):** merchant ma'lumotida o'qitish default **yo'q** — `ai_training_opt_in=false`; merchant opt-in bersa, anonimlashtirilgan va faqat o'sha merchant uchun (DEC-118). Eval uchun sintetik ma'lumot. Audio transkripsiyadan keyin o'chiriladi; ASR golden set — alohida yozma rozilik bilan (DEC-117). PC compatibility golden — reference spec kutubxonasi asosida (DEC-011). **Primary objective:** product matching and multilingual sales/voice accuracy that outperforms baseline, not train large foundation LLM prematurely.
 
 ## 1. Datasets and owners
 | Dataset | Example label/schema | Collection permission | Use |

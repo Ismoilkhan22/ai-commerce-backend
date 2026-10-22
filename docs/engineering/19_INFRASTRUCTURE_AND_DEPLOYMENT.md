@@ -1,6 +1,6 @@
 # TECH-19 — Infrastructure, environments, CI/CD, backup and recovery
 
-**Status:** pilot deployment candidate, not provisioned. **Repo:** `ai-commerce-backend/infra` until independent infra release requirements. **ADR-009/020.** Must meet privacy/hosting legal requirements before real data.
+**Status:** pilot deployment baseline (2026-10-22), not provisioned. **Repo:** `ai-commerce-backend/infra` until independent infra release requirements. **ADR-009/020/026/029/030.** **Baseline:** production PII DB va storage — O'zbekistondagi data center (DEC-013, huquqshunos xulosasidan keyin real PII); monitoring — Grafana Cloud + Sentry, self-hosted monitoring yo'q (DEC-012); deployment — shared-first, `deployment_mode` konfiguratsiyasi bilan dedicated-ready (DEC-001, TECH-23 §3). Must meet privacy/hosting legal requirements before real data.
 
 ## 1. Deployment profile
 ```mermaid
@@ -13,11 +13,11 @@ flowchart TB
  API --> S[("S3 private object storage")]
  PG --> W["PG outbox/job workers"]
  W --> LLM["Authorized model provider"]
- W --> MSG["Providers: Telegram/Meta/PSP"]
- W --> OBS["OTel Collector/Prometheus/Logs"]
+ W --> MSG["Providers: Telegram / Instagram (Meta)"]
+ W --> OBS["OTel → Grafana Cloud + Sentry (DEC-012)"]
  API --> OBS
 ```
-Docker Compose on secured VM(s) and managed/secured database is a **candidate** for paid pilot. Production topology, HA and geographic region are gated by RPO/RTO/privacy decisions and proven load. K8s not assumed.
+Docker Compose on secured VM(s) in an Uzbekistan data center (DEC-013) is the **baseline** for paid pilot. Production topology and HA are gated by RPO/RTO decisions and proven load. K8s not assumed. Dev/staging — sintetik ma'lumot bilan istalgan joyda.
 
 ## 2. Environments and config
 | Environment | Data | Providers | Purpose |

@@ -416,12 +416,15 @@
 | `TC-028` | Xaridor "olaman" dedi | AI faqat `DRAFT` yaratadi, operatorni chaqiradi; "tasdiqlandi/band qilindi" demaydi; stok o'zgarmaydi (BL-110) |
 | `TC-029` | Sales boshqa operatorga biriktirilgan buyurtmani tasdiqlash yoki istalgan buyurtmani bekor qilishga urinadi | 403, audit; faqat Manager/Owner bekor qiladi (DEC-108) |
 | `TC-030` | `COMPLETED` buyurtma uchun takroriy complete / replay | `on_hand` faqat bir marta kamayadi |
+| `TC-031` | Quote tasdiqlangandan keyin yoki buyurtma tasdig'idan oldin narx o'zgardi | `PRICE_CHANGED`, xaridordan qayta rozilik; eski snapshot o'zgarmaydi (BR-X03) |
+| `TC-032` | Outbound yuborishda provayder 429/timeout | Bounded retry, DLQ ko'rinadi, takroriy xabar niyati yo'q |
+| `TC-033` | Backup'dan tiklash | Ma'lumot va outbox izchil, nazoratli reconciliation |
 
 ## Stage exit / go-no-go
 
 ### Stage 1 acceptance
 - At least one merchant can complete full catalog → AI/inbox → (PC quote) → buyurtma qoralamasi → operator tasdig'i va rezerv → topshirish (`COMPLETED`) → KPI flow on staging/production pilot with rollback procedure (to'lov va yetkazish tizimdan tashqarida — DEC-100, DEC-113).
-- All critical `TC-001..TC-003`, `TC-007..TC-014`, `TC-020`, `TC-022`, `TC-023`, `TC-025`, `TC-027..TC-030` va `TC-ISO-01..10` pass on release candidate (TC-004/005/006/021 — to'lov moduli bilan, DEC-100); other phased tests follow their module readiness.
+- All critical `TC-001..TC-003`, `TC-007..TC-014`, `TC-020`, `TC-022`, `TC-023`, `TC-025`, `TC-027..TC-033` va `TC-ISO-01..10` pass on release candidate (TC-004/005/006/021 — to'lov moduli bilan, DEC-100); other phased tests follow their module readiness.
 - Merchant and AI mode independent; no LLM outage can mutate incorrect business state.
 - Production operators can retry failed jobs, reconcile stock ledger and disable unsafe AI/channel features.
 

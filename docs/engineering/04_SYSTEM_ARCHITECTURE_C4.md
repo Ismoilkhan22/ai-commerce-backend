@@ -4,8 +4,8 @@
 > **Version:** `v0.9 — engineering review draft`  
 > **Date:** 2026-10-21  
 > **Product:** AI Commerce OS & Network, **3 commercial stages**  
-> **Authority:** proposed architecture; NOT deployed, audited, benchmarked or an approved ADR  
-> **Source:** `03_DDD_DOMAIN_ARCHITECTURE.md` (C01–C19), business v1.0 (`M01–M39`, `BL-001…BL-108`)  
+> **Authority:** baseline architecture (2026-10-22, ADR-001…030 — `05`); NOT deployed, audited or benchmarked  
+> **Source:** `03_DDD_DOMAIN_ARCHITECTURE.md` (C01–C19), business v1.0 (`M01–M39`, `BL-001…BL-111`), `../decisions/DECISION_REGISTER.md`  
 > **Owner/approval:** founder; key alternatives are decided by `05_ARCHITECTURE_DECISIONS_ADR.md`  
 > **Next dependency:** `05_ARCHITECTURE_DECISIONS_ADR.md` → ERD, transaction/concurrency, API, events, AI and UI contracts.
 
@@ -119,7 +119,7 @@ flowchart TB
   subgraph DATA["Private data boundary"]
     PG[("PostgreSQL: merchant truth + inbox/outbox")]
     REDIS[("Redis: cache, locks with limits, rate limit")]
-    QUEUE["Durable task queue / broker (ADR pending)"]
+    QUEUE["PG leased jobs (ADR-005) — alohida broker yo'q"]
     OBJ[("S3-compatible private media / exports")]
   end
   subgraph VENDORS["External trusted integrations"]
@@ -153,7 +153,7 @@ flowchart TB
 1. `FastAPI API` va `workers` — alohida **OS process/deployable**, ammo **bitta codebase/domain application**. HTTP ichida AI modelini yoki batch importni kutmaymiz.
 2. `Webhook router` FastAPI process ichidagi route bo'lishi mumkin; diagrammada xavfsizlik/reliability mas'uliyati uchun alohida ko'rsatilgan. Uni alohida server qilish shart emas.
 3. PostgreSQL — merchant record, stock/price, transactional inbox, outbox va durable scheduler state **single source of truth**. Redis **yagona durable source emas**.
-4. `QUEUE` implementatsiyasi (RabbitMQ/Celery yoki Postgres-driven jobs va h.k.) hali tanlanmagan. Noto'g'ri ravishda Redis/Celery/RabbitMQ hammasini default talab deb yozmaymiz; ADR-003 tanlaydi.
+4. `QUEUE` — PostgreSQL outbox + PG leased jobs (`FOR UPDATE SKIP LOCKED`), alohida broker yo'q (DEC-003, ADR-005). RabbitMQ/Celery faqat o'lchangan queue lag SLO buzilsa.
 5. Stage 1 uchun `OpenSearch`, Kafka, Kubernetes va mustaqil vector database **majburiy emas**. Postgres FTS/`pg_trgm` bilan boshlash mumkin; `pgvector` relevans testidan keyingina.
 6. Dashboard va Storefront bir frontend repo ichida **ikki Next.js app** bo'lishi mumkin, lekin har ikkalasining sahifa/routing va cookie/trust chegaralari alohida ko'riladi. Aniq Next.js/Vite qarori ADR/UI hujjatida tasdiqlanadi.
 7. Ovoz: client mic → authenticated upload/stream → STT → allowlisted report tool → structured answer → TTS; birinchi reliz **read-only**.
@@ -380,7 +380,7 @@ sequenceDiagram
 
 **Guard:** reservation update is conditional/row locked and protected by DB constraints; Redis lock alone is insufficient. `on_hand` vs `reserved` vs `allocated` policy is defined in ERD and business final decisions. `order_confirm` must not wait for payment API or LLM under lock. Two independent orders for final stock must yield at most one successful reservation.
 
-### 4.4 Payment and fulfillment boundary
+### 4.4 Payment and fulfillment boundary — `DEFERRED` (DEC-100, DEC-113; Stage 1 da to'lov va yetkazish tizimdan tashqarida)
 
 ```mermaid
 sequenceDiagram
@@ -510,7 +510,7 @@ flowchart LR
 ### 6.2 Multi-tenancy and RBAC
 
 - API resolves `ActorContext(principal_id, merchant_id, memberships, branch_permissions, trace_id)` from server-validated auth / webhook account mapping. Never take `merchant_id` from arbitrary request body as authority.
-- DB queries require merchant/branch predicates; design tests for 0 cross-tenant leaks. PostgreSQL RLS is a **defense-in-depth candidate**, not claimed as configured (ADR pending).
+- DB queries require merchant/branch predicates; design tests for 0 cross-tenant leaks. PostgreSQL RLS — defense-in-depth: S0 spike, o'tsa sezgir jadvallarga (ADR-026, TECH-23 §6); hali sozlanmagan.
 - Context owners decide permission policy for each command. Service tokens are short-scoped, rotated, per environment.
 - User-facing site and future public global network access **explicitly separated** from staff auth.
 - Support staff impersonation (if offered) needs merchant opt-in/explicit time-limited grant, ticket reason, independent audit.
@@ -765,24 +765,24 @@ flowchart LR
 
 ## 12. Architecture alternatives and ADR handoff (do not silently assume)
 
-| Question | Proposed baseline | Alternatives | Decision evidence | Required by |
+| Question | Baseline (2026-10-22) | Alternatives | Decision evidence | Required by |
 |---|---|---|---|---|
 | Runtime | FastAPI Python 3.12+ modular monolith | Django, split microservices | Solo velocity, latency, operational overhead | S0 |
 | Database | PostgreSQL 16+ shared tenant-scoped | separate DB per tenant, RLS always on | Cross-tenant tests and backup/restores | S0 |
-| Queue | PG inbox/outbox + durable worker; broker **TBD** | PG job polling; Celery/RabbitMQ; Redis queue | guarantees, ops cost, throughput | S2 |
+| Queue | **PG outbox + PG leased jobs (ADR-005)** | Celery/RabbitMQ; Redis queue | guarantees, ops cost, throughput | S0 |
 | Cache | Redis optional for rate limits/cache | in-process cache/PG-limits | failure behavior, quotas | S0/S2 |
 | Search | Postgres FTS + `pg_trgm` initial | pgvector, OpenSearch/Meilisearch | real product relevance/scale | S1/N1/G1 |
-| AI | hosted LLM via provider port + deterministic tools | local inference, fine-tuned specialist | UZ/RU/EN accuracy, token cost/privacy | S3 |
-| Voice | STT → constrained tools → TTS | local models, text-only fallback | Uzbek ASR correctness/consent | S5 |
-| Frontend | 2 apps in separate frontend repo | single Next app; Vite + SSR split | SEO, cookie isolation, team velocity | S1 |
-| Hosting | compliant VPS/managed DB with Compose first | managed PaaS, Kubernetes | residency, cost, restore, availability | paid pilot |
-| Telemetry | OTel + structured logs + metric backend | managed APM stack | expense, privacy and trace quality | S0 |
+| AI | hosted LLM via `LLMPort` + bake-off (ADR-027), PII redaction + deterministic tools | local inference, fine-tuned specialist | UZ/RU/EN accuracy, token cost/privacy | S3 |
+| Voice | S5: matnli hisobot; keyin STT → constrained tools → TTS beta (DEC-112) | local models | Uzbek ASR correctness/consent | S5 |
+| Frontend | **2 Next.js apps, separate frontend repo (ADR-010, DEC-014)** | single Next app | SEO, cookie isolation | S0 |
+| Hosting | **Compose on VM in Uzbekistan DC (ADR-030, DEC-013)**, huquqshunos xulosasi bilan | managed PaaS, Kubernetes | residency, cost, restore | paid pilot |
+| Telemetry | **OTel + JSON logs → Grafana Cloud + Sentry (ADR-029, DEC-012)** | self-hosted stack | expense, privacy and trace quality | S0 |
 | Object storage | S3-compatible restricted | local disk, managed vendor | backup/consent/retention | S1 |
-| Tenant boundary | app scoping + possible PG RLS | RLS mandatory first | attack tests, operations | S0 |
+| Tenant boundary | **app scoping + composite FK + RLS spike (ADR-026)**; shared-first, dedicated-ready | RLS mandatory first; DB-per-tenant | attack tests, operations | S0 |
 | Public revocation | authoritative consent gate + async index delete | index-only deletion | freshness SLA and leak test | N1/G1 |
-| Payment checkout | merchant-owned PSP + verified state | platform custody/settlement | legal/compliance/cost | S4 |
+| Payment checkout | **Stage 1: tizimdan tashqarida (DEC-100)**; keyin merchant-owned PSP | platform custody/settlement | legal/compliance/cost | — |
 
-All proposals above remain **`PROPOSED`** until owner approves a numbered ADR. Existing business `O-xx` and DDD `DDD-Oxx` decision registers remain sources of open business facts.
+Qalin yozilganlar founder tomonidan tasdiqlangan baseline (2026-10-22). Ochiq biznes savollari endi faqat `../decisions/DECISION_REGISTER.md` da.
 
 ---
 
@@ -792,10 +792,10 @@ All proposals above remain **`PROPOSED`** until owner approves a numbered ADR. E
 |---|---|---|---|
 | **S0** | FastAPI bootstrap, PG migrations, identity/tenant/security, audit, trace middleware, CI, restricted observability | Create merchant + member, authorize merchant A, reject B | Tenant A/B tests + trace continuity |
 | **S1** | Merchant/branch/catalog/pricing/inventory, storefront app, restricted object media, index | Publish SKU with known price/availability on branded page | Catalog integrity, source version, no private field |
-| **S2** | Telegram/web channel adapter, durable inbox, outbound worker, chat dashboard, handoff | Buyer writes → staff receives → reply delivered | Duplicate inbound, retry, lease/fencing |
-| **S3** | AI tool ports, PC compatibility, quote workflow, human approval | Buyer asks budget → grounded components → approved quote | No invented price or invalid PC compatibility |
-| **S4** | Orders, stock reservation, payment attempt/manual verify + PSP if approved | Confirm quote → reserve → authorized settlement status | Parallel last-stock race, proof cannot pay |
-| **S5** | Fulfillment/returns basics, dashboard metric registry, voice report STT/TTS | Order delivery status + UZ/RU/EN voice summary | Reconcile metrics and verify voice scopes |
+| **S2** | Telegram / Instagram / web channel adapters (DEC-116), durable inbox, outbound worker, chat dashboard, handoff | Buyer writes → staff receives → reply delivered | Duplicate inbound, retry, lease/fencing |
+| **S3** | AI tool ports (bake-off'dan keyin), PC compatibility (reference spec library), quote workflow (Manager), AI order draft | Buyer asks budget → grounded components → approved quote → `DRAFT` order + operator | No invented price or invalid PC compatibility |
+| **S4** | Orders FSM-08 (to'lovsiz, DEC-100), confirm + reservation workflow, processing/complete, cancel, paid-mark | Operator confirm → reserve → processing → completed (stok kamayadi) | Parallel last-stock race (online + offline), Sales boshqa buyurtmani tasdiqlay olmaydi |
+| **S5** | Kafolat murojaati, metric registry, matnli hisobot-chat; voice beta keyin (DEC-112) | Owner matnli savolga to'g'ri raqam va data_as_of oladi | Reconcile metrics and verify report scopes |
 | **N1** | C17 integration hub, C18 catalog/offer pipeline, merchant self-service | Merchant opt-in -> canonical match -> public offer feed | Private default, false merge, stale revocation |
 | **G1** | C19 public discovery, shopping AI, geosearch, referrals | Shopper compares offers, lands in merchant flow | Same variant, honest price/ads, fresh checkout |
 
@@ -856,11 +856,11 @@ All proposals above remain **`PROPOSED`** until owner approves a numbered ADR. E
 | C4-O11 | Stage 2 public freshness/revocation mechanism | Read-time fail-closed gate; index optional | N1/G1 |
 | C4-O12 | Merchant POS master conflicts | No automatic overwrite without approved field policy | N1 |
 
-**Signoff protocol:** mark each item `PROPOSED / APPROVED / DEFERRED / REJECTED` and attach a dated ADR; changes to domain boundaries require updating TECH-03 and this document together.
+**Holat (2026-10-22):** C4-O02 → ADR-005 (resolved); O01 → DEC-013 (huquqshunos kutilmoqda); O03 → DEC-105/107; O04 → DEC-103/110/121; O05 → DEC-100 (deferred); O06 → DEC-116; O07 → DEC-112; O08 → DEC-014/008; O09 → DEC-002 (S0 spike); O10 — RPO/RTO ochiq; O11/O12 — Stage 2. Changes to domain boundaries require updating TECH-03 and this document together.
 
 ---
 
-## 16. What next? (do not start writing code yet)
+## 16. What next? — tarixiy (2026-10-21); amaldagi reja `22_DEVELOPMENT_TASKS_AND_REPO_STRUCTURE.md`
 
 1. **`05_ARCHITECTURE_DECISIONS_ADR.md`**: choose queue, DB tenancy, frontend/server rendering, cache, AI provider abstraction, hosting and observability with alternatives + tradeoffs.
 2. **`06_DATABASE_ERD_AND_SCHEMA.md`**: business entities → tables, constraints, indexes and ownership per C01–C19.

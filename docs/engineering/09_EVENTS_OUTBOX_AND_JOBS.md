@@ -1,6 +1,6 @@
 # TECH-09 — Event contracts, transactional outbox, durable jobs
 
-**Status:** Proposed Stage 1 operational design, PostgreSQL queue candidate ADR-005. **References:** TECH-03 19 contexts, TECH-07 concurrency, TECH-12 telemetry, business 09 module relations. At-least-once, **not exactly-once external side effects**.
+**Status:** Baseline Stage 1 operational design (2026-10-22): PostgreSQL outbox + PG leased jobs **tanlangan** (DEC-003, ADR-005); event envelope — K-08 (quyida, yagona format). **References:** TECH-03 19 contexts, TECH-07 concurrency, TECH-12 telemetry, business 09 module relations. At-least-once, **not exactly-once external side effects**.
 
 ## 1. Three different entities — never confuse
 1. **Domain event** = committed business fact (`order.created.v1`); immutable schema version.
@@ -15,11 +15,14 @@ Webhook raw delivery is in an **inbox event** first with provider dedup, not a d
  "merchant_id":"uuid","aggregate_type":"stock_balance","aggregate_id":"uuid",
  "aggregate_version":8,"occurred_at":"2026-10-21T09:00:00Z",
  "producer":"inventory","schema_version":1,"traceparent":"00-...-...-01",
+ "correlation_id":"request-or-workflow-id","causation_id":"command-or-event-id",
  "actor":{"kind":"merchant_user","id":"uuid"},
  "payload":{"sku_id":"uuid","branch_id":"uuid","available_after":3}
 }
 ```
 No PII, bank/card number, conversation raw text or provider token in event payload; reference encrypted/private records by UUID.
+
+**K-08:** bu envelope barcha hujjat va kod uchun yagona. TECH-03 §10.1 dagi `tenant_id`/`trace_id` varianti bilan almashtirildi (`merchant_id`, `traceparent`).
 
 ## Event owner / consumers
 | Event | Producer | Consumer(s) | Processing contract |
@@ -30,10 +33,14 @@ No PII, bank/card number, conversation raw text or provider token in event paylo
 | `pricing.price_changed.v1` | C04 | C06,C09; C18 Stage2 | latest version wins |
 | `inventory.stock_changed.v1` | C05 | C06,C15; C18 Stage2 | fetch absolute state, not `+=` |
 | `quote.approved.v1` | C10 | C14 send | immutable quote snapshot |
-| `order.created.v1` | C11 | C14,C15,C12 intent | order+reservation already committed |
-| `order.cancelled.v1` | C11 | C14,C15 | no second release |
-| `payment.verified.v1` | C12 | C11,C14,C15 | settlement uniqueness |
-| `shipment.delivered.v1` | C13 | C14,C15 | delivery proof check |
+| `order.created.v1` | C11 | C08 operator task, C14 | `DRAFT` (AI/storefront/staff); stok band emas |
+| `order.submitted.v1` | C11 | C14 | `PENDING_CONFIRMATION`; 24 soatlik eslatma job (DEC-104) |
+| `order.confirmed.v1` | C11 | C14,C15 | order + reservation bitta tranzaksiyada commit qilingan (ADR-021) |
+| `order.completed.v1` | C11 | C10 lead WON, C14, C15 | stok `CONSUMED` allaqachon commit qilingan |
+| `order.cancelled.v1` | C11 | C10 lead LOST, C14, C15 | no second release |
+| `inventory.offline_sale.v1` | C05 | C06, C15 | absolute state qayta o'qiladi (DEC-123) |
+| `payment.verified.v1` — `DEFERRED` (DEC-100) | C12 | C11,C14,C15 | settlement uniqueness |
+| `shipment.delivered.v1` — `DEFERRED` (DEC-113) | C13 | C14,C15 | delivery proof check |
 | `public_offer.withdrawn.v1` S2 | C18 | index/projection | immediate DB read-time revoke |
 | `canonical_product.match_changed.v1` S2 | C18 | C19 search | reversible merge/split |
 
@@ -62,8 +69,11 @@ If consumer crashes after commit and before ACK, replay finds `(consumer_name,ev
 | `inbound_normalize` | high | 3, quick jitter | invalid signed payload quarantined |
 | `ai_draft_answer` | ai | 2, deadline bounded | handoff human; no spam |
 | `channel_send` | external | provider-aware (up to 5) | store provider receipt, ambiguous delivery reconcile |
-| `reservation_expire` | critical | 5 short + operator | monotonic FSM, audit |
-| `payment_reconcile` | finance | periodic capped | manual finance alert for UNKNOWN |
+| `order_confirm_reminder` | critical | periodic scan, idempotent | `PENDING_CONFIRMATION` > 24 soat → menejer vazifasi (DEC-104) |
+| `reservation_review` | critical | periodic scan, idempotent | `ACTIVE` rezerv > 72 soat → "bekor qilinsinmi?" vazifasi; holat o'zgarmaydi (DEC-104) |
+| `quote_expire` | critical | 5 short | `SENT` → `EXPIRED` (24 soat default, DEC-103) |
+| `audio_purge` | bulk | 3 | transkripsiyadan keyin audio o'chiriladi, audit (DEC-117) |
+| `payment_reconcile` — `DEFERRED` (DEC-100) | finance | periodic capped | manual finance alert for UNKNOWN |
 | `catalog_import` | bulk | resume rows/chunks | error CSV, reject partial commit by policy |
 | `report_export` | bulk | 3 | report job failed with retry button |
 | `voice_transcription` | ai | 2, no endless replay | ask text clarification |

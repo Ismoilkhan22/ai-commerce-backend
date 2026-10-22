@@ -4,7 +4,7 @@
 > **Version:** v0.9 — architecture proposal for founder review  
 > **Date:** 2026-10-21  
 > **Scope:** Stage 1 Merchant Sales OS (implementation-oriented); Stage 2 Merchant Network; Stage 3 Global AI Shopping (extension boundaries)  
-> **Depends on:** `00_README_AND_SCOPE.md`, `01_BUSINESS_VISION_AND_3_PHASES.md`, `02_ALL_BUSINESS_MODULES.md` (`M01–M39`), `03_BUSINESS_RULES_108.md` (`BL-001…BL-108`), `04_ROLES_PERMISSIONS_AND_APPROVALS.md`, `05_STATE_MACHINES_AND_EXCEPTIONS.md`, `07_BUSINESS_ENTITIES_AND_DATA_BOUNDARIES.md`, `09_MODULE_INTERACTIONS_AND_NOTIFICATIONS.md`, `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md`.  
+> **Depends on:** `00_README_AND_SCOPE.md`, `01_BUSINESS_VISION_AND_3_PHASES.md`, `02_ALL_BUSINESS_MODULES.md` (`M01–M39`), `03_BUSINESS_RULES_108.md` (`BL-001…BL-111`), `04_ROLES_PERMISSIONS_AND_APPROVALS.md`, `05_STATE_MACHINES_AND_EXCEPTIONS.md`, `07_BUSINESS_ENTITIES_AND_DATA_BOUNDARIES.md`, `09_MODULE_INTERACTIONS_AND_NOTIFICATIONS.md`, `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md`.  
 > **Status:** This is NOT implemented code, finalized ERD, validated API/SLAs or approved technical ADR. It is the DDD foundation and the input to subsequent design documents.  
 > **Owner:** Founder. **Review:** Product, security, engineering (AI-assisted draft, founder approves).
 
@@ -20,16 +20,18 @@
 
 ### 0.1 Decision confidence
 
-| Decision | Status | Required next evidence |
+| Decision | Status (2026-10-22) | Reference |
 |---|---|---|
-| DDD-style modular monolith | PROPOSED BASELINE | ADR + engineering review |
-| Shared PostgreSQL, tenant-scoped records | PROPOSED | Threat model + RLS vs app-layer enforcement ADR |
-| Unified transaction boundary for order + reserve | PROPOSED, REQUIRED INVARIANT | Detailed ERD, lock order, concurrency tests |
-| Separate AI execution process / worker | PROPOSED | Latency, cost, worker lifecycle tests |
-| Outbox is durable, at-least-once | BASELINE BUSINESS REQUIREMENT | Broker/queue decision + replay/DLQ contract |
-| Global canonical product separate from merchant SKU | BUSINESS BASELINE | Stage 2 canonical schema + merge/split safety tests |
-| Two repos (`backend`, `frontend`) | PROPOSED BASELINE | CI/CD and versioning ADR |
-| Payment only to merchant's approved endpoint/account | BUSINESS BASELINE | Provider contract + legal/financial review |
+| DDD-style modular monolith | APPROVED baseline | ADR-001 |
+| Shared PostgreSQL, tenant-scoped records; RLS spike S0 | APPROVED baseline | ADR-002, ADR-026, TECH-23 |
+| Unified transaction boundary for order confirm + reserve | APPROVED, REQUIRED INVARIANT | ADR-021, TECH-07 |
+| Separate AI execution process / worker | APPROVED baseline | ADR-011, TECH-11 |
+| Outbox durable, at-least-once; PG leased jobs | APPROVED | ADR-005, DEC-003 |
+| Global canonical product separate from merchant SKU | BUSINESS BASELINE (Stage 2); Stage 1 — reference spec library | ADR-028 |
+| Two repos (`backend`, `frontend`), frontend — 2 Next.js app | APPROVED | ADR-009, ADR-010 |
+| Payment | Stage 1 da tizimdan tashqarida | DEC-100 |
+
+Barcha qarorlar va variantlar: `../decisions/DECISION_REGISTER.md`.
 
 ## 1. Three commercial stages and non-goals
 
@@ -278,7 +280,7 @@ backend/
         merchant_ai/
         sales/
         orders/
-        payments/
+        payments/                    # DEFERRED (DEC-100) — Stage 1 da yaratilmaydi
         fulfillment/
         engagement/
         reporting/
@@ -287,8 +289,9 @@ backend/
         # integrations/ market_catalog/
         # Stage 3: discovery/
       workflows/
-        order_checkout.py            # cross-context orchestration use case
-        payment_settlement.py        # cross-context verified payment use case
+        order_confirmation.py        # ADR-021: order CONFIRMED + inventory reserve (bitta UoW)
+        order_completion.py          # COMPLETED + stock consume
+        # payment_settlement.py — DEFERRED (DEC-100)
         merchant_provisioning.py     # onboarding cross-context use case
       workers/
         outbox_dispatcher.py
@@ -352,7 +355,7 @@ In Python, avoid relying on directories to enforce boundaries. A CI import-rule 
 
 1. Expose `commands`, `queries`, `DTOs`, `domain events` only.
 2. Never expose SQLAlchemy mapped classes.
-3. Requests include validated `ActorContext(tenant_id, principal_id, role_scopes, trace_id)`.
+3. Requests include validated `ActorContext(merchant_id, principal_id, role_scopes, trace_id)` (K-01).
 4. Return stable domain/result errors (`NotFound`, `Conflict`, `Forbidden`, `StaleVersion`, `UnknownPrice`).
 5. A facade requiring shared atomicity accepts a `UnitOfWork`/transaction handle, it **must not commit itself**. This must be explicit in the contract.
 
@@ -418,16 +421,16 @@ sequenceDiagram
   WF->>ORD: Create order and immutable lines
   ORD->>PG: INSERT order, reservation, outbox, audit
   WF->>PG: COMMIT
-  WF-->>API: order_id + version + pending_payment
+  WF-->>API: order_id + version + CONFIRMED
 ```
 
-**Never** hold a database transaction open while waiting for LLM, payment gateway, OCR, network or human approval. User can receive `409 OUT_OF_STOCK`, `409 PRICE_CHANGED`, `409 QUOTE_EXPIRED`, `409 CONCURRENT_MODIFICATION`, or a pending state when provider verification is required.
+**Never** hold a database transaction open while waiting for LLM, payment gateway, OCR, network or human approval. User can receive `409 INSUFFICIENT_AVAILABLE_STOCK`, `409 PRICE_CHANGED`, `409 QUOTE_EXPIRED`, `409 VERSION_CONFLICT` (K-07).
 
 **Algorithm requirements:** locks acquired by `(merchant_id, branch_id, sku_id)` ascending order; branch row access re-checked; no float money; fixed idempotency scope `(merchant_id, operation, key)`; retry on PostgreSQL serialization/deadlock with bounded attempts and jitter *outside* failing transaction; request timeout must be bounded and correlated.
 
 **Deferred to ERD/ADR:** precise isolation level, `StockBalance` counter strategy (`reserved` vs `allocated`), deterministic retry semantics and stock decrement point. These are NOT implemented by prose; ERD and concurrency tests must finalize them.
 
-### 8.2 Payment verification (separate external trust boundary)
+### 8.2 Payment verification (separate external trust boundary) — `DEFERRED` (DEC-100)
 
 ```mermaid
 flowchart TD
@@ -474,25 +477,9 @@ In stage 2, on withdrawal the listing owner's DB state becomes denied in same tr
 
 ## 10. Domain events and ordering contract
 
-### 10.1 Standard event envelope — proposal
+### 10.1 Standard event envelope — K-08
 
-```json
-{
-  "event_id": "uuid",
-  "event_type": "inventory.stock_changed.v1",
-  "aggregate_type": "stock_balance",
-  "aggregate_id": "uuid",
-  "aggregate_version": 12,
-  "tenant_id": "uuid",
-  "occurred_at": "2026-10-21T05:00:00Z",
-  "actor": {"type": "user", "id": "uuid"},
-  "trace_id": "otel-trace-id",
-  "correlation_id": "request-or-workflow-id",
-  "causation_id": "command-or-event-id",
-  "schema_version": 1,
-  "payload": {"sku_id": "uuid", "branch_id": "uuid", "balance_version": 12}
-}
-```
+Yagona format `09_EVENTS_OUTBOX_AND_JOBS.md` da (`merchant_id`, `traceparent`, `correlation_id`, `causation_id`, `aggregate_version`, `schema_version`, `producer`, `actor`, `payload`). Bu yerdagi eski taklif (`tenant_id`, `trace_id`) K-01/K-08 bilan almashtirildi.
 
 ### 10.2 Event owner / consumer map
 
@@ -556,7 +543,7 @@ sequenceDiagram
 
 ## 12. Multi-tenancy, permissions and domain security
 
-- `ActorContext` assembled from validated authentication/session; never from client-submitted `tenant_id`, `role`, `is_admin` or `branch_id` without server-side membership check.
+- `ActorContext` assembled from validated authentication/session; never from client-submitted `merchant_id`, `role`, `is_admin` or `branch_id` without server-side membership check.
 - Private rows have merchant tenancy; cross-tenant FK safety must be considered (`(merchant_id, foreign_id)` composite constraints where useful). Database-level RLS is an option requiring dedicated ADR/testing. **Do not assume RLS by adding a field name only.**
 - Branch permission: a merchant manager may have all branches, cashier may have only one; scope checked both in queries and in state changes.
 - Public merchant storefront must expose only published content fields, not confidential costs, contact history, internal notes, exact available quantities where merchant policy hides them.
@@ -582,18 +569,19 @@ These are **domain-level commitments**, not the full design of middleware instru
 
 Every slice is **end-to-end**: migrations + backend + frontend + test + audit/telemetry. Avoid completing all backend modules before frontend. No assumption that 3 stages must be fully architected to implementation detail before Stage 1 goes live.
 
-| Slice | Business modules | Functional chain | Must-pass acceptance |
-|---|---|---|---|
-| **S0 Platform skeleton** | M01,M02,M19,M20 | FastAPI bootstrap, tenant context, auth, membership, audit, trace, CI & DB migration | Cross-tenant deny, admin audit, health/readiness; no privileged bypass |
-| **S1 Catalog & shop** | M03,M04,M05,M06,M07 | Merchant → branch → SKU → verified price/stock → published product page | Product no-price/no-stock policy, unique SKU, file import preview |
-| **S2 Inbox** | M09,M10,M17 | Telegram/web message → durable inbound → inbox → human reply | Webhook dedup, handoff, send policy, retries |
-| **S3 AI + PC** | M08,M11,M12 | Buyer request → catalog retrieval → compatibility → quote → approval | No hallucinated price, false compatibility blocked, stale quote rejection |
-| **S4 Checkout** | M06,M12,M13,M14 | Accepted quote → atomic reserve/order → payment manual review/provider status | Concurrent last-SKU test, duplicate request, fake proof cannot mark paid |
-| **S5 Operations** | M15,M16,M18,M19 | Delivery/pickup → reporting + voice read-only → subscription usage | Payment vs delivery separation, metrics reconciliation, voice scope |
-| **N1 Stage 2 Network** | M21–M30 | Self-onboarding, source sync, canonical registry, public offer opt-in, trust | Merchant private default, no false-merge, stale revoke fail closed |
-| **G1 Stage 3 Discovery** | M31–M39 | Global exact offers → compare prices + geo → neutral AI referral | Offers public only, ranking provenance, sponsored label, checkout revalidate |
+Slice tarkibi va gate'lari — `20_TESTING_AND_RELEASE_PLAN.md` §4 va `../business/10` (DEC-005). Qisqacha:
 
-**Release 1 beta** may stop at S3 (AI produces approved quote and merchant takes payment manually) if current contracts and risk acceptance permit. S4/S5 then close the operational loop. S0 security/observability and S2 durable messaging are non-negotiable for any real merchant data.
+| Slice | Business modules | Functional chain |
+|---|---|---|
+| **S0 Poydevor** | M01,M02,M19,M20 | bootstrap, auth (ADR-023), membership/rollar, tenant context + RLS spike, audit, tracing/logs, outbox/jobs, CI |
+| **S1 Katalog & sayt** | M03,M04,M05,M06,M07 | branch → SKU → narx (UZS/USD) va stok → reference spec bog'lash → sayt, savatcha → buyurtma so'rovi; "tez sotuv" |
+| **S2 Inbox** | M09,M10,M17 | Telegram / Instagram / web → durable inbound → inbox → operator; handoff |
+| **S3 AI + PC** | M08,M11,M12 | AI (bake-off'dan keyin) → katalog → compatibility → quote (Manager) → AI buyurtma qoralamasi |
+| **S4 Buyurtma (to'lovsiz)** | M06,M13 | operator confirm + rezerv → processing → complete; cancel; paid-mark |
+| **S5 Operatsiya** | M16,M18,M19 | matnli hisobot, kafolat murojaati, AI limitlari, backup; voice beta |
+| **N1 / G1** | M21–M30 / M31–M39 | Stage 2 / Stage 3 |
+
+M14 (to'lov) va M15 (yetkazish) — `DEFERRED` (DEC-100, DEC-113). S0 security/observability and S2 durable messaging are non-negotiable for any real merchant data.
 
 ## 15. Technical design document dependency tree
 
@@ -618,43 +606,13 @@ flowchart TD
 
 **Parallel design is allowed:** after context owners are agreed, ERD, UI and OpenAPI can be refined in parallel with crosswalk reviews. The diagram shows required consistency dependencies, not a ban on concurrent drafting.
 
-## 16. Proposed ADR checklist for next design session
+## 16. ADR ro'yxati — `SUPERSEDED`
 
-| ADR | Question | Likely candidates | Evidence needed |
-|---|---|---|---|
-| ADR-001 | Multi-tenant row isolation | app-layer verified scoping, Postgres RLS defense-in-depth | attack tests, operational overhead |
-| ADR-002 | Transactionality for order/reserve | single AsyncSession UoW + locks / conditional UPDATE | stress/concurrency benchmarks |
-| ADR-003 | Durable job queue | Postgres outbox + Celery/RabbitMQ vs Redis-backed durable scheduler | replay/idempotency, solo operations |
-| ADR-004 | Event schema/versioning | JSON canonical envelope + owner schemas | migration and consumer evolution |
-| ADR-005 | Search stage 1 | PostgreSQL FTS + `pg_trgm`; semantic only if measured | retrieval relevance on real SKUs |
-| ADR-006 | Async session lifecycle | SQLAlchemy 2 async per request/worker UoW | pool saturation, rollback tests |
-| ADR-007 | Channel provider integrations | webhook inbox + normalized adapter | provider permissions, delivery semantics |
-| ADR-008 | Agent inference | hosted LLM, tool schemas, cost quota | UZ/RU/EN evaluation and spend |
-| ADR-009 | Observability | OTEL + Prometheus/Grafana + JSON logs (+ Sentry as needed) | visibility/cost for solo operator |
-| ADR-010 | Storage/media | S3 compatible + signed URL/retention | PII, cost, file security |
-| ADR-011 | Frontend | typed Next.js app + storefront; UI library | complexity/crawlability/hosting |
-| ADR-012 | Prod deployment | Docker Compose / VPS pilot vs managed PaaS | ops time, reliability, residency |
-| ADR-013 | Global listing privacy | approval flag + read-time deny + index projection | takedown latency, indexing |
-| ADR-014 | Stock source conflicts | dashboard master / approved POS per field and branch | merchant POS integration capability |
+Bu bo'limdagi dastlabki ADR ro'yxati boshqa raqamlashda edi va `05_ARCHITECTURE_DECISIONS_ADR.md` bilan to'qnashardi. 2026-10-22 dan ADR'lar faqat `05` da (ADR-001…030). Eski ro'yxat git tarixida (commit `58809a4`).
 
-## 17. Open decisions — must resolve before corresponding code
+## 17. Open decisions — `MOVED`
 
-| ID | Issue | Safe temporary behavior | Blocking slice |
-|---|---|---|---|
-| DDD-O01 | Merchant identity/legal verification minimum | Stage1 operator-assisted activation | S0 (verification details) |
-| DDD-O02 | Reserve TTL + when `on_hand` decreases | Do not enable automated stock promises until merchant policy chosen; request explicit confirmation | S4 |
-| DDD-O03 | Price validity, FX source, max discount | Snapshot exact source/time; human review unknown | S3/S4 |
-| DDD-O04 | Stock source of truth and external sync conflict | Stage1 dashboard authoritatively; integration conflict reviewed | S1 / N1 |
-| DDD-O05 | Payment provider availability and manual verification evidence | Keep pending until finance verifies settlement | S4 |
-| DDD-O06 | Delivery handover and warranty local policy | Merchant explicitly configures and handles exceptions | S5 |
-| DDD-O07 | Messaging channel access and allowed response windows | Telegram/web supported first; Meta feature disabled until approved | S2 |
-| DDD-O08 | Voice UZ recognition quality, spoken amount ambiguity | Read-only beta + transcript preview + user correction | S5 |
-| DDD-O09 | Data retention/localization and use of foreign AI providers | Minimize data; compliance signoff before live | S0 / S3 |
-| DDD-O10 | Public offer freshness and revocation SLA | Fail closed on withdrawn; display last verified; merchant opt-in | N1 |
-| DDD-O11 | Search false merge / split precision | Human review uncertain IDs; never auto-merge ambiguous variants | N1 |
-| DDD-O12 | Product engagement metrics and paid attribution | Explicit definition & event contract, no fabricated lift | S5/G1 |
-
-**Decision state:** `PROPOSED`, `APPROVED`, `DEFERRED`, `REJECTED` with signer/date and ADR reference. `O-` issues from business decisions file remain source-of-truth until formally closed; this DDD list links to them rather than overriding.
+DDD-O01…O12 `../decisions/DECISION_REGISTER.md` ga ko'chirildi va baseline sifatida hal qilindi (xarita — registr §4): O01 → DEC-122, O02 → DEC-104/105, O03 → DEC-103/110/121, O04 → DEC-107, O05 → DEC-100 (deferred), O06 → DEC-113/114, O07 → DEC-116, O08 → DEC-010/112, O09 → DEC-013/016/117, O10/O11/O12 → Stage 2/3 (deferred).
 
 ---
 

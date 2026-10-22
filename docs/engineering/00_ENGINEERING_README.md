@@ -1,6 +1,6 @@
 # AI Commerce OS & Network — Engineering Design Pack v1.0
 
-**Date:** 2026-10-21 · **Product:** three-stage commerce platform · **Status:** `ENGINEERING DRAFT / FOUNDER REVIEW REQUIRED`, **NOT** implemented / not deployed / not legally certified.
+**Date:** 2026-10-21, yangilangan 2026-10-22 · **Product:** three-stage commerce platform · **Status:** `ENGINEERING BASELINE` — founder qarorlari kiritilgan (`../decisions/DECISION_REGISTER.md`); **NOT** implemented / not deployed / not legally certified.
 
 ## Product stages
 1. Merchant Sales OS (PC/electronics first, own storefront, stock, official chat/AI, orders, payment review, Voice Copilot).
@@ -32,13 +32,14 @@ Agro/B2B, custody and marketing studio are **outside current 3-stage scope** pen
 - `23_TENANT_ISOLATION_AND_DEPLOYMENT_MODES.md` — TECH-23 — Tenant isolation, merchant AI agent izolyatsiyasi, shared/dedicated deployment (PROPOSED, `DEC-001/002`)
 - Ochiq qarorlar: `../decisions/DECISION_REGISTER.md`
 
-- `../business/` — canonical 13 business specifications M01–M39 / BL-001–BL-108 / FSM / UI / UAT.
+- `../business/` — canonical 13 business specifications M01–M39 / BL-001–BL-111 / FSM / UI / UAT.
 
 ## Important decisions and gaps
-- Stage 1 architecture baseline **candidate**: FastAPI modular monolith (19 logical contexts, not 19 services), PostgreSQL core with atomic order+stock UoW and transactional outbox; PG leased jobs candidate for first traffic instead of premature RabbitMQ/Kafka; Redis cache/rate limit only; frontend separate repo; infra in backend repo.
+- Stage 1 architecture **baseline (2026-10-22)**: FastAPI modular monolith (`src/commerce_os/`, ADR-022), PostgreSQL core with atomic order+stock UoW (ADR-021) and transactional outbox; PG leased jobs (ADR-005); Redis cache/rate limit only; frontend separate repo with 2 Next.js apps (ADR-010); infra in backend repo; shared-first tenant model + RLS spike (ADR-026, TECH-23); auth — ADR-023; API surfaces — ADR-024; money — ADR-025; LLM — ADR-027; PC spec library — ADR-028; observability — ADR-029; hosting — ADR-030.
+- **Stage 1 savdo oqimi (DEC-100):** buyurtma bor, to'lov va yetkazish tizimdan tashqarida; AI faqat `DRAFT` buyurtma yaratadi, operator/sotuvchi tasdiqlaydi. To'lov (M14) va yetkazish (M15) — `DEFERRED`.
 - Stage 2/3 are designed at **extension/boundary** level, not fully executable schema/API or UI. Do not misrepresent them as ready to deploy.
-- Open business parameters from `../business/11_*`: reservation TTL, price validity, stock source priority, payment/manual process, consent/retention, official Meta access, legal/data residency, Uzbek ASR accuracy, pricing and unit economics.
-- Unresolved technical ADRs: RLS under async session/pool, PG jobs load, provider-specific payment/Meta/Telegram capabilities, hosting/data residency, exact backup goals.
+- Biznes parametrlari baseline sifatida hal qilingan (registr). Ochiq: huquqshunos xulosasi (data residency, retention), Meta ruxsati, unit economics (pilotda o'lchanadi).
+- Texnik spike'lar: RLS under async session/pool (S0), PG jobs load benchmark, LLM bake-off (S3), STT bake-off (voice beta), aniq RPO/RTO.
 - Exact executable OpenAPI spec, Alembic migrations, complete component-level mockups, code, provider sandbox tests and real performance evidence are **next implementation deliverables**. Design documents do not equal tested production code.
 
 ## Approval workflow / practical reading

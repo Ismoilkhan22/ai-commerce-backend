@@ -1,6 +1,6 @@
 # TECH-11 — FastAPI async runtime, worker capacity and backpressure
 
-**Status:** Candidate runtime design (ADR-004/005). **Safety:** async is not automatic parallelism or transaction safety. Never call blocking vendor SDK or sync CPU-bound model within event loop.
+**Status:** Baseline runtime design (ADR-004/005 — PG leased jobs tasdiqlangan, DEC-003; 2026-10-22). **Safety:** async is not automatic parallelism or transaction safety. Never call blocking vendor SDK or sync CPU-bound model within event loop.
 
 ## Execution classes
 | Work | Execution | Why | Typical limit |

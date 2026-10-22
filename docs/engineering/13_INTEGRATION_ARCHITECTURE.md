@@ -1,6 +1,6 @@
 # TECH-13 — Channel, payment, POS/ERP and map integration architecture
 
-**Status:** design+capability matrix, NOT actual provider approval. **Stage 1:** Telegram/web chat, authorized Meta where granted, manual payment reconciliation then gateway. **Stage 2:** POS/ERP/canonical sync. **Stage 3:** maps/geosearch. **ADR-015/016.**
+**Status:** design+capability matrix, NOT actual provider approval. **Stage 1 (baseline 2026-10-22):** Telegram bot + Instagram Direct + web chat (DEC-116; Meta arizasi S0 bilan); to'lov integratsiyasi yo'q — to'lov tizimdan tashqarida (DEC-100); yetkazish integratsiyasi yo'q (DEC-113). **Stage 2:** POS/ERP/canonical sync. **Stage 3:** maps/geosearch. **ADR-015/016.**
 
 ## 1. Port/adapter contract
 Every integration implements typed port independent of domain:
@@ -22,7 +22,7 @@ Domain never imports Telegram SDK/Meta API/PSP concrete adapter. Adapter returns
 | Merchant web chat | User opens store | platform authorized | links/cards/file | S1 P0 |
 | Telegram Bot | user starts/writes bot | bot API as permitted | product cards/media | S1 P0; bot cannot proactively DM arbitrary users |
 | Telegram Business | connected account/authorized chat | business connection | media; scope policy | feature gated per current Telegram API |
-| Instagram professional | allowed user-initiated DM/comment events | official Meta messaging permissions | provider-specific templates/limits | S1 after review; no scraped accounts |
+| Instagram professional | allowed user-initiated DM/comment events | official Meta messaging permissions | provider-specific templates/limits | **S1 / S2 slice (DEC-116)**, Meta app review majburiy; no scraped accounts |
 | Facebook Messenger | approved Page conversations | platform policy | approved templates | gated |
 | WhatsApp Business | approved WABA/official provider | template/session rules | provider-constrained | research later, no promises |
 | TikTok/other | only if official integration capability verified | maybe unavailable | unknown | no default integration claim |
@@ -55,7 +55,7 @@ sequenceDiagram
  W->>P: Send using official adapter
 ```
 
-## 4. Payment contract — merchant of record
+## 4. Payment contract — merchant of record — `DEFERRED` (DEC-100; to'lov moduli qaytganda)
 Merchant configures their payment merchant account. Backend produces payment intent with immutable order snapshot and expected amount; buyer follows provider checkout URL. Provider callback alone is untrusted until signature+remote verification according to provider specification. If only proof screenshot, `PROOF_SUBMITTED`→finance `UNDER_REVIEW`→`VERIFIED` only after matching bank/settlement evidence. Failure/unknown stays pending; dedup unique external tx. Refund a separate approved workflow and legal/fiscal compliance check, not merely negative order amount.
 
 ## 5. POS/ERP/Marketplace sync (Stage 2)
