@@ -19,6 +19,7 @@
 **Kimga:** avval PC, gaming PC va elektronika shoplari. Shopning sayti bormi-yo'qmi — farqi yo'q.
 
 **Qanday muammoni hal qiladi:**
+
 - Instagram Direct va Telegram'da xaridorlar javob kutib ketib qoladi.
 - Narx va PC yig'ma har safar qaytadan tushuntiriladi.
 - Ombor, suhbatlar va buyurtmalar turli joyda, bir-biriga bog'lanmagan.
@@ -82,14 +83,14 @@ Ega kiradi ──▶ shop va filial yaratadi ──▶ katalogni fayldan yuklayd
 
 ## Nimani va'da qilamiz va qanday tekshiramiz
 
-| Kim uchun | Va'da | Nimani o'lchaymiz |
-|---|---|---|
-| Shop | Xaridorga tez javob va operatorga tayyor lead | Birinchi javob vaqti, kechikkan javoblar, sifatli leadlar |
-| Shop | Narx va qoldiq bir joyda | Narx yangiligi, noto'g'ri narx holatlari, qoldiq farqlari |
-| Shop | Saytsiz ham online savdo | Ochilgan saytlar, taklif so'rovlari, buyurtmalar |
-| Shop | Egaga ishonchli hisobot | Raqamlar to'g'riligi, ovozni tanish aniqligi |
-| Shoplar tarmog'i | Shopni tez ulash | Ulash vaqti, sinxronlash holati, yordamga ketgan vaqt |
-| Xaridor | To'g'ri va qulay taklifni solishtirish | To'g'ri solishtirishlar, noto'g'ri narx ulushi, yo'naltirishlar |
+| Kim uchun        | Va'da                                         | Nimani o'lchaymiz                                               |
+| ---------------- | --------------------------------------------- | --------------------------------------------------------------- |
+| Shop             | Xaridorga tez javob va operatorga tayyor lead | Birinchi javob vaqti, kechikkan javoblar, sifatli leadlar       |
+| Shop             | Narx va qoldiq bir joyda                      | Narx yangiligi, noto'g'ri narx holatlari, qoldiq farqlari       |
+| Shop             | Saytsiz ham online savdo                      | Ochilgan saytlar, taklif so'rovlari, buyurtmalar                |
+| Shop             | Egaga ishonchli hisobot                       | Raqamlar to'g'riligi, ovozni tanish aniqligi                    |
+| Shoplar tarmog'i | Shopni tez ulash                              | Ulash vaqti, sinxronlash holati, yordamga ketgan vaqt           |
+| Xaridor          | To'g'ri va qulay taklifni solishtirish        | To'g'ri solishtirishlar, noto'g'ri narx ulushi, yo'naltirishlar |
 
 ## Uch bosqich qanday bog'langan
 
