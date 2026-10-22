@@ -68,7 +68,7 @@ ignore = [
 known-first-party = ["app", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+"tests/**" = ["S101", "S105", "S106", "S608"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "requests".msg = "Use httpx.AsyncClient (03-module-requirements §2.4)."
@@ -82,7 +82,7 @@ packages = ["app"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["arq.*", "apscheduler.*", "testcontainers.*"]
+module = ["arq.*", "apscheduler.*", "testcontainers.*", "asyncpg.*", "docker.*"]
 ignore_missing_imports = true
 
 # --- pytest ------------------------------------------------------------------

@@ -47,6 +47,7 @@ def test_same_path_on_different_surfaces_is_allowed(settings: Settings) -> None:
 
 def test_health_live_and_ready(settings: Settings) -> None:
     with TestClient(create_app(settings, manifests=[])) as client:
+        client.app.state.readiness_checks = {}  # type: ignore[attr-defined]  # DB'siz unit test
         assert client.get("/health/live").json() == {"status": "ok"}
         assert client.get("/health/ready").json() == {"status": "ready", "checks": {}}
 

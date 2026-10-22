@@ -15,6 +15,7 @@ from fastapi.routing import APIRoute
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
+from app.shared.db.session import Database
 from app.shared.errors.handlers import register_exception_handlers
 from app.shared.i18n.middleware import I18nMiddleware
 from app.shared.observability.health import router as health_router
@@ -79,8 +80,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.readiness_checks = {}  # S0-03: postgres, S0-06: redis
-        yield
+        database = Database(settings.database_config())
+        app.state.db = database
+        app.state.readiness_checks = {"postgres": database.ping}  # S0-06: redis
+        try:
+            yield
+        finally:
+            await database.dispose()
 
     app = FastAPI(
         title="AI Commerce OS API",

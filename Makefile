@@ -2,7 +2,7 @@
 SCHEMAS := platform audit catalog commerce messaging sales_ai storefront support reporting
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: install up down lint format typecheck imports test check migrate
+.PHONY: install up down bootstrap lint format typecheck imports test check migrate
 
 install:
 	uv sync
@@ -12,6 +12,10 @@ up:
 
 down:
 	$(COMPOSE) down
+
+# Rollar (app_migrator, app_runtime) + schemalar + huquqlar (07 §10)
+bootstrap:
+	uv run python -m app.db.bootstrap
 
 lint:
 	uv run ruff check .
@@ -33,8 +37,6 @@ test:
 # CI bilan bir xil tekshiruvlar
 check: lint typecheck imports test
 
-# S0-03 da Alembic env'lari qo'shilgach ishlaydi
+# Har schema o'z env'i bilan, platform → audit → qolganlari (ADR-035)
 migrate:
-	@for s in $(SCHEMAS); do \
-		if [ -d app/db/migrations/$$s ]; then uv run alembic -n $$s upgrade head; fi; \
-	done
+	@for s in $(SCHEMAS); do uv run alembic -n $$s upgrade head; done

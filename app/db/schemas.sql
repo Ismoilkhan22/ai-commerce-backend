@@ -1,0 +1,76 @@
+-- Schemalar va huquqlar (ADR-035, 07 §10). Idempotent: qayta ishga tushirsa bo'ladi.
+-- Rollar (app_migrator, app_runtime) oldindan yaratilgan bo'lishi kerak: `python -m app.db.bootstrap`.
+
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- platform
+CREATE SCHEMA IF NOT EXISTS platform AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA platform TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA platform
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA platform
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- audit
+CREATE SCHEMA IF NOT EXISTS audit AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA audit TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA audit
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA audit
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- catalog
+CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA catalog TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA catalog
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA catalog
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- commerce
+CREATE SCHEMA IF NOT EXISTS commerce AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA commerce TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA commerce
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA commerce
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- messaging
+CREATE SCHEMA IF NOT EXISTS messaging AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA messaging TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA messaging
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA messaging
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- sales_ai
+CREATE SCHEMA IF NOT EXISTS sales_ai AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA sales_ai TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA sales_ai
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA sales_ai
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- storefront
+CREATE SCHEMA IF NOT EXISTS storefront AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA storefront TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA storefront
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA storefront
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- support
+CREATE SCHEMA IF NOT EXISTS support AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA support TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA support
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA support
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;
+
+-- reporting
+CREATE SCHEMA IF NOT EXISTS reporting AUTHORIZATION app_migrator;
+GRANT USAGE ON SCHEMA reporting TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA reporting
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA reporting
+    GRANT USAGE, SELECT ON SEQUENCES TO app_runtime;

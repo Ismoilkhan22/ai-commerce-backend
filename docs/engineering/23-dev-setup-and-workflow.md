@@ -50,7 +50,7 @@ git clone git@github.com:Ismoilkhan22/ai-commerce-backend.git && cd ai-commerce-
 cp .env.example .env                       # faqat lokal qiymatlar, haqiqiy kalitlar yo'q
 docker compose -f deploy/docker-compose.yml up -d postgres redis minio
 uv sync
-psql "$DATABASE_ADMIN_URL" -f app/db/schemas.sql   # schemalar va rollar (app_migrator, app_runtime)
+make bootstrap                             # rollar (app_migrator, app_runtime) + app/db/schemas.sql
 make migrate                               # barcha schema env'lari (§4)
 uv run python -m app.db.seed.dev_seed          # A va B shoplar, rollar, sintetik katalog
 
