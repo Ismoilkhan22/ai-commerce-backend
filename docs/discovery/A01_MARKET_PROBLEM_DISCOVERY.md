@@ -253,13 +253,13 @@ Demoda ishlatilgan raqamlar **namuna** yoki shop ruxsat bergan haqiqiy ma'lumot 
 
 | ID | Savol yoki xavf | Boshlang'ich himoya | Batafsil |
 |---|---|---|---|
-| RISK-001 | Instagram'ga rasmiy ulanish mumkinmi? | Telegram va sayt bilan boshlash; kanallar imkoniyatlari jadvali | `engineering/30` |
+| RISK-001 | Instagram'ga rasmiy ulanish mumkinmi? | Telegram va sayt bilan boshlash; kanallar imkoniyatlari jadvali | `engineering/13-integrations-and-channels.md` |
 | RISK-002 | Narx juda tez o'zgaradimi? | Narx yangiligi nazorati, taklifda narx qotiriladi, tasdiq | `business/03` |
 | RISK-003 | Oxirgi mahsulot ikki kanalda sotilib ketadimi? | Bir vaqtdagi tasdiqlarda faqat bittasi o'tadi; takroriy so'rov himoyasi | `business/05`, `business/10` (TC-002, TC-027) |
-| RISK-004 | AI qism yoki narxni o'ylab topadimi? | AI faqat tizimdagi ma'lumotdan foydalanadi; aniq qoidalar; odam tekshiruvi | `business/08`, `engineering/26` |
-| RISK-005 | Shopning maxfiy ma'lumoti boshqalarga chiqib ketadimi? | Shoplar to'liq ajratilgan; ommaviy taklif faqat rozilik bilan | `engineering/23` |
+| RISK-004 | AI qism yoki narxni o'ylab topadimi? | AI faqat tizimdagi ma'lumotdan foydalanadi; aniq qoidalar; odam tekshiruvi | `business/08`, `engineering/14-ai-sales-agent-and-tools.md` |
+| RISK-005 | Shopning maxfiy ma'lumoti boshqalarga chiqib ketadimi? | Shoplar to'liq ajratilgan; ommaviy taklif faqat rozilik bilan | `engineering/10-security-tenancy-rbac.md` |
 | RISK-006 | Soxta chek bilan to'lov tasdiqlanadimi? | Stage 1 da to'lov tizimdan tashqarida; keyin — faqat haqiqiy tushum bilan | `business/03`, DEC-100 |
-| RISK-007 | Chat, audio va shaxsiy ma'lumotlar qonuniy ishlanadimi? | Xabardor qilish va rozilik, kam ma'lumot yig'ish, saqlash muddati | `engineering/32` |
+| RISK-007 | Chat, audio va shaxsiy ma'lumotlar qonuniy ishlanadimi? | Xabardor qilish va rozilik, kam ma'lumot yig'ish, saqlash muddati | `engineering/26-privacy-and-retention.md` |
 | RISK-008 | Tizim to'xtab qolsa yoki xabar takror kelsa nima bo'ladi? | Xabarlar yo'qolmaydi, qayta yuboriladi, takrorlanmaydi | `business/10` (TC-010, TC-022) |
 | RISK-009 | Shop katalogni yangilamasa nima bo'ladi? | Eskirgan narx nazorati, ulashda yordam | `business/02`, `business/13` |
 | RISK-010 | Ovoz orqali maxfiy moliyaviy ma'lumot chiqib ketadimi? | Har kim faqat o'z ruxsatidagi raqamni oladi, ovoz bilan o'zgartirish yo'q | `business/08` |
@@ -334,7 +334,7 @@ Bu faylga xaridorlarning shaxsiy ma'lumotlari, parollar yoki asl chek rasmlari q
 | `business/13` — shopni ulash | Shop majburiyatlari, ma'lumot olish yo'li, boshlang'ich o'lchov |
 | `business/03` — qoidalar | Haqiqiy narx, band qilish, taklif, to'lov va yetkazish qoidalari |
 | `business/02` — modullar | Tasdiqlangan foydalanuvchi vazifalari va qabul talablari |
-| `business/08`, `engineering/26` — AI | Haqiqiy savol namunalari, operatorga uzatish holatlari, AI sinovlari uchun misollar |
+| `business/08`, `engineering/14-ai-sales-agent-and-tools.md` — AI | Haqiqiy savol namunalari, operatorga uzatish holatlari, AI sinovlari uchun misollar |
 
 ## 14. Hozircha ochiq qolgan savollar
 

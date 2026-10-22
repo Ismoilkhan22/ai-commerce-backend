@@ -1,7 +1,7 @@
 # 14 — Pilot kelishuvi qoralamasi va narx gipotezalari
 
 **Versiya:** v2 (2026-10-22). **Holat:** qoralama — founder va huquqshunos to'ldiradi. Bu shablon yuridik hujjat emas: imzolashdan oldin huquqshunos ko'rib chiqadi. Narxlar — **gipoteza**, shoplar bilan suhbatlar (`discovery/A01`) va pilot xarajatlari bilan tasdiqlanadi.
-**Bog'liq:** DEC-119 (30 kun bepul, limitlar, keyin pullik), DEC-100 (to'lov tizimdan tashqarida), DEC-118 (ma'lumotlar bilan AI o'qitilmaydi), `engineering/32` (shaxsiy ma'lumotlar), `13` (shopni ulash), `discovery/A01` §7–9.
+**Bog'liq:** DEC-119 (30 kun bepul, limitlar, keyin pullik), DEC-100 (to'lov tizimdan tashqarida), DEC-118 (ma'lumotlar bilan AI o'qitilmaydi), `engineering/26-privacy-and-retention.md` (shaxsiy ma'lumotlar), `13` (shopni ulash), `discovery/A01` §7–9.
 
 ---
 
@@ -20,7 +20,7 @@
 - Telegram bot, Instagram Direct va saytdagi chat orqali AI yordamchi (Instagram — Meta ruxsati mavjud bo'lsa).
 - Shop sayti, katalog va ombor boshqaruvi, buyurtmalar, PC moslik tekshiruvi va takliflar, hisobotlar.
 - Shopni ulash: katalogni yuklash, sozlash, xodimlarni o'qitish.
-- Yordam: ish vaqtida `[soat]`, javob maqsadi — `[2 soat]`; jiddiy nosozliklarda `[15 daqiqa]` (`engineering/33`).
+- Yordam: ish vaqtida `[soat]`, javob maqsadi — `[2 soat]`; jiddiy nosozliklarda `[15 daqiqa]` (`engineering/25-operations-runbooks.md`).
 
 ### 1.4 Pilot limitlari (taklif, DEC-119)
 
@@ -39,7 +39,7 @@ Limitga yaqinlashganda ogohlantirish beriladi; limit tugasa AI o'chadi, lekin sa
 - Kunlik kontakt shaxs; tasdiq kutayotgan buyurtmalarni ish vaqtida ko'rib chiqish.
 - Do'kondagi sotuvlarni "tez sotuv" bilan kiritish (qoldiq to'g'ri bo'lishi uchun).
 - Haftalik 30 daqiqalik uchrashuv.
-- Xaridorlarni shaxsiy ma'lumot olinishi haqida xabardor qilish (`engineering/32` §4).
+- Xaridorlarni shaxsiy ma'lumot olinishi haqida xabardor qilish (`engineering/26-privacy-and-retention.md` §4).
 
 ### 1.6 Muhim chegaralar
 - **To'lov:** platforma xaridor to'lovlarini qabul qilmaydi va tekshirmaydi; to'lovni shop o'zi oladi (DEC-100).
@@ -51,7 +51,7 @@ Limitga yaqinlashganda ogohlantirish beriladi; limit tugasa AI o'chadi, lekin sa
 - Shop ma'lumotlari va xaridorlar ma'lumotlari shopga tegishli; platforma ularni faqat xizmat ko'rsatish uchun qayta ishlaydi.
 - Shopning alohida yozma roziligisiz ma'lumotlar AI modelini o'qitish uchun ishlatilmaydi (DEC-118).
 - Ma'lumotlarni qayta ishlaydigan tashqi xizmatlar ro'yxati (server, AI provayderi, monitoring) ilovada.
-- Saqlash va o'chirish: `engineering/32` §3 (huquqshunos tasdiqlagan versiya).
+- Saqlash va o'chirish: `engineering/26-privacy-and-retention.md` §3 (huquqshunos tasdiqlagan versiya).
 - Pilot to'xtasa: 30 kun ichida ma'lumotlar shopga beriladi, keyin o'chiriladi.
 
 ### 1.8 Muvaffaqiyat mezonlari (pilot oxirida o'lchanadi)
@@ -94,7 +94,7 @@ Limitga yaqinlashganda ogohlantirish beriladi; limit tugasa AI o'chadi, lekin sa
 
 | Ko'rsatkich | Formula | Manba |
 |---|---|---|
-| Bitta shopga oylik xarajatimiz | AI xarajati (`engineering/29`) + server ulushi + monitoring ulushi + yordamga ketgan vaqt | Pilot o'lchovi |
+| Bitta shopga oylik xarajatimiz | AI xarajati (`engineering/19-reporting-metrics.md`) + server ulushi + monitoring ulushi + yordamga ketgan vaqt | Pilot o'lchovi |
 | Bitta AI suhbat narxi | Oylik AI xarajati / AI suhbatlar soni | Pilot o'lchovi |
 | Yalpi foyda ulushi | (tarif − shopga xarajat) / tarif | — |
 | Xarajat necha oyda qoplanadi | Bitta shopni jalb qilish xarajati / oylik foyda | Sotuv statistikasi |

@@ -44,7 +44,7 @@ Kelishuv ──▶ Akkaunt va jamoa (1-kun) ──▶ Katalog (1–3-kun) ──
 | # | Ish | Kim | Tekshiruv |
 |---|---|---|---|
 | 2.1 | Shopdan Excel yoki kassa dasturidan fayl olinadi | Shop | Fayl |
-| 2.2 | Fayl tozalanadi: nomlar, kategoriyalar, model kodi, narx, soni (`engineering/28` §3) | Platforma + shop | — |
+| 2.2 | Fayl tozalanadi: nomlar, kategoriyalar, model kodi, narx, soni (`engineering/18-catalog-import.md` §3) | Platforma + shop | — |
 | 2.3 | Yuklash: avval sinov tariqasida tekshiriladi (hech narsa saqlanmaydi) → xatolar tuzatiladi → keyin haqiqiy yuklash | Platforma | Xatolar yo'q yoki ataylab o'tkazib yuborilgan |
 | 2.4 | PC qismlari texnik ma'lumotlar kutubxonasiga bog'lanadi. Bog'lanmaganlar kutubxonaga qo'shiladi (DEC-120) | Platforma | Eng ko'p sotiladigan 100 ta qismning 90%+ bog'langan (maqsad) |
 | 2.5 | Narx va qoldiq shop egasi bilan birga **tasodifiy 20 ta mahsulot** bo'yicha tekshiriladi | Shop egasi | 20 tadan 20 tasi to'g'ri |
@@ -57,8 +57,8 @@ Kelishuv ──▶ Akkaunt va jamoa (1-kun) ──▶ Katalog (1–3-kun) ──
 
 | # | Ish | Kim | Tekshiruv |
 |---|---|---|---|
-| 3.1 | Telegram bot: BotFather'da yaratiladi (yordam bilan), kaliti shop paneliga kiritiladi (`engineering/30` §2) | Shop egasi + platforma | `/start` ishlaydi |
-| 3.2 | Instagram: professional akkaunt, Meta orqali ruxsat berish (`engineering/30` §3) | Shop egasi | Sinov xabari inbox'ga keldi |
+| 3.1 | Telegram bot: BotFather'da yaratiladi (yordam bilan), kaliti shop paneliga kiritiladi (`engineering/13-integrations-and-channels.md` §2) | Shop egasi + platforma | `/start` ishlaydi |
+| 3.2 | Instagram: professional akkaunt, Meta orqali ruxsat berish (`engineering/13-integrations-and-channels.md` §3) | Shop egasi | Sinov xabari inbox'ga keldi |
 | 3.3 | Sayt: manzil (subdomen), logotip, kontaktlar; saytdagi chat yoqiladi | Ega | Sahifa ochiladi, chat ishlaydi |
 | 3.4 | Instagram profili va Telegram kanal tavsifiga bot va sayt havolasi qo'yiladi | Shop | — |
 
@@ -98,7 +98,7 @@ Bir sahifalik qisqa qo'llanma (o'zbek va rus tilida) va 3–5 daqiqalik video be
 
 - **2–3-hafta:** haftalik hisobot — javob vaqti, buyurtmalar soni va qayerdan kelgani, operatorga uzatish sabablari, AI xatolari, qoldiq farqlari.
 - **30-kun:** yakuniy uchrashuv — boshlang'ich o'lchov bilan solishtirish, pullik davom etish bo'yicha qaror (`14`).
-- Pilot to'xtasa: ma'lumotlar shopga beriladi va o'chiriladi (`engineering/32` §3).
+- Pilot to'xtasa: ma'lumotlar shopga beriladi va o'chiriladi (`engineering/26-privacy-and-retention.md` §3).
 
 ## 8. Shop kartochkasi — tekshiruv ro'yxati
 

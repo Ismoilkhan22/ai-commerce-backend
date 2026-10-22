@@ -160,7 +160,7 @@ Stage 1 da to'lov va yetkazish tizimdan tashqarida (DEC-100, DEC-113). Quyidagi 
 
 | ID | Qachon | Qoida | Aks holda |
 |---|---|---|---|
-| BL-063 | Raqam so'raladi | Har ko'rsatkichning aniq formulasi bor (`engineering/29`); "to'landi" — tekshirilmagan belgi | Formulasi yo'q raqam aytilmaydi |
+| BL-063 | Raqam so'raladi | Har ko'rsatkichning aniq formulasi bor (`engineering/19-reporting-metrics.md`); "to'landi" — tekshirilmagan belgi | Formulasi yo'q raqam aytilmaydi |
 | BL-064 | Ovozli savolda summa bor | Matn ko'rsatiladi va tasdiqlash so'raladi | Noaniq bo'lsa qayta so'raladi |
 | BL-065 | Hisobot ko'rsatiladi | Har kim faqat ruxsat etilgan raqamlarni ko'radi; tannarx operatorga ko'rinmaydi | — |
 | BL-066 | Javob beriladi | Davr, vaqt zonasi va ma'lumot qachon yangilangani ko'rsatiladi | Eskirgan ma'lumot belgilanadi |

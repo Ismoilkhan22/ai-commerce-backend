@@ -32,7 +32,7 @@ Qishloq xo'jaligi, platforma orqali to'lov, xalqaro savdo — bu uch bosqichga k
 - Barcha qarorlar va ularning sabablari — `../decisions/DECISION_REGISTER.md`.
 - Atamalar lug'ati — `../GLOSSARY.md`.
 - Bozor va muammo tadqiqoti — `../discovery/A01_MARKET_PROBLEM_DISCOVERY.md`.
-- Dasturchilar uchun hujjatlar — `../engineering/`. Ilgari bu yerda bo'lgan `07` (ma'lumotlar tuzilmasi), `09` (modullar o'zaro aloqasi), `12` (bog'lanish indeksi) endi `engineering/34`, `35`, `36` da (DEC-125).
+- Dasturchilar uchun hujjatlar — `../engineering/`. Ilgari bu yerda bo'lgan `07` (ma'lumotlar tuzilmasi), `09` (modullar o'zaro aloqasi), `12` (bog'lanish indeksi) endi `engineering/07-data-layer.md`, `35`, `36` da (DEC-125).
 
 ## Hujjatlar qanday bog'langan
 

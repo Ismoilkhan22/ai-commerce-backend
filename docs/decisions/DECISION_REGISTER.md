@@ -6,7 +6,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 **Muhim (founder, 2026-10-22):** `APPROVED` qarorlar — **ishchi baseline**. Ular bo'yicha hujjatlar va kod ishlab chiqiladi, lekin pilot, intervyu yoki texnik spike natijasiga qarab o'zgartirilishi mumkin. O'zgartirish tartibi: registrda yangi variant va sabab yoziladi (`CHANGED (sana): eski → yangi`), so'ng 4-bo'limdagi ta'sirlangan hujjatlar yangilanadi.
 
-**Hujjatlarga kiritish holati:** ✅ 2026-10-22 — barcha `APPROVED` qarorlar `business/` va `engineering/` hujjatlariga kiritildi. Yangi hujjatlar (24, 25, 26) ham yozildi. Keyingi ish: S0 skeleti.
+**Hujjatlarga kiritish holati:** ✅ 2026-10-22 — barcha `APPROVED` qarorlar `business/` va `engineering/` hujjatlariga kiritildi. 2026-10-22 kechqurun engineering hujjatlari v2 (bismuth standarti) bo'yicha qayta yozildi va qayta raqamlandi; quyidagi "Qayerda" qatorlaridagi havolalar yangi fayllarga ko'chirilgan, § raqamlari olib tashlangan (eski → yangi xaritasi: `engineering/README.md`). Keyingi ish: S0 skeleti.
 
 ---
 
@@ -14,8 +14,8 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 ### DEC-001 — Deployment va tenant modeli — `APPROVED (2026-10-21, founder): C`
 **Nima:** barcha do'konlar bitta tizimdami yoki har biriga alohida o'rnatishmi.
-**Qayerda:** `engineering/23` (to'liq tahlil), `engineering/05` ADR-002.
-**Ta'sir:** infra/deploy, Enterprise tarif, Stage 2 publication; kod qoidalari `engineering/23` §3.
+**Qayerda:** `engineering/10-security-tenancy-rbac.md` (to'liq tahlil), `engineering/ADR/README.md` ADR-002.
+**Ta'sir:** infra/deploy, Enterprise tarif, Stage 2 publication; kod qoidalari `engineering/10-security-tenancy-rbac.md` §3.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
 |---|---|---|---|
@@ -25,7 +25,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 ### DEC-002 — PostgreSQL RLS — `APPROVED (2026-10-21, founder): B`
 **Nima:** tenant izolyatsiyasini faqat kod tekshiradimi yoki DB ham qo'shimcha himoya qiladimi.
-**Qayerda:** `engineering/05` ADR-003, `engineering/06` §6, C4-O09, `engineering/23` §6.
+**Qayerda:** `engineering/ADR/README.md` ADR-003, `engineering/07-data-layer.md` §6, C4-O09, `engineering/10-security-tenancy-rbac.md` §6.
 **Ta'sir:** `shared/infra/db` (`set_config('app.merchant_id', …, true)` har tranzaksiyada), DB rollari (`app_runtime` NOBYPASSRLS, `app_migrator`), TC-ISO testlari, S0-04 ga RLS spike.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -40,7 +40,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 **Eski matn (tarix uchun):**
 **Nima:** HTTP so'rovdan tashqaridagi ishlar (Telegram javobi, AI javobi, eslatmalar, import, notification) qanday saqlanadi va qayta uriniladi.
-**Qayerda:** `engineering/05` ADR-005, `engineering/04` §2 (4-izoh, "TBD" edi), `engineering/09`, `engineering/11`, `engineering/35`.
+**Qayerda:** `engineering/ADR/README.md` ADR-005, `engineering/01-architecture-overview.md` §2 (4-izoh, "TBD" edi), `engineering/05-events-and-outbox.md`, `engineering/06-background-jobs.md`, `engineering/05-events-and-outbox.md`.
 **Ta'sir:** `shared/infra/outbox`, `shared/infra/jobs`, `workers/`; infra'da RabbitMQ yo'q.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -54,13 +54,13 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 ### DEC-004 — Backend repo skeleti — `CHANGED (2026-10-22, founder): A → C` (bismuth v2 standarti)
 **Yangi qaror (C):** `app/shared` → `app/platform` → `app/domains` uch qatlami (bismuth v2). `shared` hech kimni import qilmaydi; `platform` `domains` ni import qilmaydi; domenlar bir-birini import qilmaydi (CI'da import-linter). Har domen: `api/`, `services/`, `repository/`, `models/`, `state_machine.py`, `events.py`, `permissions.py`, `subscribers.py`, `tests/`; har domenga o'z PostgreSQL schemasi. Batafsil: `engineering/02-folder-skeleton.md`, `engineering/ADR/ADR-031`, `ADR-035`.
-- `platform/`: `auth`, `shops` (shop, filiallar), `staff` (xodimlar, rollar, ruxsatlar), `audit`, `notifications`, `storage`, `llm` (provayder adapteri, redaction, AI limitlari), `use` (holat o'tishlari jurnali + idempotency).
+- `platform/`: `auth`, `shops` (shop, filiallar), `staff` (xodimlar, rollar, ruxsatlar), `use` (holat o'tishlari jurnali + idempotency), `audit`, `notifications`, `storage`, `realtime` (WebSocket), `llm` (provayder adapteri, redaction), `billing` (tarif, AI limitlari), `privacy` (eksport/o'chirish so'rovlari).
 - `domains/` (Stage 1): `catalog`, `commerce`, `messaging`, `sales_ai`, `storefront`, `support`, `reporting`. Keyin: `payments`, `fulfillment` (DEFERRED), `network` (Stage 2), `marketplace` (Stage 3).
 **Nega o'zgardi:** ikki loyihada bitta uslub; qoidalar CI'da avtomatik tekshiriladi.
 
 **Eski matn (tarix uchun):**
 **Nima:** backend kodi qaysi papkalarda turadi, import qoidalari qanday.
-**Qayerda:** `engineering/03` §6 (A), `engineering/04` §2.2 (A), `engineering/22` §1 (B) — 22 A ga moslab tuzatiladi.
+**Qayerda:** `engineering/01-architecture-overview.md` §6 (A), `engineering/01-architecture-overview.md` §2.2 (A), `engineering/27-roadmap-and-tasks.md` §1 (B) — 22 A ga moslab tuzatiladi.
 **Ta'sir:** barcha backend kodi, CI import-linter qoidalari, AI-assisted PR shabloni.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -73,7 +73,7 @@ Kontekst nomlari: `identity`, `merchants`, `catalog`, `pricing`, `inventory`, `s
 
 ### DEC-005 — Reliz slice nomlari — `APPROVED (2026-10-21, founder): A`
 **Nima:** ish qaysi bo'laklarda va qaysi tartibda chiqariladi.
-**Qayerda:** `business/10` (R1–R7), `engineering/20` §4 va `engineering/22` (S0–S5), `engineering/03` §14, `engineering/04` §13.
+**Qayerda:** `business/10` (R1–R7), `engineering/24-testing-and-release.md` §4 va `engineering/27-roadmap-and-tasks.md` (S0–S5), `engineering/01-architecture-overview.md` §14, `engineering/01-architecture-overview.md` §13.
 **Ta'sir:** roadmap, vazifalar, test gate'lari, PR shabloni. `business/10` dagi R jadvali S ga moslab qayta yoziladi.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -86,7 +86,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-006 — API yo'l tuzilmasi — `APPROVED (2026-10-21, founder): A`
 **Nima:** API manzillari qanday guruhlanadi.
-**Qayerda:** `engineering/04` §6.1 (A), `engineering/08` (B) — 08 A ga moslanadi.
+**Qayerda:** `engineering/01-architecture-overview.md` §6.1 (A), `engineering/11-api-conventions-errors-i18n.md` (B) — 08 A ga moslanadi.
 **Ta'sir:** `api/v1/` router tuzilmasi, har surface uchun alohida auth middleware va rate limit, frontend API client.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -96,7 +96,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-007 — Pul birligi (UZS minor units) — `APPROVED (2026-10-21, founder): A`
 **Nima:** pul bazada qaysi birlikda butun son sifatida saqlanadi.
-**Qayerda:** `engineering/06` §4, `engineering/17` §6, barcha API/JSON misollar.
+**Qayerda:** `engineering/07-data-layer.md` §4, `engineering/16-ai-data-and-evaluation.md` §6, barcha API/JSON misollar.
 **Ta'sir:** `shared/kernel/money`, `currencies` jadvali (exponent), barcha `*_minor` ustunlar, UI formatlash.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -106,7 +106,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-008 — Dashboard autentifikatsiya tokenlari — `APPROVED (2026-10-21, founder): A`
 **Nima:** xodim login qilgandan keyin brauzer uni qanday eslab qoladi va API'ga qanday murojaat qiladi.
-**Qayerda:** `engineering/10` "Authentication and tokens" (ochiq qoldirilgan edi), `engineering/18` §7 ("CSRF/session strategy ADR"), C4-O08.
+**Qayerda:** `engineering/10-security-tenancy-rbac.md` "Authentication and tokens" (ochiq qoldirilgan edi), `engineering/21-frontend.md` §7 ("CSRF/session strategy ADR"), C4-O08.
 **Ta'sir:** `modules/identity` (sessions, refresh token rotation), `api/v1/middlewares/auth`, frontend `packages/auth`, WS ticket; domenlar: `app.<domen>` va `api.<domen>` bitta site ostida.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -117,7 +117,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-009 — LLM provayder strategiyasi — `APPROVED (2026-10-21, founder): A`
 **Nima:** AI sotuvchi qaysi LLM orqali ishlaydi va u qanday tanlanadi.
-**Qayerda:** `engineering/05` ADR-011, `engineering/15` §7, `engineering/17` §4.
+**Qayerda:** `engineering/ADR/README.md` ADR-011, `engineering/14-ai-sales-agent-and-tools.md` §7, `engineering/16-ai-data-and-evaluation.md` §4.
 **Ta'sir:** `modules/merchant_ai` provider adapter (`LLMPort`), S3 dan oldin bake-off vazifasi, suhbat narxi, DEC-016 shartlari.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -128,7 +128,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-010 — STT / TTS (ovoz) — `APPROVED (2026-10-21, founder): A — DEC-112 B ga bog'liq`
 **Nima:** ovozni matnga va matnni ovozga aylantirish provayderi.
-**Qayerda:** `engineering/16` §7, `engineering/17` §4, `engineering/05` A-05.
+**Qayerda:** `engineering/15-voice-assistant.md` §7, `engineering/16-ai-data-and-evaluation.md` §4, `engineering/ADR/README.md` A-05.
 **Ta'sir:** voice beta'dan oldin bake-off; `SpeechToTextPort`/`TextToSpeechPort` adapterlari; har doim text fallback.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -139,7 +139,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-011 — PC komponent spetsifikatsiyalari manbai — `APPROVED (2026-10-21, founder): B`
 **Nima:** compatibility engine uchun socket, RAM turi, GPU uzunligi, PSU quvvati/konnektorlari kabi ma'lumotlar qayerdan keladi. Merchant Excel'ida bular odatda yo'q.
-**Qayerda:** `business/02` M08, `engineering/06` (faqat `pc_rulesets` nomi), `engineering/14` (global katalog — Stage 2). Manba ilgari yozilmagan edi.
+**Qayerda:** `business/02` M08, `engineering/07-data-layer.md` (faqat `pc_rulesets` nomi), `engineering/28-network-and-global-search.md` (global katalog — Stage 2). Manba ilgari yozilmagan edi.
 **Ta'sir:** `modules/pc_builder` (reference spec library + SKU mapping), katalog importi (MPN/model bo'yicha avtomatik bog'lash), yangi hujjat `PC_COMPATIBILITY_ENGINE`.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -150,8 +150,8 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-012 — Observability stack — `APPROVED (2026-10-22, founder): B` — 2026-10-22 bismuth v2 bilan solishtirilib qayta tasdiqlandi: kod qoidalari (structlog, metrika nomlari) bismuth'dan olinadi, ma'lumot Grafana Cloud + Sentry'ga
 **Nima:** xatolar, sekinlashish, queue holati va AI xarajati qayerda ko'rinadi va ogohlantirish qayerdan keladi.
-**Qayerda:** `engineering/05` ADR-017 (OpenTelemetry), `engineering/12` (span, metrika, alert), `engineering/04` §10 — vosita tanlanmagan edi.
-**Ta'sir:** S0 — OpenTelemetry SDK + JSON loglar (`trace_id`, `request_id`), eksport Grafana Cloud'ga (trace, metrika, log), xatolar Sentry'ga; `engineering/12` redaction qoidalari majburiy (PII telemetriyaga yozilmaydi); `infra/` da self-hosted monitoring yo'q.
+**Qayerda:** `engineering/ADR/README.md` ADR-017 (OpenTelemetry), `engineering/09-observability.md` (span, metrika, alert), `engineering/01-architecture-overview.md` §10 — vosita tanlanmagan edi.
+**Ta'sir:** S0 — OpenTelemetry SDK + JSON loglar (`trace_id`, `request_id`), eksport Grafana Cloud'ga (trace, metrika, log), xatolar Sentry'ga; `engineering/09-observability.md` redaction qoidalari majburiy (PII telemetriyaga yozilmaydi); `infra/` da self-hosted monitoring yo'q.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
 |---|---|---|---|
@@ -163,7 +163,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-013 — Hosting va data residency — `APPROVED (2026-10-21, founder): A — huquqshunos tasdig'i sharti bilan`
 **Nima:** xaridor shaxsiy ma'lumotlari qaysi davlatdagi serverda saqlanadi.
-**Qayerda:** `engineering/19`, `engineering/04` C4-O01, `engineering/10` Privacy, `engineering/05` A-04.
+**Qayerda:** `engineering/22-infrastructure-and-deployment.md`, `engineering/01-architecture-overview.md` C4-O01, `engineering/10-security-tenancy-rbac.md` Privacy, `engineering/ADR/README.md` A-04.
 **Ta'sir:** production hosting provayderi, backup joyi, `infra/`. Dev/staging — sintetik ma'lumot bilan istalgan joyda.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -176,7 +176,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 
 ### DEC-014 — Frontend tuzilmasi — `APPROVED (2026-10-21, founder): A`
 **Nima:** xodimlar dashboard'i va xaridor ko'radigan do'kon sayti bitta ilovami yoki ikkita.
-**Qayerda:** `engineering/05` ADR-010, `engineering/18` §1, `engineering/04` §2 (6-izoh), C4-O08.
+**Qayerda:** `engineering/ADR/README.md` ADR-010, `engineering/21-frontend.md` §1, `engineering/01-architecture-overview.md` §2 (6-izoh), C4-O08.
 **Ta'sir:** `ai-commerce-frontend` repo tuzilmasi (pnpm workspace), deploy (ikki alohida app), cookie domenlari.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -185,8 +185,8 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 | B | Bitta Next.js app | Boshlash oson | Public va private kod bitta deploy'da; subdomen routing murakkab; cookie aralashish xavfi |
 
 ### DEC-015 — Rollar va ruxsatlar matritsasining manbai — `APPROVED (2026-10-21, founder): A`
-**Nima:** kim nima qila oladi; `business/04` va `engineering/10` zid edi (Sales quote tasdiqlashi, Sales yetkazish statusi, 4 ta yetishmayotgan rol).
-**Qayerda:** `business/04` (canonical), `engineering/10` (moslanadi).
+**Nima:** kim nima qila oladi; `business/04` va `engineering/10-security-tenancy-rbac.md` zid edi (Sales quote tasdiqlashi, Sales yetkazish statusi, 4 ta yetishmayotgan rol).
+**Qayerda:** `business/04` (canonical), `engineering/10-security-tenancy-rbac.md` (moslanadi).
 **Ta'sir:** `modules/identity` permission katalogi, endpoint guard'lari, AI tool ruxsatlari, UI menyular.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -198,7 +198,7 @@ Aniq kataklar `DEC-108` (buyurtmani kim tasdiqlaydi) va `DEC-109` da hal qilinad
 
 ### DEC-016 — LLM provayderga yuboriladigan ma'lumot siyosati — `APPROVED (2026-10-21, founder): A`
 **Nima:** AI javobi uchun tashqi provayderga qanday ma'lumot ketadi.
-**Qayerda:** `engineering/10` Privacy, `engineering/15` §7, `engineering/23` 8-qatlam, `engineering/34`.
+**Qayerda:** `engineering/10-security-tenancy-rbac.md` Privacy, `engineering/14-ai-sales-agent-and-tools.md` §7, `engineering/10-security-tenancy-rbac.md` 8-qatlam, `engineering/07-data-layer.md`.
 **Ta'sir:** AI worker'da PII redaction qadami; provayder tanlovi (DEC-009) faqat zero-retention / no-training shartini beradiganlar bilan.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -332,7 +332,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-105 — Stok qachon band qilinadi va kamayadi (DDD-O02, C4-O03) — `APPROVED (2026-10-21, founder): A`
 **Nima:** bitta qolgan mahsulotni ikki xaridorga va'da qilmaslik uchun stok qaysi paytda band bo'ladi va qachon ombordan chiqadi.
-**Qayerda:** `business/03` BL-019…023, `business/05` FSM-07, `engineering/03` §7.1 ("qaror qilinmagan" edi), `engineering/07`.
+**Qayerda:** `business/03` BL-019…023, `business/05` FSM-07, `engineering/01-architecture-overview.md` §7.1 ("qaror qilinmagan" edi), `engineering/12-concurrency-and-transactions.md`.
 **Ta'sir:** `modules/inventory`, `workflows/order_confirmation`, FSM-07/08, oversell testlari (TC-002, TC-CON).
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -345,7 +345,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-107 — Stage 1 da stok manbai (O-04) — `APPROVED (2026-10-21, founder): A`
 **Nima:** qoldiqning "haqiqiy" manbai — bizning dashboard yoki do'konning tashqi dasturi.
-**Qayerda:** `business/03` BL-073, `business/11` O-04, `engineering/03` DDD-O04, C4-O03.
+**Qayerda:** `business/03` BL-073, `business/11` O-04, `engineering/01-architecture-overview.md` DDD-O04, C4-O03.
 **Ta'sir:** `modules/inventory` (ledger, import, "tez sotuv" DEC-123), AI "bor/yo'q" javobi. POS sinxron — Stage 2 (M22). Pilot intervyusida do'konning hozirgi tizimi aniqlanadi.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -366,8 +366,8 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-109 — Sales operator quote tasdiqlay oladimi — `APPROVED (2026-10-21, founder): A`
 **Nima:** operator o'zi tuzgan PC taklifini o'zi tasdiqlay oladimi.
-**Qayerda:** `business/04` ("Quote approve: Sales —"), `engineering/10` ("cap policy") — zid edi; BL-045.
-**Ta'sir:** permission `quotes.approve` — faqat Manager (limit ichida) va Owner; `engineering/10` matritsasi tuzatiladi.
+**Qayerda:** `business/04` ("Quote approve: Sales —"), `engineering/10-security-tenancy-rbac.md` ("cap policy") — zid edi; BL-045.
+**Ta'sir:** permission `quotes.approve` — faqat Manager (limit ichida) va Owner; `engineering/10-security-tenancy-rbac.md` matritsasi tuzatiladi.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
 |---|---|---|---|
@@ -389,7 +389,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-112 — Voice Copilot Stage 1 da (O-08, HYP-007) — `APPROVED (2026-10-21, founder): B`
 **Nima:** do'kon egasi ovoz bilan uz/ru/en tilida hisobot so'rashi.
-**Qayerda:** `business/02` M18, `business/08` §3, `engineering/16`, `business/10` R7.
+**Qayerda:** `business/02` M18, `business/08` §3, `engineering/15-voice-assistant.md`, `business/10` R7.
 **Ta'sir:** S5 — matnli hisobot-chat (metric registry, ruxsatlar); voice beta — DEC-010 bake-off va golden set'dan keyin feature flag bilan.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -431,7 +431,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-116 — Stage 1 kanallari (O-09) — `APPROVED (2026-10-21, founder): C` — Telegram + Instagram birga (+ web chat, DEC-115)
 **Nima:** xaridor do'kon bilan qaysi kanallarda yozisha oladi.
-**Qayerda:** `business/08` §5, `engineering/13` §2, `business/11` BD-09/O-09.
+**Qayerda:** `business/08` §5, `engineering/13-integrations-and-channels.md` §2, `business/11` BD-09/O-09.
 **Ta'sir:** S2 ga Telegram bot va Instagram adapterlari ikkalasi kiradi; `business/11` BD-09 ("Meta permission gated") qayta ko'riladi.
 **Muhim bog'liqlik:** Instagram Direct uchun Meta'ning rasmiy app review jarayoni (business verification, privacy policy, ruxsatlar) talab qilinadi va uning muddati bizga bog'liq emas. Ariza S0 bilan bir vaqtda topshirilishi kerak. Meta ruxsati kechiksa nima qilinishi — DEC-116a.
 
@@ -445,7 +445,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-117 — Audio saqlash muddati (O-11) — `APPROVED (2026-10-21, founder): A`
 **Nima:** xaridor va do'kon egasining ovozli xabarlari qancha saqlanadi.
-**Qayerda:** `business/11` O-11, `engineering/16` §5, `engineering/10` Privacy, `engineering/04` §6.3.
+**Qayerda:** `business/11` O-11, `engineering/15-voice-assistant.md` §5, `engineering/10-security-tenancy-rbac.md` Privacy, `engineering/01-architecture-overview.md` §6.3.
 **Ta'sir:** audio transkripsiyadan keyin o'chiriladi (o'chirish job'i + audit), faqat redact qilingan transcript qoladi; ASR golden set alohida, yozma rozilik bilan yig'iladi. Boshqa ma'lumot turlari uchun retention huquqshunos bilan belgilanadi.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -456,7 +456,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-118 — Merchant ma'lumotida AI o'qitish (O-14, D-07) — `APPROVED (2026-10-21, founder): A`
 **Nima:** suhbatlar va buyurtmalar AI modelini o'qitishda ishlatiladimi.
-**Qayerda:** `business/11` O-14, `engineering/10` Privacy, `engineering/17` §2, `business/08` §7.
+**Qayerda:** `business/11` O-14, `engineering/10-security-tenancy-rbac.md` Privacy, `engineering/16-ai-data-and-evaluation.md` §2, `business/08` §7.
 **Ta'sir:** merchant sozlamasida `ai_training_opt_in` (default `false`); dataset pipeline faqat opt-in + anonimlashtirilgan ma'lumot; eval uchun sintetik ma'lumot; merchant shartnomasiga band.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -478,7 +478,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-120 — Reference spec library'ni kim yuritadi — `APPROVED (2026-10-21, founder): A`
 **Nima:** DEC-011 kutubxonasini kim to'ldiradi va yangilaydi.
-**Qayerda:** yangi; `engineering/14` (Stage 2 matching) bilan bog'liq.
+**Qayerda:** yangi; `engineering/28-network-and-global-search.md` (Stage 2 matching) bilan bog'liq.
 **Ta'sir:** platforma admin UI (spec kiritish, manba), merchant "yangi model so'rovi", S1/S3 dan oldin ~1–2 haftalik boshlang'ich to'ldirish ishi.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -500,7 +500,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 
 ### DEC-122 — Merchant aktivatsiyasi (DDD-O01, BL-003) — `APPROVED (2026-10-21, founder): A`
 **Nima:** ro'yxatdan o'tgan do'kon qachon haqiqiy sotuvni boshlay oladi.
-**Qayerda:** `business/03` BL-001/003, `business/05` FSM-01, `engineering/03` DDD-O01.
+**Qayerda:** `business/03` BL-001/003, `business/05` FSM-01, `engineering/01-architecture-overview.md` DDD-O01.
 **Ta'sir:** FSM-01 `PENDING_VERIFICATION → ACTIVE` faqat platforma admini tomonidan; platforma admin ekrani (S0/S1); self-service — Stage 2 (M21).
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -523,7 +523,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | `business` | Kelajakda boshqa sohalarga mos | Juda keng ma'noli |
 
 ### DEC-125 — Hujjatlar tuzilmasi va uslubi — `APPROVED (2026-10-22, founder)`
-- `business/` da faqat odam o'qiydigan hujjatlar qoladi; dasturchilar uchun yozilgan `07` (entity'lar), `09` (event'lar), `12` (bog'lanish indeksi) `engineering/34`, `35`, `36` ga ko'chirildi.
+- `business/` da faqat odam o'qiydigan hujjatlar qoladi; dasturchilar uchun yozilgan `07` (entity'lar), `09` (event'lar), `12` (bog'lanish indeksi) `engineering/07-data-layer.md`, `35`, `36` ga ko'chirildi.
 - Biznes hujjatlari oddiy o'zbek tilida, boshqa odamlar ham tushunadigan qilib qayta yoziladi; holatlar strelka ketma-ketligi bilan tushuntiriladi.
 - Engineering hujjatlari `bismuth_platform_v2/docs/v2` standartlariga moslab qayta ko'rib chiqiladi (biznes hujjatlaridan keyin).
 
@@ -560,4 +560,4 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 1. Har bir `APPROVED` qaror ta'sir qiladigan hujjatlarga kiritiladi (ADR, FSM, rollar, API, DB).
 2. K-01…K-10 konvensiyalari bo'yicha barcha hujjatlarda nomlar birlashtiriladi.
 3. Eski `O-xx`/`D-xx` jadvallari o'rniga shu registrga havola qo'yiladi.
-4. ✅ Yangi hujjatlar yozildi (2026-10-22): `engineering/24_API_CONVENTIONS_ERRORS_I18N.md`, `engineering/25_PC_COMPATIBILITY_ENGINE.md`, `engineering/26_AI_TOOL_CONTRACTS.md`.
+4. ✅ Yangi hujjatlar yozildi (2026-10-22): `engineering/11-api-conventions-errors-i18n.md`, `engineering/17-pc-compatibility-engine.md`, `engineering/14-ai-sales-agent-and-tools.md`.

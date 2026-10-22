@@ -165,7 +165,7 @@ Instagram'da 24 soat o'tdi ──▶ AI yozmaydi, operatorga "boshqa kanal orqal
 | Tugma ikki marta bosildi | Bitta natija, ikkinchi buyurtma yoki band yaratilmaydi |
 | Uzoq ish (fayl yuklash, eksport) | Jarayon holati; sahifa yangilansa ham davom etadi |
 
-Barcha matnlar uch tilda (o'zbek, rus, ingliz) — `engineering/24` §5.
+Barcha matnlar uch tilda (o'zbek, rus, ingliz) — `engineering/11-api-conventions-errors-i18n.md` §5.
 
 ---
 

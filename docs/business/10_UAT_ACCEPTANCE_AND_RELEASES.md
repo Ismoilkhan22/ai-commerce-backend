@@ -73,7 +73,7 @@ UAT-M14 (to'lov) va UAT-M15 (yetkazish) — keyinga qoldirilgan. Stage 2 va 3 mo
 
 ## 3. Muhim sinovlar — hech qachon buzilmasligi kerak
 
-Bular har relizdan oldin tekshiriladi. Bittasi o'tmasa, reliz to'xtatiladi. Sinov ID'larining yagona manbai — shu jadval (`engineering/20` ham shularga havola qiladi).
+Bular har relizdan oldin tekshiriladi. Bittasi o'tmasa, reliz to'xtatiladi. Sinov ID'larining yagona manbai — shu jadval (`engineering/24-testing-and-release.md` ham shularga havola qiladi).
 
 | ID | Vaziyat | Kutilgan natija |
 |---|---|---|
@@ -113,7 +113,7 @@ Bular har relizdan oldin tekshiriladi. Bittasi o'tmasa, reliz to'xtatiladi. Sino
 
 ⏸ — to'lov moduli bilan birga ishlatiladi (DEC-100).
 
-Bundan tashqari, **tenant izolyatsiyasi sinovlari** (TC-ISO-01…10, `engineering/23` §7) S0 dan boshlab har relizda o'tishi shart.
+Bundan tashqari, **tenant izolyatsiyasi sinovlari** (TC-ISO-01…10, `engineering/10-security-tenancy-rbac.md` §7) S0 dan boshlab har relizda o'tishi shart.
 
 ---
 
@@ -143,7 +143,7 @@ Bundan tashqari, **tenant izolyatsiyasi sinovlari** (TC-ISO-01…10, `engineerin
 |---|---|---|---|
 | Biznes doirasi | Founder | 3 bosqich, birinchi mijozlar segmenti, savdo oqimi tasdiqlangan | `PENDING` |
 | Holatlar va qoidalar | Founder + dasturchi | Barcha muhim holat o'tishlari va xato holatlari ko'rib chiqilgan | `PENDING` |
-| Shaxsiy ma'lumot va huquq | Huquqshunos | Suhbatlar, audio, shaxsiy ma'lumotlar qonuniy ishlanadi (`engineering/32`) | `PENDING` |
+| Shaxsiy ma'lumot va huquq | Huquqshunos | Suhbatlar, audio, shaxsiy ma'lumotlar qonuniy ishlanadi (`engineering/26-privacy-and-retention.md`) | `PENDING` |
 | Integratsiyalar | Dasturchi | Telegram va Meta ruxsatlari, sinov akkauntlarida tekshirilgan | `PENDING` |
 | Texnik dizayn | Dasturchi | Modullar chegaralari, ma'lumotlar bazasi, API va poygalar loyihalangan | `PENDING` |
 | Qabul sinovlari | Founder + dasturchi | Muhim sinovlar natijalari va loglari bilan o'tgan | `PENDING` |

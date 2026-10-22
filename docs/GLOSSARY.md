@@ -50,11 +50,13 @@
 | Atama | Ma'nosi |
 |---|---|
 | Tenant | Bitta shop va uning barcha ma'lumotlari. Bir tenant boshqasini ko'rmaydi |
-| Bounded context (`Cxx`) | Kodning mustaqil biznes qismi (masalan, `orders`, `inventory`) — `engineering/03` §4 |
-| Workflow | Bir nechta context'ni bitta tranzaksiyada boshqaradigan amal (ADR-021) |
+| Domen (bounded context) | Kodning mustaqil biznes qismi, o'z schemasi bilan: `catalog`, `commerce`, `messaging`, `sales_ai`, `storefront`, `support`, `reporting` — `engineering/01` §2 |
+| Platform moduli | Hamma domenlar ishlatadigan xizmat: `auth`, `shops`, `staff`, `use`, `audit`, `notifications`, `storage`, `realtime`, `llm`, `billing`, `privacy` |
+| Query Port | Boshqa domen ma'lumotini faqat o'qish uchun interfeys (`app/shared/contracts/`) — ADR-032 |
+| Slim USE | Holat o'tishini tekshiradigan va jurnalga yozadigan platform moduli (ADR-034) |
 | UoW (Unit of Work) | Bitta ma'lumotlar bazasi tranzaksiyasi chegarasi |
 | Outbox | Biznes o'zgarishi bilan birga yoziladigan "keyin yuborilsin" yozuvi — xabar yo'qolmasligi uchun |
-| Job | Fonda bajariladigan vazifa (ADR-005) |
+| Job, task | Fonda bajariladigan vazifa: arq navbati, rejali ishlar — APScheduler (ADR-033) |
 | Idempotency | Bir xil so'rov takrorlansa ham natija bir marta bajariladi (`Idempotency-Key`, K-06) |
 | FSM | Holatlar ketma-ketligi: qaysi holatdan qaysiga o'tish mumkin (`business/05`) |
 | RLS | Ma'lumotlar bazasi darajasida shoplarni bir-biridan ajratish (ADR-026) |

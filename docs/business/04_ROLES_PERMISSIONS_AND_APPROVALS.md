@@ -1,6 +1,6 @@
 # 04 — Rollar, ruxsatlar va tasdiqlashlar
 
-**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). Bu hujjat — **kim nima qila olishi bo'yicha yagona manba** (DEC-015). Dasturdagi ruxsat kodlari: `../engineering/10_SECURITY_AND_RBAC.md`.
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). Bu hujjat — **kim nima qila olishi bo'yicha yagona manba** (DEC-015). Dasturdagi ruxsat kodlari: `../engineering/10-security-tenancy-rbac.md`.
 
 ## Bu hujjat nima uchun
 
@@ -75,7 +75,7 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 
 **Platforma jamoasi**
 - Shoplarni faollashtiradi va to'xtatadi, texnik ma'lumotlar kutubxonasini yuritadi.
-- Odatiy holatda shop suhbatlari va savdosini ko'rmaydi. Faqat shop roziligi bilan, vaqtincha va yozib qo'yiladigan tarzda kiradi (`engineering/33`, RB-10).
+- Odatiy holatda shop suhbatlari va savdosini ko'rmaydi. Faqat shop roziligi bilan, vaqtincha va yozib qo'yiladigan tarzda kiradi (`engineering/25-operations-runbooks.md`, RB-10).
 
 **Xaridor**
 - Shop saytini ko'radi, chatda yozadi, buyurtma beradi, o'z buyurtmasi holatini ko'radi.

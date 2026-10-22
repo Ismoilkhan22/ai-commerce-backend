@@ -99,7 +99,7 @@ Modullar uchta bosqichga bo'lingan:
 | Bir xil shop ikki marta ro'yxatdan o'tdi | Ogohlantiradi, platforma jamoasi tekshiradi |
 | Egalik bo'yicha nizo (ikki kishi "men egasiman" deydi) | Faollashtirish to'xtatiladi, hujjat so'raladi |
 | To'xtatilgan shopda ochiq buyurtmalar bor | Ularni yakunlashga ruxsat beriladi, yangilari qabul qilinmaydi |
-| Shop yopilmoqda | Avval ma'lumot eksporti beriladi, keyin o'chiriladi (`engineering/32`) |
+| Shop yopilmoqda | Avval ma'lumot eksporti beriladi, keyin o'chiriladi (`engineering/26-privacy-and-retention.md`) |
 
 **Ekranlar:** ro'yxatdan o'tish, shop profili, ishga tushirish ro'yxati.
 **Bog'liq modullar:** M02, M03, M07, M19.
@@ -200,7 +200,7 @@ Modullar uchta bosqichga bo'lingan:
 **Nima qila oladi:**
 1. Mahsulot va variant qo'shish: nomi, brend, model, holati (yangi, ishlatilgan), rasmlar, tavsif.
 2. Kategoriyalar (protsessor, videokarta, ona plata…) va har kategoriyaning kerakli maydonlari.
-3. Excel yoki CSV fayldan ommaviy yuklash: avval sinab ko'rish, xatolarni ko'rish, keyin saqlash (`engineering/28`).
+3. Excel yoki CSV fayldan ommaviy yuklash: avval sinab ko'rish, xatolarni ko'rish, keyin saqlash (`engineering/18-catalog-import.md`).
 4. PC qismlarini platformaning texnik ma'lumotlar kutubxonasiga bog'lash (DEC-011).
 5. Mahsulotni saytga chiqarish, yashirish, arxivlash.
 
@@ -373,7 +373,7 @@ Modullar uchta bosqichga bo'lingan:
 - Taklifda qaysi qoidalar versiyasi ishlatilgani saqlanadi (BL-030).
 - Qismlarning texnik ma'lumotlari platforma kutubxonasidan olinadi (DEC-011).
 
-Qoidalar ro'yxati va texnik tafsilot: `engineering/25`.
+Qoidalar ro'yxati va texnik tafsilot: `engineering/17-pc-compatibility-engine.md`.
 
 **Nima noto'g'ri ketishi mumkin:**
 
@@ -409,7 +409,7 @@ Qoidalar ro'yxati va texnik tafsilot: `engineering/25`.
 3. Saytdagi web chat.
 4. Ulanish holatini kuzatish va uzilsa qayta ulash.
 
-Texnik tafsilot: `engineering/30`.
+Texnik tafsilot: `engineering/13-integrations-and-channels.md`.
 
 **Qoidalar:**
 - Faqat rasmiy ruxsat bilan ulanadi; ruxsat bo'lmasa "ulangan" deb ko'rsatilmaydi (BL-031).
@@ -493,7 +493,7 @@ Texnik tafsilot: `engineering/30`.
 6. Javob bera olmasa yoki xavfli holatda — operatorga uzatadi.
 7. Ish rejimlari: o'chiq / operator tasdiqlab yuboradi / o'zi yuboradi.
 
-Texnik tafsilot: `engineering/26`.
+Texnik tafsilot: `engineering/14-ai-sales-agent-and-tools.md`.
 
 **Qoidalar:**
 - Faqat tizimdan olingan mahsulot, narx va qoldiqni aytadi (BL-038).
@@ -678,7 +678,7 @@ Texnik tafsilot: `engineering/26`.
 3. Xabar matnlari uch tilda; ega o'z ohangiga moslab o'zgartira oladi.
 4. Xodim uchun "tinch vaqt" sozlamasi.
 
-Matnlar va to'liq ro'yxat: `engineering/31`.
+Matnlar va to'liq ro'yxat: `engineering/20-notifications.md`.
 
 **Qoidalar:**
 - Har xabar qaysi hodisa, qaysi shablon va kimga ekani bilan yoziladi; bir hodisa — bitta xabar (BL-060).
@@ -719,7 +719,7 @@ Matnlar va to'liq ro'yxat: `engineering/31`.
 4. Ovozli savol (o'zbek, rus, ingliz) — keyinroq, sinovdan o'tgach (DEC-112).
 5. Excel yoki CSV eksport.
 
-Metrikalar ro'yxati va formulalar: `engineering/29`.
+Metrikalar ro'yxati va formulalar: `engineering/19-reporting-metrics.md`.
 
 **Qoidalar:**
 - Har raqamning aniq formulasi bor; AI raqam o'ylab topmaydi (BL-063).

@@ -1,6 +1,6 @@
 # 08 — AI va kanallar: AI nima qila oladi va nima qila olmaydi
 
-**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). Texnik tafsilot (tool'lar, prompt, xavfsizlik qatlamlari): `engineering/26`. Kanallar texnikasi: `engineering/30`.
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). Texnik tafsilot (tool'lar, prompt, xavfsizlik qatlamlari): `engineering/14-ai-sales-agent-and-tools.md`. Kanallar texnikasi: `engineering/13-integrations-and-channels.md`.
 
 ## Bu hujjat nima uchun
 
@@ -51,7 +51,7 @@ Uchalasi bir-biridan to'liq ajratilgan: har birining ma'lumoti va ruxsatlari alo
 | Mahsulotlar, variantlar | Shop katalogi (faqat saytga chiqarilganlar) |
 | Narx | Tizimdagi joriy narx (dollarda bo'lsa — shop kursi bo'yicha so'mda) |
 | Mavjudligi | Ombordagi "sotuvga mavjud" son |
-| PC mosligi | Moslik tekshiruvi natijasi (`engineering/25`) |
+| PC mosligi | Moslik tekshiruvi natijasi (`engineering/17-pc-compatibility-engine.md`) |
 | Ish vaqti, yetkazish, kafolat, qaytarish | Shop tasdiqlagan FAQ va siyosatlar |
 | Buyurtma holati | Faqat shu xaridorning buyurtmasi |
 
@@ -168,4 +168,4 @@ Ruxsat olinmagan kanal tizimda "ishlayapti" deb ko'rsatilmaydi.
 - **Qat'iy talab:** sinovda noto'g'ri narx, mavjud bo'lmagan mahsulot yoki "tasdiqlandi" degan javob — **birorta ham bo'lmasligi** kerak.
 - **Model:** tayyor AI modeli ishlatiladi (bir haftalik solishtirishdan keyin tanlanadi, DEC-009). O'z modelini noldan o'qitish rejada yo'q.
 
-Batafsil: `engineering/17`, `engineering/26` §13.
+Batafsil: `engineering/16-ai-data-and-evaluation.md`, `engineering/14-ai-sales-agent-and-tools.md` §13.

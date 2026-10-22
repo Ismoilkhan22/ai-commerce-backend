@@ -13,7 +13,7 @@ DEC-004 A da `src/commerce_os/modules/<context>/{domain,application,infrastructu
 
 1. Kod `app/` ostida uch qatlamda:
    - `app/shared/` — poydevor (db, events, contracts, errors, i18n, tracing, cache, idempotency, money, types). **Hech kimni import qilmaydi.**
-   - `app/platform/` — domenlararo xizmatlar: `auth`, `shops`, `staff`, `use`, `audit`, `notifications`, `storage`, `realtime`, `llm`, `billing`. **`domains` ni import qilmaydi.**
+   - `app/platform/` — domenlararo xizmatlar: `auth`, `shops`, `staff`, `use`, `audit`, `notifications`, `storage`, `realtime`, `llm`, `billing`, `privacy`. **`domains` ni import qilmaydi.**
    - `app/domains/` — biznes domenlari: `catalog`, `commerce`, `messaging`, `sales_ai`, `storefront`, `support`, `reporting`. **Bir-birini import qilmaydi.**
 2. Har domen sub-modullarga bo'linadi; har sub-modul: `api/`, `services/`, `repository/`, `models/`, `state_machine.py`, `tests/`.
 3. Har domen `DomainManifest` e'lon qiladi (schema, surface router'lari, state rule'lar, subscriber'lar, rejali ishlar, ruxsatlar); `main.py` ularni avtomatik ulaydi.

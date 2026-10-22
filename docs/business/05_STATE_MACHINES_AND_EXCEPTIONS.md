@@ -63,7 +63,7 @@ Yopildi ──(xaridor yana yozdi)──▶ Qayta ochildi (REOPENED)   [oldingi 
 
 > **Misol:** AI xaridorga javob yozayotgan paytda operator "Suhbatni olish" tugmasini bosdi. AI javobi tayyor bo'lsa ham xaridorga ketmaydi. Xaridor faqat operator javobini ko'radi.
 
-**AI qachon operatorni chaqiradi:** xaridor odam so'rasa; "olaman" desa (buyurtma qoralamasi yaratilgach); narx yoki mahsulot noaniq bo'lsa; xaridor norozi bo'lsa; kafolat, qaytarish yoki to'lov haqida so'rasa; chegirma so'rasa. To'liq ro'yxat — `engineering/26` §9.
+**AI qachon operatorni chaqiradi:** xaridor odam so'rasa; "olaman" desa (buyurtma qoralamasi yaratilgach); narx yoki mahsulot noaniq bo'lsa; xaridor norozi bo'lsa; kafolat, qaytarish yoki to'lov haqida so'rasa; chegirma so'rasa. To'liq ro'yxat — `engineering/14-ai-sales-agent-and-tools.md` §9.
 
 ## Lead — sotuv imkoniyati (FSM-05)
 
@@ -102,7 +102,7 @@ Rad etildi ──(operator o'zgartiradi)──▶ yangi versiya, yana Qoralama
 - **Tekshirish kerak** — ma'lumot yetmaydi, masalan BIOS qo'llab-quvvatlashi noma'lum. Menejer sababini yozib tasdiqlashi kerak.
 - **Mos emas** — masalan, protsessor soketi platanikiga to'g'ri kelmaydi. Bunday taklifni yuborib bo'lmaydi.
 
-Batafsil: `engineering/25`.
+Batafsil: `engineering/17-pc-compatibility-engine.md`.
 
 **Muddat:** standart holatda 24 soat, shop o'zgartira oladi (DEC-103). Xaridor qabul qilganda narx va mavjudlik baribir qayta tekshiriladi.
 

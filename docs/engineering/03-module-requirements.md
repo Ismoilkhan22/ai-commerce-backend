@@ -9,7 +9,8 @@
 
 ### 1.1 Tuzilma
 - [ ] Domen `app/domains/<name>/` da
-- [ ] `__init__.py` da `DOMAIN_MANIFEST`, `domain_manifest.py` to'liq (name, schema, routers, rules, subscribers, jobs, permissions)
+- [ ] `__init__.py` da `DOMAIN_MANIFEST`, `domain_manifest.py` to'liq (name, schema, routers, rules, subscribers, jobs, permissions, privacy_handlers)
+- [ ] Shaxsiy ma'lumot saqlasa — `privacy_handlers` (eksport, o'chirish, saqlash muddati tozalash) — `26-privacy-and-retention.md`
 - [ ] Har sub-modul: `api/`, `services/`, `repository/`, `models/`, `state_machine.py` (holati bo'lsa), `tests/`
 - [ ] `events.py` — chiqaradigan va tinglaydigan event'lar ro'yxati
 - [ ] `permissions.py` — barcha ruxsat kodlari (`<domain>.<entity>.<action>`), `../business/04` jadvaliga mos
@@ -21,6 +22,7 @@
 - [ ] Boshqa domen ORM'ini import qilmaydi (import-linter)
 - [ ] Boshqa schema bilan FK va JOIN yo'q; boshqa domen obyekti — faqat `UUID`
 - [ ] **Shop jadvallarida `shop_id UUID NOT NULL`** (`ShopScopedMixin`), birinchi ustun sifatida indekslarda
+- [ ] Istisno — platforma yuritadigan umumiy ma'lumotnomalar (`catalog.reference_hardware_specs`, `catalog.pc_rulesets`, `catalog.build_profiles`, `catalog.currencies`): `shop_id` yo'q, shop xodimlari faqat o'qiydi, yozish — faqat platforma jamoasi. Har yangi istisno `07-data-layer.md` ro'yxatiga qo'shiladi
 - [ ] Unikal cheklovlar shop doirasida: `UNIQUE (shop_id, sku_code)`
 - [ ] Shop ichidagi bog'lanishlar composite FK bilan: `(shop_id, product_id) → products(shop_id, id)` — boshqa shop obyektiga bog'lab bo'lmaydi
 - [ ] Sezgir jadvallarda RLS yoqilgan (`10-security-tenancy-rbac.md` ro'yxati)
@@ -63,7 +65,7 @@
 
 ### 1.8 Kuzatuv (observability)
 - [ ] Log: `structlog.get_logger().bind(domain="commerce")`; `trace_id`, `shop_id` contextvars'dan avtomatik
-- [ ] Muhim amal → counter: `cos_<domain>_<entity>_<action>_total` (masalan `cos_commerce_order_confirmed_total`)
+- [ ] Muhim amal → counter: `cos_<domain>_<entity>_<action>_total` (platform modullari uchun `cos_<module>_...`, masalan `cos_llm_requests_total`; to'liq ro'yxat — `09-observability.md`) (masalan `cos_commerce_order_confirmed_total`)
 - [ ] Davomiylik → histogram: `cos_<domain>_<operation>_duration_seconds`
 - [ ] Asosiy operatsiyalarda OpenTelemetry span
 - [ ] Logga PII yozilmaydi (`shared/logging/filters.py`)

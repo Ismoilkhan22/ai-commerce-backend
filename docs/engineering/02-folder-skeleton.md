@@ -30,6 +30,7 @@ ai-commerce-backend/
 │   │   │   ├── catalog.py                   # CatalogQueryPort + DTO'lar
 │   │   │   ├── commerce.py                  # CommerceQueryPort + DTO'lar
 │   │   │   ├── messaging.py                 # MessagingQueryPort + DTO'lar
+│   │   │   ├── sales_ai.py                  # SalesAiQueryPort (get_reply, resolve_contact_ref)
 │   │   │   └── events/                      # Boshqa domen tinglaydigan event payload'lari
 │   │   │       ├── catalog.py               # ProductPublishedV1, PriceChangedV1, ...
 │   │   │       ├── commerce.py              # OrderDraftedV1, OrderConfirmedV1, StockChangedV1, ...
@@ -57,6 +58,7 @@ ai-commerce-backend/
 │   │   ├── idempotency/
 │   │   │   ├── store.py                     # (shop_id, operation, key) — PostgreSQL
 │   │   │   └── dependency.py                # Depends(get_idempotency_key)
+│   │   ├── crypto.py                        # kanal tokenlarini shifrlash (envelope encryption)
 │   │   ├── money.py                         # Money(amount_minor, currency), exponent (ADR-025)
 │   │   └── types/
 │   │       ├── actor.py                     # ActorContext(principal_id, shop_id, roles, branch_ids, surface)
@@ -78,7 +80,8 @@ ai-commerce-backend/
 │   │   ├── storage/                         # S3 adapter (MinIO), signed URL
 │   │   ├── realtime/                        # /ws, ConnectionManager, Redis pub/sub relay
 │   │   ├── llm/                             # LLMPort, provayder adapterlari, redaction, xarajat hisobi
-│   │   └── billing/                         # tarif, AI limitlari, ishlatilish (DEC-119)
+│   │   ├── billing/                         # tarif, AI limitlari, ishlatilish (DEC-119)
+│   │   └── privacy/                         # eksport/o'chirish so'rovlari, domenlarga event orqali (26-…)
 │   │
 │   ├── domains/                             # ❌ Domen → domen import TAQIQ
 │   │   ├── catalog/
@@ -165,8 +168,7 @@ ai-commerce-backend/
 │
 ├── scripts/
 │   ├── check_architecture.py                # import-linter wrapper
-│   ├── create_audit_partitions.py
-│   └── seed_dev.py
+│   └── create_audit_partitions.py
 │
 ├── pyproject.toml                           # uv, ruff, mypy, pytest, import-linter
 ├── .importlinter                            # qatlam va domen kontraktlari
@@ -208,6 +210,7 @@ DOMAIN_MANIFEST = DomainManifest(
     event_subscribers=[on_order_draft_requested, on_quote_draft_requested],
     scheduled_jobs=[order_reminders_job, reservation_expiry_job, quote_expiry_job],
     permissions=COMMERCE_PERMISSIONS,
+    privacy_handlers=COMMERCE_PRIVACY_HANDLERS,   # xaridor/shop ma'lumotini eksport va o'chirish (26-…)
 )
 ```
 

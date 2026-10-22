@@ -15,7 +15,7 @@
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │ platform/   (domenlararo xizmatlar)                          │  │
 │  │  auth · shops · staff · use · audit · notifications ·        │  │
-│  │  storage · realtime · llm · billing                          │  │
+│  │  storage · realtime · llm · billing · privacy                │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                    ↓ import qila oladi                             │
 │  ┌──────────────────────────────────────────────────────────────┐  │
@@ -51,6 +51,7 @@ Har domen — bitta bounded context, o'z PostgreSQL schemasi bilan (ADR-035). Ic
 | `realtime` | — | WebSocket (inbox), Redis pub/sub orqali ko'p worker | — |
 | `llm` | — | `LLMPort` adapter, PII redaction, AI xarajati hisobi (ADR-027) | `platform` |
 | `billing` | M19 | Tarif, AI limitlari va ishlatilishi (DEC-119) | `platform` |
+| `privacy` | — | Xaridor va shop ma'lumotini eksport/o'chirish so'rovlarini muvofiqlashtiradi; har domen o'z `privacy_handlers` ini bajaradi (`26`) | `platform` |
 
 ### Domenlar (Stage 1)
 
@@ -81,6 +82,9 @@ Buyurtmani tasdiqlash va mahsulotni band qilish **bitta tranzaksiyada** bo'lishi
 | Boshqa domendan **o'qish** (ko'p, tez) | **Local read model** — event'lardan proyeksiya | `reporting` buyurtmalar proyeksiyasi |
 | Boshqa domenda **yozish** | **Event** (outbox) → u domendagi subscriber | `sales_ai.order_draft.requested` → `commerce` qoralama yaratadi |
 | Platform xizmatini ishlatish | To'g'ridan-to'g'ri (domen platform'ni import qila oladi) | `commerce` → `platform.audit.record(...)`, `platform.notifications.request(...)` |
+| Platform'dan domenga yozish | Event (platform domenni import qilmaydi) | `platform.notification.customer_delivery_requested` → `messaging` xaridorga yetkazadi; `platform.privacy.*` → har domen o'z `privacy_handlers` i |
+
+**Stage 1 Query Port'lari** (to'liq ro'yxat — `05-events-and-outbox.md`, interfeyslar `app/shared/contracts/`): `CatalogQueryPort` (search, get_product, get_active_price, check_compatibility, suggest_builds, get_import_stock_rows, ...), `CommerceQueryPort` (get_availability, get_stock_levels, get_order_status, ...), `MessagingQueryPort` (get_conversation_context, ...), `SalesAiQueryPort` (get_reply — `messaging` AI javob matnini oladi, matn event'da yo'q; resolve_contact_ref).
 
 Batafsil: [05-events-and-outbox.md](05-events-and-outbox.md), ADR-032.
 
