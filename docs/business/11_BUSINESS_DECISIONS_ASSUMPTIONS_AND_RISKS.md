@@ -13,8 +13,8 @@
 | `BD-05` | Merchant AI vs Global buyer AI separate | Conflicting incentives and privacy scopes | Never merge private/public boundaries |
 | `BD-06` | Price/stock/compatibility/payment deterministic | Costly mistakes from hallucination | Never relax invariant |
 | `BD-07` | Voice Copilot read-only first | Speech misrecognition is risky | Full command approval workflow tested |
-| `BD-08` | Payment routed to merchant, manual proof review initially | Simpler settlement and legal scope | Formal licensed gateway integration ready |
-| `BD-09` | Merchant web/Telegram first, Meta permission gated | Reliable MVP; no unofficial scraping | Approved official Meta access |
+| `BD-08` | Payment routed to merchant. **Stage 1: to'lov tizimdan tashqarida, do'kon o'zi oladi** (DEC-100, 2026-10-22) | Simpler settlement and legal scope | Formal licensed gateway integration ready |
+| `BD-09` | **Telegram + Instagram + web chat birga Stage 1 da** (DEC-116); Meta arizasi S0 bilan; no unofficial scraping | Instagram-first do'konlarga mos | Meta ruxsati pilot sanasiga kelmasa (DEC-116a) |
 | `BD-10` | Sell SaaS value before global search has traffic | Avoid two-sided marketplace cold start | Verified global traffic can support referral pricing |
 | `BD-11` | Separate backend/frontend repos, infra within backend for solo founder | Simplicity; deployment remains reproducible | Independent infra lifecycle/DevOps emerges |
 | `BD-12` | DDD-inspired modular monolith candidate | Complexity bounded; clear ownership | ADR review with capacity facts |
@@ -22,6 +22,8 @@
 **Bu BDlar biznes qarorlari.** Framework / RabbitMQ vs Redis / PostgreSQL isolation / C4 / transaction propagation uchun formal technical ADR keyin ishlab chiqiladi.
 
 ## B. Open items — code start oldidan qiymat belgilanadigan parametrlar
+
+> **2026-10-22:** quyidagi savollar `../decisions/DECISION_REGISTER.md` ga ko'chirildi va founder tomonidan baseline sifatida hal qilindi (xaritasi — registr §4). Bu jadval tarix uchun saqlanadi; amaldagi qiymatlar registrda.
 
 | Ref | Unconfirmed decision | Safe temporary policy | Who validates |
 |---|---|---|---|

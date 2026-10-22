@@ -5,7 +5,7 @@
 ## Maʼlumotlarni saqlash modeli
 
 - Platforma multi-tenant. Tenant scope (`merchant_id`) primary authorization invariant, foydalanuvchi request bodyidagi `merchant_id` hech qachon o‘z-o‘zidan ishonchli emas.
-- Stage 1 da `MerchantProduct` va `MerchantSKU` source of truth. Stage 2 da `CanonicalProduct` mustaqil registry, `PublicOffer` merchantning ruxsatli taklifi.
+- Stage 1 da `MerchantProduct` va `MerchantSKU` source of truth; PC komponent spetsifikatsiyalari platforma `Reference Hardware Spec` kutubxonasidan (DEC-011) — u Stage 2 `CanonicalProduct` registry'sining yopiq, narx/stoksiz birinchi qismi. Stage 2 da `CanonicalProduct` mustaqil registry, `PublicOffer` merchantning ruxsatli taklifi.
 - Public search maxfiy inventar tabelidan emas, faqat public field whitelistdan project qiladi.
 - One merchant may own multiple branches, each branch same SKU separate sellable balance. Quote immutable item snapshots, invoice/paid records historical.
 
@@ -15,22 +15,24 @@
 | Principal / Membership | Access | Private | Actor, role, tenant, branch permission | Principal N ↔ N Merchant (via membership) |
 | Branch | Location | Private with public-approved subset | Address/geo/hours/pickup, active flag | Merchant 1 → N Branch |
 | Product / Variant / SKU | Merchant Catalog | Private; published subset storefront | Merchant item, attributes, condition, lifecycle | Merchant 1 → N Products 1→N SKUs |
-| Price Version | Pricing | Private; public only selected amount | Currency, amount_minor, source, effective/valid until | SKU 1 → N prices |
+| Price Version | Pricing | Private; public only selected amount | Currency (UZS yoki USD, DEC-121), amount_minor (ISO exponent, DEC-007), source, effective/valid until | SKU 1 → N prices |
+| Exchange Rate | Pricing | Private | USD→UZS kurs, manba (merchant / Markaziy bank), vaqt; quote/order qatorida snapshot (DEC-121) | Merchant 1 → N rates |
 | Stock Balance / Ledger | Inventory | Private | Per-branch SKU on_hand/reserved/allocated; immutable movements | Branch+SKU 1→1 balance and 1→N movements |
 | Reservation | Inventory | Private | Qty, origin quote/order, expiry, reason, version | Order line → reservation(s) |
 | Channel Account | Channels | Private | Provider account ref, token ref, capabilities | Merchant 1 → N channel accounts |
 | Conversation/Message | Conversations | Private | Channel identity, messages, AI/human mode | Channel 1 → N threads; thread 1 → N messages |
 | Customer Link / Lead | CRM | Private | Per merchant minimal identity, contact consent, qualification | Merchant 1 → N leads; lead N → threads |
 | Quote + Quote Lines | Quotes | Private/customer signed token | Immutable product/price/spec snapshot, expiry, approval | Lead 1 → N quote revisions; quote 1 → N lines |
-| Order + Order Lines | Orders | Private/customer scoped token | Confirmed snapshot, status, merchant ref | Order 1 → N lines |
-| Payment Attempt / Evidence | Payments | Private | Provider txn and receipt proof; verified ledger | Order 1 → N attempts; no unrelated merchant data |
-| Shipment / POD | Fulfillment | Private/customer tracking token | Method, courier, address, proof, retry reasons | Order 1 → N shipments |
+| Order + Order Lines | Orders | Private/customer scoped token | Status (FSM-08), narx snapshot, `fulfillment_method` + manzil (DEC-113), kelishuv izohi (DEC-100g), ixtiyoriy `paid_mark` (kim, qachon, usul — tekshirilmagan, DEC-100a), kafolat shartlari snapshot (DEC-114), merchant ref | Order 1 → N lines |
+| Payment Attempt / Evidence — `DEFERRED` (DEC-100) | Payments | Private | Provider txn and receipt proof; verified ledger | Order 1 → N attempts; no unrelated merchant data |
+| Shipment / POD — `DEFERRED` (DEC-113) | Fulfillment | Private/customer tracking token | Method, courier, address, proof, retry reasons | Order 1 → N shipments |
 | Support/RMA Case | After-sales | Private | Warranty snapshot, return reason, resolution | Order line 1 → N support cases |
 | Notification / Task | Notifications | Private | Trigger, channel, recipient, template, delivery status | Domain event 1 → N messages/tasks |
 | Report Metric Definition | Reporting | Private platform policy | metric id, denominator, timezone, permission | Tenant report query scopes data |
 | Voice Request / Evidence | Voice | Private; retention-limited | Language, transcript, allowed metric, answer ref | Principal 1 → N voice sessions |
 | Audit Record | Audit | Private restricted | Actor, entity, action, version, correlation, safe diff | All critical mutable aggregates |
 | Integration Connection / Sync Cursor | Integrations | Private | Credential ref, scope, mapping, source priority, cursor | Merchant 1 → N connectors |
+| Reference Hardware Spec (Stage 1) | PC Builder (platforma) | Platform-private; merchantlar o'qiydi | Model/MPN, socket, RAM turi, o'lchamlar, quvvat, konnektorlar; manba va versiya (DEC-011, DEC-120) | Spec 1 → N merchant SKU bog'lanishi |
 | Canonical Product | Product Network | Public when published | Brand/model/variant/attributes, identity proofs | Canonical 1 → N Merchant Offers |
 | Match Decision / Provenance | Product Network | Restricted reviewers | Candidate, evidence, reviewer, reversible merge | Offer SKU → canonical link history |
 | Public Offer | Offer Network | Public only opt-in | Public price, freshness, condition, location, warranty | Merchant SKU/Branch → public offer; canonical 1 → N offers |

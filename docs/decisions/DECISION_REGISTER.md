@@ -4,7 +4,9 @@
 
 Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har bir qaror uchun 2–3 variant berilgan, ⭐ belgisi tavsiya qilingan variantni bildiradi. Founder tasdiqlagach, qaror shu yerda `APPROVED` deb belgilanadi va 4-bo'limda ko'rsatilgan hujjatlarga kiritiladi.
 
-**Qanday tasdiqlash:** "hammasi tavsiya bo'yicha" deb yozing, yoki faqat o'zgartirmoqchi bo'lganlaringizni ayting (masalan, `DEC-104 → B`).
+**Muhim (founder, 2026-10-22):** `APPROVED` qarorlar — **ishchi baseline**. Ular bo'yicha hujjatlar va kod ishlab chiqiladi, lekin pilot, intervyu yoki texnik spike natijasiga qarab o'zgartirilishi mumkin. O'zgartirish tartibi: registrda yangi variant va sabab yoziladi (`CHANGED (sana): eski → yangi`), so'ng 4-bo'limdagi ta'sirlangan hujjatlar yangilanadi.
+
+**Hujjatlarga kiritish holati:** 2026-10-22 dan barcha `APPROVED` qarorlar `business/` va `engineering/` hujjatlariga kiritilmoqda (5-bo'lim).
 
 ---
 

@@ -1,4 +1,4 @@
-# 03 — BIZNES QOIDALAR REYESTRI (`BL-001..BL-108`)
+# 03 — BIZNES QOIDALAR REYESTRI (`BL-001..BL-111`)
 
 **Versiya:** v1.0 | **Status:** Review-ready rules. Raqamlar qatʼiy ID, tartib muhim emas.  
 **Normativ:** MUST bo‘lgan qoidani buzgan action commit bo‘lmasligi yoki compensating exception bilan kuzatilishi shart.
@@ -7,7 +7,8 @@
 
 - `BL` talabi modulga tegishli, lekin platformadagi boshqalar ham shu qoidaga amal qiladi.
 - Biznes policy `IF condition THEN effect ELSE reject/approval/retry` sifatida implementatsiya qilinadi; technical concurrency batafsil ADRlarda yoziladi.
-- Noaniq parametrlar (reserve TTL, discount cap, freshness TTL) `merchant_policy` orqali versioned configurable; default qiymatni go-live oldidan pilotda tasdiqlash shart. **Hozircha o‘zboshimcha min/soat o‘ylab topilmagan.**
+- Noaniq parametrlar (reserve TTL, discount cap, freshness TTL) `merchant_policy` orqali versioned configurable. Baseline default'lar founder tomonidan tasdiqlangan (2026-10-22, `../decisions/DECISION_REGISTER.md`): quote 24 soat (DEC-103), buyurtma eslatmasi 24 soat va rezerv review 72 soat (DEC-104), chegirma Sales 0% / Manager 5% (DEC-110). Pilotda qayta ko'riladi.
+- **Stage 1 baseline:** to'lov tizimdan tashqarida (DEC-100) — BL-050…053 `DEFERRED`; yetkazish moduli yo'q (DEC-113) — BL-054…056 `DEFERRED`. Yangi qoidalar: BL-109…111.
 - Callback bilan yozilgan paid holati source reconciliationga zid bo‘lsa exception queuega tushadi; qayta hisoblash imkoni saqlanadi.
 
 | ID | Trigger / Shart | Majburiy qoida | Rad etish/istisno |
@@ -28,8 +29,8 @@
 | `BL-014` | Mahsulot archived | Yangi orderga kirmaydi, eski order snapshots saqlanadi | References delete qilinmaydi |
 | `BL-015` | Narx belgilanadi | Currency+minor units, version, source va valid_until bo‘ladi | Invalid price reject |
 | `BL-016` | Narx o‘zgardi | Yuborilgan quote immutable snapshot; qayta tasdiqda fresh pricing | Re-quote kerak |
-| `BL-017` | Chegirma beriladi | Max discount rule/approver check; margin confidential | Out-of-limit approval |
-| `BL-018` | Exchange price ishlatiladi | Kurs manbasi/vaqti snapshot; eskirsa final quote block | Manual price confirmation |
+| `BL-017` | Chegirma beriladi | Max discount rule/approver check; margin confidential. Baseline: Sales 0% (so'raydi), Manager ≤5%, undan yuqori Owner (DEC-110) | Out-of-limit approval |
+| `BL-018` | Exchange price ishlatiladi | SKU narxi UZS yoki USD; xaridorga UZS; kurs manbasi/vaqti snapshot; eskirsa final quote block (DEC-121) | Manual price confirmation |
 | `BL-019` | Stock ko‘rsatiladi | available = on_hand - reserved - allocated, >= 0 | Negative available block + reconcile |
 | `BL-020` | Reservation yaratildi | Atomik check+increment, expiry; unique order/item reference | Insufficient stock = no reserve |
 | `BL-021` | Reservation expiry/cancel | Faqat faol rezerv bo‘shatiladi; qayta release no-op | Idempotency required |
@@ -56,25 +57,25 @@
 | `BL-042` | Lead yoziladi | Consent va minimal contact; duplicate logic scoped per merchant | Cross-merchant identities merged emas |
 | `BL-043` | Quote yaratildi | Immutable SKU, price, taxes/fee if any, condition, warranty snapshot | No incomplete quote send |
 | `BL-044` | Quote tugaydi | Expiry/stock/price qayta check; old quote paid order qilinmaydi | Re-quote requested |
-| `BL-045` | Quote approval | Threshold/compatibility REVIEW uchun authorized approver | Approval bypass reject |
+| `BL-045` | Quote approval | Authorized approver = Manager (limit ichida) yoki Owner, Sales emas (DEC-109); pilotda har quote, keyin `RISK_ONLY` (DEC-102) | Approval bypass reject |
 | `BL-046` | Order yaratiladi | Quote/order idempotency key, tenant and source uniqueness | Duplicate = same result |
-| `BL-047` | Order confirm | Current stock or valid reservation, price and terms checked | Conflict -> customer re-confirm |
+| `BL-047` | Order confirm | Odam tasdiqlaydi: Sales (o'ziga biriktirilgan) yoki Manager (DEC-108); stok va narx qulf bilan qayta tekshiriladi, rezerv yaratiladi (DEC-105) | Conflict -> customer re-confirm |
 | `BL-048` | Order transition | Only allowed FSM transition with role and reason | Invalid transition = 409 |
-| `BL-049` | Order cancelled | Reservation release and payment reconciliation orchestrated; no silent paid loss | Paid after cancel -> exception queue |
-| `BL-050` | Manual payment proof | Proof != verified; authorized reviewer matches actual receipt | Remain pending until evidence |
-| `BL-051` | Payment callback | Authenticity, amount, currency, merchant account and provider ref checked | Mismatch quarantine |
-| `BL-052` | Payment/reversal | Idempotent processing and ledger reconciliation | Duplicate webhook no double paid/refund |
-| `BL-053` | Refund | Merchant policy, evidence, approval, exact amount limits | Provider failed: refund pending, not completed |
-| `BL-054` | Delivery booked | Address, contact permission, branch and shipment method verified | Missing address -> no dispatch |
-| `BL-055` | Shipment status | Courier/manager scoped; POD where applicable | Delivered requires evidence policy |
-| `BL-056` | Delivery failure | Retry/reschedule/return recorded, customer informed | No silent status skip |
+| `BL-049` | Order cancelled | Rezerv/allocation aynan bir marta bo'shatiladi; sabab majburiy; bekor qilish — Manager/Owner (DEC-108). Pul qaytarish tizimdan tashqarida (DEC-100) | Takroriy bekor qilish no-op |
+| `BL-050` | Manual payment proof | **`DEFERRED` (DEC-100)** — Proof != verified; authorized reviewer matches actual receipt | Remain pending until evidence |
+| `BL-051` | Payment callback | **`DEFERRED` (DEC-100)** — Authenticity, amount, currency, merchant account and provider ref checked | Mismatch quarantine |
+| `BL-052` | Payment/reversal | **`DEFERRED` (DEC-100)** — Idempotent processing and ledger reconciliation | Duplicate webhook no double paid/refund |
+| `BL-053` | Refund | **`DEFERRED` (DEC-100)** — Merchant policy, evidence, approval, exact amount limits | Provider failed: refund pending, not completed |
+| `BL-054` | Delivery booked | **`DEFERRED` (DEC-113)** — Address, contact permission, branch and shipment method verified. Stage 1: buyurtmada `fulfillment_method` + manzil saqlanadi | Missing address -> no dispatch |
+| `BL-055` | Shipment status | **`DEFERRED` (DEC-113)** — Courier/manager scoped; POD where applicable | Delivered requires evidence policy |
+| `BL-056` | Delivery failure | **`DEFERRED` (DEC-113)** — Retry/reschedule/return recorded, customer informed | No silent status skip |
 | `BL-057` | Warranty sold | Terms snapshot order line at time of sale | Future policy edit does not change old sale |
 | `BL-058` | Return request | Eligibility and product condition reviewed by human | Refund only approved case |
 | `BL-059` | Return-to-stock | Inspect return; damaged not saleable | Ledger records disposition |
 | `BL-060` | Notification created | Event/template/version/recipient and dedup key recorded | Duplicate deliver suppressed |
 | `BL-061` | Recipient opt-out/quiet | Respect legal and channel transactional exceptions | Suppress marketing push |
 | `BL-062` | Provider delivery error | Retry bounded; DLQ and visible merchant task | Never lose error silently |
-| `BL-063` | Financial report | Metric registry defines paid turnover vs profit vs revenue | No undefined metric |
+| `BL-063` | Financial report | Metric registry defines paid turnover vs profit vs revenue. Stage 1: "yakunlangan buyurtmalar" asosiy, "to'landi" belgisi tekshirilmagan deb alohida (DEC-100a) | No undefined metric |
 | `BL-064` | Voice report | Speech-to-text transcript confirmation for sensitive sums | Low-confidence ask to repeat |
 | `BL-065` | Reporting permissions | Branch/role; sensitive costs hidden from sales users | Aggregates filtered at DB access |
 | `BL-066` | Reporting freshness | Every generated answer displays period/timezone/data_as_of | Stale report explicitly flagged |
@@ -120,12 +121,15 @@
 | `BL-106` | SEO public pages | Structured data only for currently valid public offers | Invalid markup removed |
 | `BL-107` | Duplicate global/product pages | Canonical URL and noindex for thin duplicate states | No low-quality doorway pages |
 | `BL-108` | Global Telegram bot | Separate bot identity and principal from merchant bot | No implicit cross-store context sharing |
+| `BL-109` | Do'konda offline sotuv | "Tez sotuv" amali stokni darhol kamaytiradi: ledger `OFFLINE_SALE`, actor, vaqt (DEC-123) | Stokdan ortiq miqdor rad etiladi |
+| `BL-110` | AI xaridorning "olaman" niyatini aniqlaydi | AI faqat `DRAFT` buyurtma yaratadi va operatorni chaqiradi; stok band qilmaydi, tasdiqlamaydi (DEC-100c) | Tasdiqlash tool'i AI uchun yo'q |
+| `BL-111` | Buyurtma tasdiqlanadi (Stage 1) | Chat va saytdan kelgan har buyurtma odam tasdig'idan o'tadi; avtomatik tasdiq yo'q (DEC-100d) | Avto-tasdiq Stage 2 da merchant opt-in bilan |
 
 ## Eng muhim kombinatsiyalangan edge-case ssenariylari
 
 **Case BR-X01: last SKU race.** 1 dona bor, ikkita order har biri 1 dona reserve qiladi. Faqat bittasi muvaffaqiyatli; ikkinchisi stock conflict oladi. `BL-019/020/023/046/047`.
 
-**Case BR-X02: late payment.** Rezerv muddati tugadi, keyin `payment.verified` keldi. Paid yozuvi ledgerda saqlanadi, order avtomatik `fulfilled` bo‘lmaydi; operator refund/rebook qarorini beradi. `BL-021/049/051/052`.
+**Case BR-X02: late payment** — `DEFERRED` (DEC-100, to'lov moduli qaytganda). Rezerv muddati tugadi, keyin `payment.verified` keldi. Paid yozuvi ledgerda saqlanadi, order avtomatik `fulfilled` bo‘lmaydi; operator refund/rebook qarorini beradi. `BL-021/049/051/052`.
 
 **Case BR-X03: price drift.** AI 4,5 mln so‘mlik quote berdi, merchant narxni 4,8 mln qildi. Old quote snapshot o‘zgarmaydi; expiry/business policyga ko‘ra order confirmdan avval qayta rozilik talab. `BL-015/016/044/047`.
 
@@ -139,10 +143,14 @@
 
 **Case BR-X08: wrong match.** RTX 5060 8GB ni RTX 5060 Ti yoki boshqa memory variant bilan merge qilish taqiqlanadi; yuqori confidence bo‘lmasa manual review. `BL-076/077/078/091`.
 
-**Case BR-X09: payment proof forgery.** Mijoz skrinshot yubordi. Status pending qoladi, reviewer real tushum yoki trusted provider transaction bilan solishtiradi. `BL-050/051`.
+**Case BR-X09: payment proof forgery** — `DEFERRED` (DEC-100). Mijoz skrinshot yubordi. Status pending qoladi, reviewer real tushum yoki trusted provider transaction bilan solishtiradi. `BL-050/051`.
 
 **Case BR-X10: false cheapest claim.** Bitta merchantda delivery unknown, ikkinchisida 50k. AI «eng arzon yetkaziladigan» deya olmaydi; «asosiy narx» va unknown delivery ni alohida belgilaydi. `BL-092/093/097`.
 
 **Case BR-X11: return of damaged SKU.** Returned hardware tekshirilmaguncha saleable stockga kirmaydi. `BL-057/059/019`.
 
 **Case BR-X12: POS vs dashboard edit.** Bir paytning o‘zida POS va merchant qoldiqni o‘zgartirdi. Version/source priority va reconcile, blind last-write-wins taqiqlanadi. `BL-073/075/019`.
+
+**Case BR-X13: online buyurtma va offline sotuv poygasi.** Omborda 1 ta RTX 4060. Online buyurtma `PENDING_CONFIRMATION` da turganda xodim xuddi shu donani do'konda "tez sotuv" bilan sotdi. Operator tasdiqlamoqchi bo'lganda stok qulf bilan qayta tekshiriladi va tasdiq rad etiladi; operatorga muqobil taklif vazifasi. `BL-047/109/111`.
+
+**Case BR-X14: AI "buyurtma tasdiqlandi" deb aytmoqchi.** Xaridor "olaman" dedi, AI `DRAFT` yaratdi. AI javobi faqat "buyurtmangiz qabul qilindi, operator bog'lanadi" bo'lishi mumkin; "tasdiqlandi" yoki "band qilindi" deyish taqiqlanadi. `BL-038/041/110`.

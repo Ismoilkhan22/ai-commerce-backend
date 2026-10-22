@@ -13,6 +13,24 @@
 - UI majburiy holatlari: empty, loading, success, validation failure, permission denied, conflict/stale, third-party unavailable.
 - Veb sahifa va Telegram bot bir xil merchant katalogi, narx va buyurtma servisiga murojaat qiladi.
 
+## Stage 1 baseline qarorlari (2026-10-22)
+
+Manba: `../decisions/DECISION_REGISTER.md`. Qarorlar ishchi baseline — pilotga qarab o'zgarishi mumkin.
+
+| Mavzu | Baseline | DEC |
+|---|---|---|
+| Savdo oqimi | Xaridor buyurtma beradi → "aniq olaman" desa operator ulanadi → sotuvchi mahsulot borligini tasdiqlaydi → do'kon o'zi yetkazadi yoki xaridor olib ketadi → **to'lovni do'kon tizimdan tashqarida oladi** | DEC-100 |
+| AI vakolati | AI buyurtma qoralamasini (`DRAFT`) yaratadi va operatorni chaqiradi; tasdiqlamaydi, narx/chegirma bermaydi | DEC-100c |
+| Buyurtma tasdig'i | Har buyurtma (chat va saytdan) odam tasdig'idan o'tadi: Sales (o'ziga biriktirilgan) yoki Manager; bekor qilish — Manager/Owner | DEC-100d, DEC-108 |
+| Quote | Faqat online PC yig'ma va maxsus narx uchun; pilotda har quote Manager tasdig'idan; default muddat 24 soat | DEC-100e, DEC-102, DEC-103, DEC-109 |
+| Stok | Dashboard yagona manba; `CONFIRMED` → rezerv, `PROCESSING` → allocated, `COMPLETED` → `on_hand` kamayadi; offline sotuv uchun "tez sotuv" | DEC-105, DEC-107, DEC-123 |
+| Chegirma | Merchant sozlaydi; default Sales 0% (so'raydi), Manager 5% gacha, undan yuqori Owner | DEC-110 |
+| Valyuta | SKU narxi UZS yoki USD; xaridorga UZS, kurs snapshot bilan | DEC-121 |
+| Kanallar | Telegram bot + Instagram Direct + web chat | DEC-116 |
+| PC spetsifikatsiyalar | Platforma yuritadigan reference spec kutubxonasi; SKU unga bog'lanadi | DEC-011, DEC-120 |
+| Hisobot | S5 da matnli hisobot-chat; ovoz golden set testidan keyin | DEC-112 |
+| Chiqarilgan / keyinga | M14 to'lov — `DEFERRED`; M15 yetkazish — `DEFERRED`; yetkazish narxi operator bilan kelishiladi | DEC-100, DEC-113, DEC-100h |
+
 ## Uch bosqichdagi to‘liq modul xaritasi
 
 | Modul | Bosqich | Biznes modul | Critical KPI | Scope |
@@ -30,11 +48,11 @@
 | `M11` | 1 | AI Sales Agent va product discovery | grounded-answer rate, escalation rate, cost/lead | MUST |
 | `M12` | 1 | Lead, CRM va quotation | qualified lead rate, quote-to-order | MUST |
 | `M13` | 1 | Buyurtma va order lifecycle | order accuracy, cancellations | MUST |
-| `M14` | 1 | To‘lov va chekni tekshirish | payment mismatch, false paid=0 | MUST |
-| `M15` | 1 | Yetkazish va pickup | delivered %, exception age | MUST |
-| `M16` | 1 | Sotuvdan keyingi xizmat va kafolat | resolution time, repeat complaints | SHOULD |
+| `M14` | 1 | To‘lov va chekni tekshirish | payment mismatch, false paid=0 | DEFERRED (DEC-100) |
+| `M15` | 1 | Yetkazish va pickup | delivered %, exception age | DEFERRED (DEC-113) |
+| `M16` | 1 | Sotuvdan keyingi xizmat va kafolat | resolution time, repeat complaints | MUST — oddiy murojaat (DEC-114) |
 | `M17` | 1 | Notifications, automation va merchant tasks | missed SLA tasks, delivery success | MUST |
-| `M18` | 1 | Dashboard, hisobot va Voice Business Copilot | metric reconciliation, answer groundedness | MUST |
+| `M18` | 1 | Dashboard, hisobot va Voice Business Copilot | metric reconciliation, answer groundedness | MUST — avval matnli (DEC-112) |
 | `M19` | 1 | Merchant AI controls, billing va platform operations | gross margin/tenant, active merchants | MUST |
 | `M20` | 1 | Activity log va biznes audit | unaudited critical mutations=0 | MUST |
 | `M21` | 2 | Self-service merchant provisioning | time to live merchant | MUST |
@@ -73,7 +91,7 @@
   - **03.** onboarding checklist va katalog sifat ko‘rsatkichi
   - **04.** trial/active/suspended/offboarded lifecycle
   - **05.** shaxsiy subdomain band qilish va tekshirish
-- **Jarayon/holatlar:** `draft→pending_verification→active→suspended→closed`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `DRAFT→PENDING_VERIFICATION→ACTIVE→SUSPENDED→CLOSED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-001`: Bitta tasdiqlangan owner va mustaqil merchant identity yaratiladi
 - `BL-002`: Har qanday read/write merchant scope bilan filtrlanadi
@@ -106,7 +124,8 @@
   - **04.** sezgir operatsiya uchun approval
   - **05.** sessiyalarni bekor qilish
   - **06.** auditda har bir qarorni aktorga bog‘lash
-- **Jarayon/holatlar:** `invited→active→disabled; approval: pending→approved/rejected`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+  - **07.** bitta xodimga bir nechta rol; onboarding'da "kichik do'kon" shabloni — egasiga barcha rollar (DEC-100f)
+- **Jarayon/holatlar:** `INVITED→ACTIVE→DISABLED; APPROVAL: PENDING→APPROVED/REJECTED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-005`: RBAC + scope (merchant, branch, ownership) tekshiriladi
 - `BL-006`: Rol va limitdan oshsa second approval talab
@@ -139,7 +158,7 @@
   - **04.** filial kesimida ishchi guruh
   - **05.** delivery coverage zone
   - **06.** default fulfillment branch
-- **Jarayon/holatlar:** `draft→active→temporarily_closed→archived`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `DRAFT→ACTIVE→TEMPORARILY_CLOSED→ARCHIVED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-009`: Manzil/koordinata merchant tomonidan tasdiqlanadi
 - `BL-010`: Pickup va delivery promise filial holatidan kelib chiqadi
@@ -171,7 +190,7 @@
   - **05.** qo‘lda qo‘shish va mass edit
   - **06.** publish/unpublish/archive
   - **07.** CSV/XLSX import preview va error report
-- **Jarayon/holatlar:** `draft→in_review→published→hidden→archived`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `DRAFT→IN_REVIEW→PUBLISHED→HIDDEN→ARCHIVED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-011`: Merchant ichida unique SKU, variant va condition mustaqil saqlanadi
 - `BL-012`: Majburiy atribut, narx va public kontent tekshiriladi
@@ -201,11 +220,11 @@
 - **Funksiyalar va qamrov:**
   - **01.** bazaviy narx va price-list
   - **02.** narx tarixi va effective time
-  - **03.** discount policy/limit
+  - **03.** discount policy/limit — merchant sozlaydi; default Sales 0% (so'raydi), Manager 5% gacha, undan yuqori Owner (DEC-110)
   - **04.** manual quote price approval
-  - **05.** ko‘p valyuta bo‘lsa exchange rate snapshot
+  - **05.** SKU narxi UZS yoki USD; xaridorga UZS, kurs snapshot (manba, vaqt) va "kurs eskirdi" ogohlantirishi (DEC-121)
   - **06.** narx muddati va stale flag
-- **Jarayon/holatlar:** `draft→active→expired/superseded`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `DRAFT→ACTIVE→EXPIRED/SUPERSEDED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-015`: Currency+minor units, version, source va valid_until bo‘ladi
 - `BL-016`: Yuborilgan quote immutable snapshot; qayta tasdiqda fresh pricing
@@ -239,7 +258,9 @@
   - **05.** reserve expiry/release
   - **06.** damaged/returned stock status
   - **07.** low-stock notification
-- **Jarayon/holatlar:** `available / reserved / allocated / sold / returned-damaged`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+  - **08.** "tez sotuv" — do'kondagi offline sotuvni stokdan darhol chiqarish (ledger `OFFLINE_SALE`, DEC-123)
+  - **09.** stok manbai — dashboard (DEC-107); rezerv `CONFIRMED` da, `on_hand` `COMPLETED` da kamayadi (DEC-105)
+- **Jarayon/holatlar:** `AVAILABLE / RESERVED / ALLOCATED / SOLD / RETURNED_DAMAGED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-019`: available = on_hand - reserved - allocated, >= 0
 - `BL-020`: Atomik check+increment, expiry; unique order/item reference
@@ -249,8 +270,8 @@
 - **Istisno va recovery (har biri test case):**
 - ikki parallel rezerv
 - nol stok
-- qayta kelgan payment webhook
-- expired reservationdan so‘ng payment
+- online buyurtma tasdig'i va do'kondagi "tez sotuv" bir vaqtda (BR-X13)
+- rezerv review muddati (72 soat) o'tgan buyurtma (DEC-104)
 - manfiy stock
 - drift
 - **UI sirtlari:**
@@ -272,11 +293,11 @@
   - **01.** subdomain va brand theme
   - **02.** responsive katalog/qidiruv/filtr
   - **03.** mahsulot detail va availability
-  - **04.** savatcha yoki quote request
+  - **04.** savatcha → buyurtma so'rovi (kontakt, olib ketish/yetkazish, manzil), to'lovsiz; operator tasdiqlaydi (DEC-115, DEC-100d)
   - **05.** contact/pickup/delivery
   - **06.** SEO-friendly metadata va sitemap
   - **07.** privacy/contact policies
-- **Jarayon/holatlar:** `preview→published→maintenance→disabled`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `PREVIEW→PUBLISHED→MAINTENANCE→DISABLED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-024`: Faqat shu merchantning visible mahsulotlari chiqadi
 - `BL-025`: Unique slug; domain verification; tls; revocation
@@ -312,7 +333,8 @@
   - **06.** cooler/case dimensions
   - **07.** budget recommendation
   - **08.** alternatives/human review
-- **Jarayon/holatlar:** `draft→compatible / review_required / incompatible→quote_ready`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+  - **09.** komponent spetsifikatsiyalari platforma reference spec kutubxonasidan; SKU MPN/model bo'yicha bog'lanadi, bog'lanmasa `REVIEW_REQUIRED` (DEC-011, DEC-120)
+- **Jarayon/holatlar:** `DRAFT→PASS / REVIEW_REQUIRED / BLOCK→QUOTE_READY` (K-09); tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-027`: CPU/board/RAM/PSU/case bo‘yicha deterministik rules
 - `BL-028`: Unknown != compatible; REVIEW_REQUIRED
@@ -342,12 +364,12 @@
 - **Funksiyalar va qamrov:**
   - **01.** Telegram bot / Business bog‘lash
   - **02.** web widget joylashtirish
-  - **03.** Meta professional account ruxsatiga tayyor adapter
+  - **03.** Instagram Direct (Meta rasmiy ruxsati; ariza S0 bilan topshiriladi) — Stage 1 kanali (DEC-116)
   - **04.** OAuth/token rotate/revoke
   - **05.** channel policy/message window
   - **06.** webhook health
   - **07.** manual fallback
-- **Jarayon/holatlar:** `pending→connected→degraded→disconnected/revoked`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `PENDING→CONNECTED→DEGRADED→DISCONNECTED/REVOKED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-031`: Rasmiy scope, account owner authorization va token vault
 - `BL-032`: Auth/signature, provider event uniqueness, durable persistence before ACK
@@ -382,7 +404,7 @@
   - **06.** attachments/voice transkript
   - **07.** follow-up/task reminder
   - **08.** consent/retention flag
-- **Jarayon/holatlar:** `new→ai_active→waiting_customer→human_needed→human_active→resolved→reopened`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `NEW→AI_ACTIVE→WAITING_CUSTOMER→HUMAN_NEEDED→HUMAN_ACTIVE→RESOLVED→REOPENED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-034`: Bitta vaqtda AI yoki human send authority, har ikkisi emas
 - `BL-035`: Provider timestamp/event id bilan reorder/dedupe; unsafe gap = wait/reconcile
@@ -420,7 +442,8 @@
   - **07.** guardrails va approval
   - **08.** fallback to human
   - **09.** AI usage metering
-- **Jarayon/holatlar:** `idle→qualifying→recommending→quote_requested / handed_off / stopped`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+  - **10.** xaridor "olaman" desa — buyurtma qoralamasi (`DRAFT`) + operatorni chaqirish; AI tasdiqlamaydi (DEC-100c)
+- **Jarayon/holatlar:** `IDLE→QUALIFYING→RECOMMENDING→QUOTE_REQUESTED / HANDED_OFF / STOPPED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-038`: Faqat merchant allowlisted catalog tool natijasidagi SKU, narx, stock
 - `BL-039`: Prompt injection va PII egress limit; tool-call schema validation
@@ -458,7 +481,8 @@
   - **06.** win/loss reason
   - **07.** customer acceptance
   - **08.** quote revisions with immutable history
-- **Jarayon/holatlar:** `lead: new→qualified→quoted→won/lost; quote: draft→review→approved→sent→accepted/expired/rejected`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+  - **09.** quote faqat online PC yig'ma va maxsus narx uchun (DEC-100e); pilotda har quote Manager/Owner tasdig'idan, keyin `RISK_ONLY` rejimi (DEC-102, DEC-109); default muddat 24 soat (DEC-103)
+- **Jarayon/holatlar:** `LEAD: NEW→QUALIFIED→QUOTED→WON/LOST; QUOTE: DRAFT→REVIEW→APPROVED→SENT→ACCEPTED/EXPIRED/REJECTED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-042`: Consent va minimal contact; duplicate logic scoped per merchant
 - `BL-043`: Immutable SKU, price, taxes/fee if any, condition, warranty snapshot
@@ -489,21 +513,24 @@
 - **Funksiyalar va qamrov:**
   - **01.** cart/quote to order
   - **02.** merchant order number
-  - **03.** customer contact+pickup/shipping
-  - **04.** reserve / confirm
+  - **03.** customer contact + `fulfillment_method` (`PICKUP`/`DELIVERY`) + manzil; yetkazish narxi operator bilan kelishiladi (DEC-113, DEC-100h)
+  - **04.** confirm (Sales o'ziga biriktirilgan yoki Manager, DEC-108) → rezerv; xaridor bilan chat yoki telefon orqali kelishuv izohi (DEC-100g)
   - **05.** cancel/partial cancel
   - **06.** order timeline, reason
   - **07.** duplicate order prevention
   - **08.** merchant comments/internal notes
-- **Jarayon/holatlar:** `draft→pending_confirmation→confirmed→processing→completed/cancelled`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+  - **09.** ixtiyoriy "to'landi" belgisi — kim, qachon, usul (naqd/karta/o'tkazma); tekshirilmagan deb ko'rsatiladi (DEC-100a)
+  - **10.** kutib qolgan buyurtmalar: tasdiqlanmagan so'rov 24 soatda eslatma, olib ketilmagan buyurtma 72 soatda "bekor qilinsinmi?" vazifasi; avtomatik bekor yo'q (DEC-104)
+- **Jarayon/holatlar:** `DRAFT→PENDING_CONFIRMATION→CONFIRMED→PROCESSING→COMPLETED/CANCELLED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-046`: Quote/order idempotency key, tenant and source uniqueness
 - `BL-047`: Current stock or valid reservation, price and terms checked
 - `BL-048`: Only allowed FSM transition with role and reason
-- `BL-049`: Reservation release and payment reconciliation orchestrated; no silent paid loss
+- `BL-049`: Rezerv/allocation aynan bir marta bo'shatiladi; bekor qilish — Manager/Owner, sabab bilan (DEC-108)
+- `BL-111`: Har buyurtma odam tasdig'idan o'tadi (DEC-100d)
 - **Istisno va recovery (har biri test case):**
 - parallel confirm
-- buyurtma bekor bo‘lganidan keyin payment
+- tasdiq paytida narx o'zgargan (xaridordan qayta rozilik)
 - out of stock
 - partial fulfill
 - stale quote
@@ -520,7 +547,7 @@
 
 ### M14 — To‘lov va chekni tekshirish
 
-- **Bosqich/ustuvorlik:** 1 / `MUST` (MUST — bosqich maqsadi uchun; SHOULD — reliz darvozasiga bog‘liq).
+- **Bosqich/ustuvorlik:** 1 / `DEFERRED` — Stage 1 da to'lov tizimdan tashqarida, do'kon o'zi oladi (DEC-100, DEC-111). Quyidagi spetsifikatsiya to'lov moduli qaytganda ishlatiladi.
 - **Nega mavjud:** Tasdiqlanmagan chek rasmini real paid holatiga aylantirmaslik.
 - **Kim foydalanadi:** Customer, Cashier, Manager.
 - **Biznes maʼlumotlari:** `payment_id, provider_ref, amount, currency, proof, settlement_status`. Bular ERD emas, data contractga kiradigan domen tushunchalari.
@@ -532,7 +559,7 @@
   - **05.** partial payment/refund request
   - **06.** reconciliation dashboard
   - **07.** financial evidence audit
-- **Jarayon/holatlar:** `initiated→awaiting_confirmation→verified/failed/cancelled; refund pending→approved→completed/failed`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `INITIATED→AWAITING_CONFIRMATION→VERIFIED/FAILED/CANCELLED; REFUND PENDING→APPROVED→COMPLETED/FAILED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-050`: Proof != verified; authorized reviewer matches actual receipt
 - `BL-051`: Authenticity, amount, currency, merchant account and provider ref checked
@@ -557,7 +584,7 @@
 
 ### M15 — Yetkazish va pickup
 
-- **Bosqich/ustuvorlik:** 1 / `MUST` (MUST — bosqich maqsadi uchun; SHOULD — reliz darvozasiga bog‘liq).
+- **Bosqich/ustuvorlik:** 1 / `DEFERRED` — Stage 1 da yetkazish moduli va kuryer roli yo'q, do'kon o'zi tashkil qiladi; buyurtmada faqat `fulfillment_method` va manzil (DEC-113). Quyidagi spetsifikatsiya keyingi bosqich uchun.
 - **Nega mavjud:** Buyurtmani jo‘natish/olib ketish nazoratini merchantga berish.
 - **Kim foydalanadi:** Manager, Courier, Customer.
 - **Biznes maʼlumotlari:** `shipment_id, method, branch, courier, address, POD`. Bular ERD emas, data contractga kiradigan domen tushunchalari.
@@ -570,7 +597,7 @@
   - **06.** proof-of-delivery
   - **07.** failed delivery retry/reschedule
   - **08.** customer notification
-- **Jarayon/holatlar:** `pending→ready→assigned→in_transit→delivered; exception→rescheduled/returned`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `PENDING→READY→ASSIGNED→IN_TRANSIT→DELIVERED; EXCEPTION→RESCHEDULED/RETURNED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-054`: Address, contact permission, branch and shipment method verified
 - `BL-055`: Courier/manager scoped; POD where applicable
@@ -592,7 +619,7 @@
 
 ### M16 — Sotuvdan keyingi xizmat va kafolat
 
-- **Bosqich/ustuvorlik:** 1 / `SHOULD` (MUST — bosqich maqsadi uchun; SHOULD — reliz darvozasiga bog‘liq).
+- **Bosqich/ustuvorlik:** 1 / `MUST` — S5 da oddiy murojaat kartochkasi; kafolat shartlari buyurtma qatorida S4 dan saqlanadi; pul qaytarish tizimdan tashqarida (DEC-114).
 - **Nega mavjud:** Qaytarish, da’vo va kafolat jarayonini sotuvchi mas’uliyatida kuzatish.
 - **Kim foydalanadi:** Customer, Support, Manager.
 - **Biznes maʼlumotlari:** `order_ref, warranty_terms, issue_evidence, resolution`. Bular ERD emas, data contractga kiradigan domen tushunchalari.
@@ -604,7 +631,7 @@
   - **05.** customer feedback
   - **06.** dispute escalation
   - **07.** return-to-stock review
-- **Jarayon/holatlar:** `new→review→approved/rejected→in_service→resolved/closed`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `NEW→REVIEW→APPROVED/REJECTED→IN_SERVICE→RESOLVED/CLOSED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-057`: Terms snapshot order line at time of sale
 - `BL-058`: Eligibility and product condition reviewed by human
@@ -637,7 +664,7 @@
   - **05.** delivery status message
   - **06.** quiet hours/opt-out
   - **07.** retry/dedup/failure log
-- **Jarayon/holatlar:** `pending→scheduled→sent/failed/suppressed`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `PENDING→SCHEDULED→SENT/FAILED/SUPPRESSED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-060`: Event/template/version/recipient and dedup key recorded
 - `BL-061`: Respect legal and channel transactional exceptions
@@ -665,15 +692,15 @@
 - **Kim foydalanadi:** Owner, Manager, Analyst.
 - **Biznes maʼlumotlari:** `metric_id, scoped_period, branch, timezone, data_as_of`. Bular ERD emas, data contractga kiradigan domen tushunchalari.
 - **Funksiyalar va qamrov:**
-  - **01.** KPI: orders/paid turnover/margin only if COGS exists
+  - **01.** KPI: Stage 1 da yakunlangan buyurtmalar soni va summasi (to'lov tizimdan tashqarida — DEC-100); "to'landi" belgisi bo'yicha tekshirilmagan summa alohida; margin only if COGS exists
   - **02.** period/branch/channel comparisons
   - **03.** saved reports+export
-  - **04.** uz/ru/en voice STT→intent→typed metric query→TTS
+  - **04.** S5 da matnli hisobot-chat (metric registry); uz/ru/en voice STT→intent→typed metric query→TTS — golden set testidan keyin beta (DEC-112, DEC-010)
   - **05.** read-only first
   - **06.** explain data freshness
   - **07.** dashboard drill-down
   - **08.** access-based aggregation
-- **Jarayon/holatlar:** `requested→running→completed/partial/failed`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `REQUESTED→RUNNING→COMPLETED/PARTIAL/FAILED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-063`: Metric registry defines paid turnover vs profit vs revenue
 - `BL-064`: Speech-to-text transcript confirmation for sensitive sums
@@ -710,7 +737,7 @@
   - **06.** error state/health
   - **07.** merchant data export/offboarding
   - **08.** tenant billing invoice
-- **Jarayon/holatlar:** `trial→active→past_due→restricted→cancelled`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `TRIAL→ACTIVE→PAST_DUE→RESTRICTED→CANCELLED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-067`: Usage measured by merchant and stable billing windows
 - `BL-068`: Grace and downgrade policies; existing paid orders remain accessible
@@ -746,7 +773,7 @@
   - **05.** export with approval
   - **06.** PII redaction
   - **07.** support break-glass audit
-- **Jarayon/holatlar:** `recorded→retained→expired by policy`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `RECORDED→RETAINED→EXPIRED` (policy bo‘yicha); tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-071`: Actor, trace, entity, before/after safe diff audit in same logical operation
 - `BL-072`: Secrets, card data and unnecessary PII not logged
@@ -782,7 +809,7 @@
   - **05.** publish readiness score
   - **06.** auto health checks
   - **07.** support escalation
-- **Jarayon/holatlar:** `registered→verified→provisioned→ready/blocked`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `REGISTERED→VERIFIED→PROVISIONED→READY/BLOCKED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-001`: Bitta tasdiqlangan owner va mustaqil merchant identity yaratiladi
 - `BL-003`: Minimal identifikatsiya, aloqa va public terms tasdiq bo‘lmaguncha live emas
@@ -815,7 +842,7 @@
   - **06.** revocation/health
   - **07.** rate limits/resume
   - **08.** manual reconciliation
-- **Jarayon/holatlar:** `draft→authorized→syncing→healthy/degraded→revoked`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `DRAFT→AUTHORIZED→SYNCING→HEALTHY/DEGRADED→REVOKED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-073`: Source-of-truth priority per field (stock, price, metadata) declared
 - `BL-074`: Provider-specific cursor, idempotency and rate limits
@@ -849,7 +876,7 @@
   - **05.** merge/split/version history
   - **06.** provenance and aliases
   - **07.** multilingual synonyms
-- **Jarayon/holatlar:** `unmatched→candidate→reviewed→matched/rejected`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `UNMATCHED→CANDIDATE→REVIEWED→MATCHED/REJECTED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-076`: GTIN/MPN/brand+model+variant evidence required
 - `BL-077`: Capacity, color, condition, revision/material specs never silently merged
@@ -882,7 +909,7 @@
   - **05.** hide/unpublish/revoke
   - **06.** public/private field contract
   - **07.** legal policy acknowledgement
-- **Jarayon/holatlar:** `private→pending_validation→published→stale/hidden/withdrawn`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `PRIVATE→PENDING_VALIDATION→PUBLISHED→STALE/HIDDEN/WITHDRAWN`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-079`: Merchant explicitly selects offered public fields
 - `BL-080`: Index is eventually consistent but withdrawal prioritized; fail closed after revoke
@@ -914,7 +941,7 @@
   - **05.** branch-specific pickup SLA
   - **06.** negative stock protection
   - **07.** transfer ledger
-- **Jarayon/holatlar:** `transfer: draft→approved→in_transit→received/cancelled`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `TRANSFER: DRAFT→APPROVED→IN_TRANSIT→RECEIVED/CANCELLED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-019`: available = on_hand - reserved - allocated, >= 0
 - `BL-021`: Faqat faol rezerv bo‘shatiladi; qayta release no-op
@@ -946,7 +973,7 @@
   - **05.** fraud/abuse suppression
   - **06.** billing dunning
   - **07.** tenant data export/termination
-- **Jarayon/holatlar:** `active→grace_period→limited→restored/terminated`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `ACTIVE→GRACE_PERIOD→LIMITED→RESTORED/TERMINATED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-067`: Usage measured by merchant and stable billing windows
 - `BL-068`: Grace and downgrade policies; existing paid orders remain accessible
@@ -978,7 +1005,7 @@
   - **05.** tool enable matrix
   - **06.** abuse/prompt injection review
   - **07.** quality eval feedback
-- **Jarayon/holatlar:** `draft→review→approved→published→rolled_back`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `DRAFT→REVIEW→APPROVED→PUBLISHED→ROLLED_BACK`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-038`: Faqat merchant allowlisted catalog tool natijasidagi SKU, narx, stock
 - `BL-039`: Prompt injection va PII egress limit; tool-call schema validation
@@ -1009,7 +1036,7 @@
   - **05.** rebuild/replay
   - **06.** search result sampling
   - **07.** quality score by merchant
-- **Jarayon/holatlar:** `pending_index→indexed→stale→hidden/reindexed`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `PENDING_INDEX→INDEXED→STALE→HIDDEN/REINDEXED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-080`: Index is eventually consistent but withdrawal prioritized; fail closed after revoke
 - `BL-085`: Event ordering/aggregate_version and replay semantics
@@ -1041,7 +1068,7 @@
   - **05.** fulfillment quality metrics
   - **06.** moderation appeal
   - **07.** display only justified badges
-- **Jarayon/holatlar:** `unverified→in_review→verified/rejected/expired`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `UNVERIFIED→IN_REVIEW→VERIFIED/REJECTED/EXPIRED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-087`: Badges require verified evidence and expiry
 - `BL-088`: Complaint, appeal, removal policy; unbiased written reasons
@@ -1072,7 +1099,7 @@
   - **05.** sandbox environment
   - **06.** key rotation/revoke
   - **07.** mapping troubleshooting
-- **Jarayon/holatlar:** `requested→active→limited/revoked`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `REQUESTED→ACTIVE→LIMITED/REVOKED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-005`: RBAC + scope (merchant, branch, ownership) tekshiriladi
 - `BL-074`: Provider-specific cursor, idempotency and rate limits
@@ -1110,7 +1137,7 @@
   - **06.** facets and sorting
   - **07.** no-result suggestion
   - **08.** rate limiting
-- **Jarayon/holatlar:** `query→results/no_results/degraded`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `QUERY→RESULTS/NO_RESULTS/DEGRADED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-090`: Search only published canonical and opt-in offers
 - `BL-091`: Condition/variant discriminators respected
@@ -1143,7 +1170,7 @@
   - **05.** low-to-high/nearest sorting
   - **06.** price history only with real snapshots
   - **07.** report wrong offer
-- **Jarayon/holatlar:** `available→stale/excluded; report: new→verified→closed`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `AVAILABLE→STALE/EXCLUDED; REPORT: NEW→VERIFIED→CLOSED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-092`: Show base price, delivery cost if known, currency, warranty, updated_at
 - `BL-093`: Total cost used only when comparable and valid
@@ -1177,7 +1204,7 @@
   - **05.** working hours
   - **06.** merchant directions link
   - **07.** delivery-zone distinction
-- **Jarayon/holatlar:** `unknown→location_allowed/denied; branch pickup: available/unavailable`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `UNKNOWN→LOCATION_ALLOWED/DENIED; BRANCH PICKUP: AVAILABLE/UNAVAILABLE`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-095`: Request explicit consent for device precise geo; city query without it
 - `BL-096`: Straight-line vs provider travel distance clearly labeled
@@ -1210,7 +1237,7 @@
   - **07.** why-not and uncertainty
   - **08.** multilingual answer
   - **09.** no sponsored-as-organic
-- **Jarayon/holatlar:** `understanding→searching→comparing→answered/clarify/handoff`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `UNDERSTANDING→SEARCHING→COMPARING→ANSWERED/CLARIFY/HANDOFF`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-097`: Explain input constraints and evidence source; no invented product quality
 - `BL-098`: Public index only, no merchant internal data
@@ -1244,7 +1271,7 @@
   - **05.** merchant acceptance
   - **06.** conversion feedback optional
   - **07.** spam control
-- **Jarayon/holatlar:** `created→delivered→acknowledged→converted/lost/expired`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `CREATED→DELIVERED→ACKNOWLEDGED→CONVERTED/LOST/EXPIRED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-100`: Buyer consent and visible destination; tracked referral id
 - `BL-101`: Merchant receives only necessary lead data after opt-in
@@ -1275,7 +1302,7 @@
   - **05.** availability watch opt-in
   - **06.** privacy/delete/export
   - **07.** unsubscribe
-- **Jarayon/holatlar:** `watch: active→triggered/expired/cancelled`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `WATCH: ACTIVE→TRIGGERED/EXPIRED/CANCELLED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-102`: Explicit opt-in with one-click unsubscribe
 - `BL-103`: Alerts only on fresh verified offer and throttled per user
@@ -1306,7 +1333,7 @@
   - **05.** bad actor takedown
   - **06.** experiment governance
   - **07.** user report mechanism
-- **Jarayon/holatlar:** `eligible→ranked/filtered; ad approved/rejected`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `ELIGIBLE→RANKED/FILTERED; AD APPROVED/REJECTED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-104`: Clearly marked and approved; not presented as AI-best
 - `BL-105`: Match quality, offer freshness and disclosed scoring criteria
@@ -1337,7 +1364,7 @@
   - **05.** sitemap
   - **06.** content quality review
   - **07.** out-of-stock status transparency
-- **Jarayon/holatlar:** `draft→indexable→noindex/retired`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `DRAFT→INDEXABLE→NOINDEX/RETIRED`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-106`: Structured data only for currently valid public offers
 - `BL-107`: Canonical URL and noindex for thin duplicate states
@@ -1368,7 +1395,7 @@
   - **05.** referral to private merchant bot
   - **06.** conversation privacy
   - **07.** request quotas
-- **Jarayon/holatlar:** `idle→searching→results→handoff`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
+- **Jarayon/holatlar:** `IDLE→SEARCHING→RESULTS→HANDOFF`; tegishli to‘liq FSM: `05_STATE_MACHINES_AND_EXCEPTIONS.md`.
 - **Bajarilishi shart bo‘lgan qoidalar:**
 - `BL-098`: Public index only, no merchant internal data
 - `BL-100`: Buyer consent and visible destination; tracked referral id

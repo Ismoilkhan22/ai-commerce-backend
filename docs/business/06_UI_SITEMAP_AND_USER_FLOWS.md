@@ -13,24 +13,24 @@
   /catalog                         -> M04: product list and imports
   /catalog/new                     -> M04: product editor
   /prices                          -> M05: price history and approval
-  /inventory                       -> M06: branch-SKU stock, ledger, reserves
+  /inventory                       -> M06: branch-SKU stock, ledger, reserves, "tez sotuv" (DEC-123)
   /pc-builder                      -> M08: compatible PC quote wizard
   /storefront                      -> M07: theme, domain, publish
   /channels                        -> M09: bot/widget/Meta connect status
   /inbox                           -> M10+M11: chat queue, assign, AI handoff
   /leads                           -> M12: funnel and quote
   /orders                          -> M13: order board, exceptions
-  /payments                        -> M14: proof review, reconciliation
-  /fulfillment                     -> M15: delivery/pickup queue
+  /payments                        -> M14: DEFERRED (DEC-100) — Stage 1 da yo'q
+  /fulfillment                     -> M15: DEFERRED (DEC-113) — holat /orders ichida
   /support                         -> M16: warranty and returns
   /notifications                   -> M17: template, task, failure logs
   /reports                         -> M18: analytics, saved reports, exports
-  /voice                           -> M18: microphone, transcript, evidence
+  /voice                           -> M18: S5 da matnli hisobot-chat; mikrofon — beta (DEC-112)
   /settings/ai                     -> M19: tool/prompt/policy and usage
   /settings/billing                -> M19: plan, payments, quotas
   /audit                           -> M20: object actions, security logs
 
-Storefront: /s/{merchant_slug}/, /p/{merchant_slug}/{product_slug}, /cart, /quote/{token}, /orders/{tracking_token}
+Storefront: /s/{merchant_slug}/, /p/{merchant_slug}/{product_slug}, /cart (→ buyurtma so'rovi, to'lovsiz — DEC-115), /quote/{token} (faqat PC), /orders/{tracking_token}
 ```
 
 ## Stage 2 network admin and merchant routes
@@ -73,16 +73,16 @@ Storefront: /s/{merchant_slug}/, /p/{merchant_slug}/{product_slug}, /cart, /quot
 | `M03` | Branch list/map, Schedule editor, Service radius, Pickup rules | filial yaratish/archivlash | noto‘g‘ri geolokatsiya / error, retry, human help |
 | `M04` | Products table, Product editor, Import preview, Publish validation | mahsulot+variant/SKU | dublikat SKU / error, retry, human help |
 | `M05` | Pricing table, Change price dialog, History, Price approval | bazaviy narx va price-list | narx almashgan paytdagi eski quote / error, retry, human help |
-| `M06` | Stock list, SKU stock ledger, Adjustment approval, Reservation monitor | filial-SKU fizik qoldiq | ikki parallel rezerv / error, retry, human help |
+| `M06` | Stock list, SKU stock ledger, Adjustment approval, Reservation monitor, "Tez sotuv" tugmasi (desktop + mobil) | filial-SKU fizik qoldiq | ikki parallel rezerv / error, retry, human help |
 | `M07` | Storefront builder, Website preview, Public catalog, Product detail, Cart/request | subdomain va brand theme | subdomain conflict / error, retry, human help |
 | `M08` | PC Builder, Compatibility findings, Budget alternatives, Quote action | ready PC builds | unknown BIOS / error, retry, human help |
 | `M09` | Channel connect wizard, Permission status, Webhook health, Disconnect | Telegram bot / Business bog‘lash | provider ruxsat bermaydi / error, retry, human help |
 | `M10` | Unified inbox, Conversation detail, Human takeover, Assignments, Escalation queue | inbound normalization/dedup | takrorlangan xabar / error, retry, human help |
 | `M11` | AI agent config, Tool permissions, Test playground, Conversation explanation, Fallback | uz/ru/en niyat va tilni aniqlash | LLM hallucinated SKU / error, retry, human help |
 | `M12` | Lead pipeline, Lead detail, Quote builder, Quote preview, Approval | lead dedup va source attribution | operator forgot lead / error, retry, human help |
-| `M13` | Order list, Order detail, Confirm/cancel dialog, Timeline, Order exceptions | cart/quote to order | parallel confirm / error, retry, human help |
-| `M14` | Payments list, Review receipt, Payment detail, Reconciliation, Refund approval | pay link yoki merchant rekvizitlari | screenshot forged / error, retry, human help |
-| `M15` | Fulfillment board, Shipment timeline, Courier view, Tracking page | pickup vs local delivery | noto‘g‘ri address / error, retry, human help |
+| `M13` | Order list, Order detail (fulfillment method, manzil, kelishuv izohi, "to'landi" belgisi), Confirm/cancel dialog, Timeline, Order exceptions | AI/sayt DRAFT → operator tasdig'i → topshirish (UX-02) | parallel confirm / error, retry, human help |
+| `M14` — DEFERRED | Payments list, Review receipt, Payment detail, Reconciliation, Refund approval | pay link yoki merchant rekvizitlari | screenshot forged / error, retry, human help |
+| `M15` — DEFERRED | Fulfillment board, Shipment timeline, Courier view, Tracking page | pickup vs local delivery | noto‘g‘ri address / error, retry, human help |
 | `M16` | Support inbox, RMA case, Warranty detail, Resolution history | warranty terms snapshot | warranty ambiguous / error, retry, human help |
 | `M17` | Notification center, Template editor, Task queue, Delivery log | notification template va locale | takror notification / error, retry, human help |
 | `M18` | Overview dashboard, Report builder, Voice mic/transcript, Chart/export | KPI: orders/paid turnover/margin only if COGS exists | ASR currency mistake / error, retry, human help |
@@ -126,64 +126,65 @@ flowchart TD
  J --> K[Enable merchant live sales]
 ```
 
-### UX-02: Instagram/Telegram/Web message → quote → merchant sale
+### UX-02: Stage 1 savdo oqimi — xabar yoki sayt → buyurtma → operator → tasdiq → topshirish (DEC-100)
+
+Bu Stage 1 ning **yagona canonical savdo oqimi**. To'lov tizimdan tashqarida, do'kon o'zi oladi; yetkazishni do'kon o'zi tashkil qiladi.
+
 ```mermaid
 flowchart TD
- A[New inbound message] --> B[Validate webhook + dedupe]
- B --> C[Inbox conversation]
- C --> D{AI available and permitted?}
- D -- No --> E[Assign human]
- D -- Yes --> F[Ask use case, budget, variant]
- F --> G[Tool-based catalogue search]
- G --> H{Verified price, stock, match?}
- H -- No --> E
- H -- Yes --> I[Candidate products / PC build]
- I --> J[Create lead + quote draft]
- J --> K{Approval required?}
- K -- Yes --> L[Manager approves]
- K -- No --> M[Send quote]
- L --> M
- M --> N{Buyer accepts?}
- N -- No --> O[Loss reason or revised quote]
- N -- Yes --> P[Reprice + reserve atomically]
- P --> Q{Stock still available?}
- Q -- No --> O
- Q -- Yes --> R[Order pending/confirmed policy]
- R --> S[Payment flow / pickup/delivery]
+ A1[Telegram / Instagram / web chat xabari] --> B[Webhook tekshiruvi + dedupe → inbox]
+ B --> C{AI yoqilgan va ruxsat bormi?}
+ C -- Yo'q --> H[Operator vazifasi]
+ C -- Ha --> D[AI: til, ehtiyoj, byudjet; faqat shu do'kon katalogi, narx, stok]
+ D --> E{PC yig'mami?}
+ E -- Ha --> Q[Compatibility PASS / REVIEW_REQUIRED / BLOCK → quote DRAFT]
+ Q --> QA{Quote tasdig'i: pilotda har doim Manager/Owner}
+ QA --> QS[Quote xaridorga yuboriladi, 24 soat amal qiladi]
+ QS --> F{Xaridor 'olaman' dedimi?}
+ E -- Yo'q --> F
+ F -- Yo'q --> L[Lead: sabab yoki follow-up]
+ F -- Ha --> G[AI buyurtma qoralamasi DRAFT: mahsulot, kontakt, olib ketish/yetkazish, manzil]
+ A2[Sayt: savatcha → buyurtma so'rovi] --> G2[Order DRAFT → PENDING_CONFIRMATION]
+ G --> H
+ G2 --> H
+ H --> I[Operator suhbatni oladi: AI javob yozmaydi; chat yoki telefon; narx, yetkazish, vaqt kelishiladi]
+ I --> J{Sotuvchi: mahsulot bormi? stok qulf bilan tekshiriladi}
+ J -- Yo'q --> K[Muqobil taklif yoki CANCELLED + sabab]
+ J -- Ha --> M[Order CONFIRMED + rezerv]
+ M --> N[PROCESSING: yig'ish / tayyorlash / yo'lda; xaridorga status xabari]
+ N --> O[Topshirildi → COMPLETED: stok kamayadi, lead WON]
+ O --> P[To'lovni do'kon o'zi oladi; ixtiyoriy 'to'landi' belgisi]
 ```
 
-### UX-03: Parallel checkout and reserved stock
+| Qadam | Kim | Holat | DEC |
+|---|---|---|---|
+| Xabar keladi, AI maslahat beradi | AI | Conversation `AI_ACTIVE`, Lead `QUALIFIED` | — |
+| PC yig'ma uchun taklif | AI → Manager/Owner | Quote `DRAFT → APPROVED → SENT` | DEC-100e, 102, 103, 109 |
+| "Olaman" — buyurtma qoralamasi | AI yoki sayt | Order `DRAFT` (stok band emas) | DEC-100c, 115 |
+| Operator ulanadi | Sales | Conversation `HUMAN_ACTIVE`, Order `PENDING_CONFIRMATION` | DEC-100d, 100g |
+| Mahsulot borligi tasdiqlanadi | Sales (o'ziga biriktirilgan) / Manager | Order `CONFIRMED`, rezerv `ACTIVE` | DEC-105, 108 |
+| Tayyorlash / yo'lda | Sales / ombor | Order `PROCESSING`, rezerv `ALLOCATED` | DEC-113 |
+| Topshirildi | Sales / Manager | Order `COMPLETED`, stok kamayadi | DEC-105 |
+| Bekor qilish | Manager / Owner | Order `CANCELLED`, rezerv bo'shaydi | DEC-108 |
+| Kutib qolgan buyurtma | Tizim → Manager | 24 soat eslatma, 72 soat "bekor qilinsinmi?" | DEC-104 |
+
+### UX-03: Bitta qolgan mahsulot — parallel tasdiq va offline sotuv
 ```mermaid
 flowchart TD
- A[One remaining SKU] --> B[Customer A reserve]
- A --> C[Customer B reserve]
- B --> D[Transaction lock/version]
+ A[Omborda 1 dona] --> B[Operator A buyurtmani tasdiqlaydi]
+ A --> C[Operator B tasdiqlaydi yoki do'konda 'tez sotuv']
+ B --> D[Stock row lock / version]
  C --> D
- D --> E[Only one reservation succeeds]
- E --> F[Winner: active reservation]
- E --> G[Loser: insufficient stock, alternatives]
- F --> H{Payment/confirm before expiry?}
- H -- No --> I[Idempotent release]
- H -- Yes --> J[Allocate -> fulfill]
+ D --> E[Faqat bittasi muvaffaqiyatli]
+ E --> F[G'olib: rezerv ACTIVE yoki OFFLINE_SALE]
+ E --> G[Yutqazgan: stok yetarli emas → muqobil taklif]
+ F --> H{Buyurtma bekor bo'ldimi?}
+ H -- Ha --> I[Rezerv idempotent bo'shatiladi]
+ H -- Yo'q --> J[ALLOCATED → CONSUMED]
 ```
 
-### UX-04: Payment proof, verification, delivery
-```mermaid
-flowchart TD
- A[Order awaiting payment] --> B[Buyer pays merchant]
- B --> C{Verified gateway callback?}
- C -- Yes --> D[Validate merchant, amount, currency]
- C -- No --> E[Upload proof for human check]
- E --> D
- D --> F{Settlement confirmed?}
- F -- No --> G[Pending/rejected proof; notify manager]
- F -- Yes --> H[Payment verified]
- H --> I[Pack/assign courier or pickup]
- I --> J[Dispatch and track]
- J --> K{Delivered?}
- K -- No --> L[Exception/reschedule]
- K -- Yes --> M[Delivery evidence + review request]
-```
+### UX-04: To'lov va yetkazish — `DEFERRED` (DEC-100, DEC-113)
+Stage 1 da to'lov tekshiruvi va yetkazish moduli yo'q. To'lov provayderi yoki yetkazish hamkori bilan shartnoma bo'lganda bu oqim qayta yoziladi (eski variant git tarixida, commit `58809a4`).
 
 ### UX-05: Voice owner report in UZ/RU/EN
 ```mermaid
@@ -264,11 +265,11 @@ flowchart TD
 ## ASCII wireframe — Merchant order
 ```text
 ┌──────── Order #ORD-... / tenant: merchant  ───────────────────────────────┐
-│ Status: Confirmed     Payment: Awaiting proof     Stock: Reserved         │
+│ Status: CONFIRMED   Fulfillment: PICKUP   Paid mark: — (tekshirilmagan) │
 │ Items: SKU / variant / qty / quote price snapshot / fulfilment branch      │
-│ Events: CREATED → RESERVED → PAYMENT REQUESTED → VERIFIED → SHIPPED       │
-│ Exceptions: [Price changed] [Reservation expiry] [Late payment]           │
-│ Actions: [Confirm] [Cancel] [Review proof] [Assign courier]              │
+│ Events: DRAFT → PENDING_CONFIRMATION → CONFIRMED → PROCESSING → COMPLETED │
+│ Exceptions: [Price changed] [Stock conflict] [Reservation review 72h]     │
+│ Actions: [Confirm] [Start processing] [Complete] [Cancel] [Mark paid]    │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 

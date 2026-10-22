@@ -1,6 +1,6 @@
 # 09 — BUSINESS MODULE RELATIONS, EVENTS, NOTIFICATIONS, FAILURE POLICY
 
-**Version:** v1.0. Entity owner and business intent are binding; exact transport (Celery/RabbitMQ/Redis) is ADR to decide.
+**Version:** v1.0. Entity owner and business intent are binding. Transport: PostgreSQL outbox + PG leased jobs (DEC-003, ADR-005). Event envelope — K-08 (`../engineering/09_EVENTS_OUTBOX_AND_JOBS.md`). Stage 1 baseline: to'lov (DEC-100) va yetkazish (DEC-113) event'lari `DEFERRED`.
 
 ## Context map: logical ownership
 
@@ -44,10 +44,14 @@ flowchart TB
 | `conversation.message_received.v1` | M10 | M11,M12 | AI routing or human task | Provider event id dedup |
 | `conversation.handoff_requested.v1` | M10/M11 | M17 | Notify assigned operator | One open task per handoff key |
 | `quote.approved.v1` | M12 | M17,M13 | Send quote and allow acceptance | Snapshot/version guard |
-| `order.created.v1` | M13 | M06,M14,M17 | Track reserved stock and payment needed | DB atomic order/reserve boundary per ADR |
-| `order.cancelled.v1` | M13 | M06,M14,M15,M17 | Release hold, review money, stop dispatch | No duplicate release/refund |
-| `payment.verified.v1` | M14 | M13,M15,M17,M18 | Eligible fulfillment and paid report | Verification independent, reconcile late payment |
-| `shipment.delivered.v1` | M15 | M13,M16,M17,M18 | Close delivery, ask consented review | POD validation, replay no-op |
+| `order.created.v1` | M13 | M10,M17 | `DRAFT` buyurtma (AI/sayt/operator) — operatorga vazifa; stok band qilinmaydi | Idempotency key bo'yicha bitta buyurtma |
+| `order.submitted.v1` | M13 | M17 | `PENDING_CONFIRMATION` — operator/menejerga xabar, 24 soatlik eslatma taymeri (DEC-104) | One task per order |
+| `order.confirmed.v1` | M13 | M06,M17,M18 | Rezerv `ACTIVE` (bitta tranzaksiyada), xaridorga "tasdiqlandi" xabari | Order+reserve atomik (DEC-105) |
+| `order.completed.v1` | M13 | M06,M12,M16,M18 | Stok `CONSUMED`, lead `WON`, hisobot | Replay no-op |
+| `inventory.offline_sale.v1` | M06 | M07,M11,M18 | Do'kondagi "tez sotuv" — available qayta hisoblanadi (DEC-123) | Recompute from balance |
+| `order.cancelled.v1` | M13 | M06,M12,M17 | Rezerv bo'shatiladi, lead `LOST` + sabab, xaridorga xabar | No duplicate release |
+| `payment.verified.v1` — `DEFERRED` (DEC-100) | M14 | M13,M15,M17,M18 | Eligible fulfillment and paid report | Verification independent, reconcile late payment |
+| `shipment.delivered.v1` — `DEFERRED` (DEC-113) | M15 | M13,M16,M17,M18 | Close delivery, ask consented review | POD validation, replay no-op |
 | `public_offer.published.v1` | M24 | M28,M31 | Buyer offer searchable | Allowlist projection only |
 | `public_offer.withdrawn.v1` | M24 | M28,M31,M38 | No public exposure | Read-time deny until index cleared |
 | `canonical_product.match_changed.v1` | M23 | M24,M28,M31 | Re-group offers, preserve original merchant SKUs | Reindex and reversible mapping |
@@ -67,15 +71,17 @@ flowchart TB
 |---|---|---|---|---|
 | New human handoff | Assigned sales | In-app + opted merchant Telegram | Customer link, reason, age | Dedup by handoff task; high priority |
 | Quote approved/sent | Buyer if channel permits | Same opted-in channel | Verified quote link + expiry | One per quote revision |
-| Payment proof uploaded | Merchant finance | In-app | Awaiting settlement verification | Never auto-mark paid |
-| Payment verified | Buyer, order manager | Same channel/in-app | Verified receipt/status | Once per verified tx |
+| Yangi buyurtma (`DRAFT`/`PENDING_CONFIRMATION`) | Biriktirilgan operator, menejer | In-app + opted merchant Telegram | Mahsulot, kontakt, kanal, AI xulosasi | One per order; high priority |
+| Buyurtma tasdiqlandi / tayyorlanmoqda / topshirishga tayyor | Buyer | Same opted-in channel | Status, olib ketish yoki yetkazish ma'lumoti (do'kon kiritgan) | One per status transition |
+| Tasdiqlanmagan buyurtma eslatmasi (24 soat, DEC-104) | Operator, menejer | In-app | Buyurtma havolasi, kutish vaqti | One per order per policy window |
+| Rezerv review (72 soat, DEC-104) | Menejer | In-app task | "Bekor qilinsinmi?" — mahsulot, xaridor, kelishuv izohi | One per reservation |
+| Payment proof uploaded / verified — `DEFERRED` (DEC-100) | — | — | — | — |
 | Stock low | Warehouse, owner | Dashboard/notification | SKU, branch, available | Group by SKU and cooldown |
-| Reservation expiry | Order manager | In-app | Expired order/quote; next steps | One per reservation |
-| Delivery dispatched | Buyer | Opted channel | Tracking and realistic ETA if known | Shipping transitions idempotent |
-| Delivery failed | Buyer, manager | In-app/customer transactional | Reason, reschedule | High-priority task |
+| Delivery dispatched — `DEFERRED` (DEC-113) | Buyer | Opted channel | Tracking and realistic ETA if known | Shipping transitions idempotent |
+| Delivery failed — `DEFERRED` (DEC-113) | Buyer, manager | In-app/customer transactional | Reason, reschedule | High-priority task |
 | Integration degraded | Owner/admin | Dashboard + alert | Affected price/stock trust | Rate-limited repeats |
 | Public offer withdrawn | Owner / search service | Internal job + dashboard | Visibility removed | Priority and read-time deny |
-| Refund failed | Finance, owner | In-app critical | Funds unresolved, retry/manual action | Escalate, no auto-resolve |
+| Refund failed — `DEFERRED` (DEC-100) | Finance, owner | In-app critical | Funds unresolved, retry/manual action | Escalate, no auto-resolve |
 
 ## Recovery matrix
 
@@ -86,6 +92,6 @@ flowchart TB
 | Redis unavailable | DB primary remains authoritative | Pause ephemeral jobs; durable outbox backlog |
 | LLM unavailable | Merchant stock/orders still work | Switch to human inbox |
 | POS is stale | Do not sell false stock | Mark availability low-confidence; human approval |
-| Payment provider offline | Proof/manual only if verifiable | Pending; reconcile later |
+| Payment provider offline — `DEFERRED` (DEC-100) | Proof/manual only if verifiable | Pending; reconcile later |
 | Index behind | Public results may be stale | Display freshness and fail closed on revoked offer |
 | Merchant account suspended | No new checkout/public offer | Existing orders read/resolve by authorized support |

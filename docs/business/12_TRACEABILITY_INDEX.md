@@ -9,16 +9,16 @@
 | `M03` — Filiallar va xizmat hududi | 1 | `BL-009` `BL-010` | Branch list/map, Schedule editor | `UAT-M03` | M01, M02, M06, M16 |
 | `M04` — Katalog, variant va SKU | 1 | `BL-011` `BL-012` `BL-013` `BL-014` | Products table, Product editor | `UAT-M04` | M05, M06, M08, M10, M11 |
 | `M05` — Narx, valuta va chegirmalar | 1 | `BL-015` `BL-016` `BL-017` `BL-018` | Pricing table, Change price dialog | `UAT-M05` | M04, M08, M10, M12, M13 |
-| `M06` — Ombor, kirim-chiqim va rezerv | 1 | `BL-019` `BL-020` `BL-021` `BL-022` `BL-023` | Stock list, SKU stock ledger | `UAT-M06` | M03, M04, M12, M13, M14 |
+| `M06` — Ombor, kirim-chiqim va rezerv | 1 | `BL-019` `BL-020` `BL-021` `BL-022` `BL-023` `BL-109` | Stock list, SKU stock ledger | `UAT-M06` | M03, M04, M12, M13, M14 |
 | `M07` — Brendlangan mini-sayt va storefront | 1 | `BL-024` `BL-025` `BL-026` | Storefront builder, Website preview | `UAT-M07` | M01, M04, M05, M06, M12 |
 | `M08` — PC configurator va compatibility | 1 | `BL-027` `BL-028` `BL-029` `BL-030` | PC Builder, Compatibility findings | `UAT-M08` | M04, M05, M06, M10, M11 |
 | `M09` — Kanallar va kanal hisoblarini ulash | 1 | `BL-031` `BL-032` `BL-033` | Channel connect wizard, Permission status | `UAT-M09` | M01, M02, M10, M11, M17 |
 | `M10` — Unified Inbox, conversation va human handoff | 1 | `BL-034` `BL-035` `BL-036` `BL-037` | Unified inbox, Conversation detail | `UAT-M10` | M02, M09, M11, M12, M17 |
-| `M11` — AI Sales Agent va product discovery | 1 | `BL-038` `BL-039` `BL-040` `BL-041` | AI agent config, Tool permissions | `UAT-M11` | M04, M05, M06, M08, M10 |
+| `M11` — AI Sales Agent va product discovery | 1 | `BL-038` `BL-039` `BL-040` `BL-041` `BL-110` | AI agent config, Tool permissions | `UAT-M11` | M04, M05, M06, M08, M10 |
 | `M12` — Lead, CRM va quotation | 1 | `BL-042` `BL-043` `BL-044` `BL-045` | Lead pipeline, Lead detail | `UAT-M12` | M05, M08, M10, M11, M13 |
-| `M13` — Buyurtma va order lifecycle | 1 | `BL-046` `BL-047` `BL-048` `BL-049` | Order list, Order detail | `UAT-M13` | M06, M12, M14, M15, M16 |
-| `M14` — To‘lov va chekni tekshirish | 1 | `BL-050` `BL-051` `BL-052` `BL-053` | Payments list, Review receipt | `UAT-M14` | M02, M06, M13, M17, M18 |
-| `M15` — Yetkazish va pickup | 1 | `BL-054` `BL-055` `BL-056` | Fulfillment board, Shipment timeline | `UAT-M15` | M03, M13, M17 |
+| `M13` — Buyurtma va order lifecycle | 1 | `BL-046` `BL-047` `BL-048` `BL-049` `BL-111` | Order list, Order detail | `UAT-M13` | M06, M12, M14, M15, M16 |
+| `M14` — To‘lov va chekni tekshirish — DEFERRED (DEC-100) | 1 | `BL-050` `BL-051` `BL-052` `BL-053` | Payments list, Review receipt | `UAT-M14` | M02, M06, M13, M17, M18 |
+| `M15` — Yetkazish va pickup — DEFERRED (DEC-113) | 1 | `BL-054` `BL-055` `BL-056` | Fulfillment board, Shipment timeline | `UAT-M15` | M03, M13, M17 |
 | `M16` — Sotuvdan keyingi xizmat va kafolat | 1 | `BL-057` `BL-058` `BL-059` | Support inbox, RMA case | `UAT-M16` | M13, M14, M15, M17 |
 | `M17` — Notifications, automation va merchant tasks | 1 | `BL-060` `BL-061` `BL-062` | Notification center, Template editor | `UAT-M17` | M09, M10, M12, M13, M14 |
 | `M18` — Dashboard, hisobot va Voice Business Copilot | 1 | `BL-063` `BL-064` `BL-065` `BL-066` | Overview dashboard, Report builder | `UAT-M18` | M02, M10, M12, M13, M14 |
@@ -47,7 +47,7 @@
 ## Review checklist before transitioning to engineering
 
 1. Every module ID `M01..M39` appears in `02`, UI/role/FSM references and UAT.
-2. Rules `BL-001..BL-108` uniquely declared, with no dangling references.
+2. Rules `BL-001..BL-111` uniquely declared, with no dangling references.
 3. All sensitive UI operations have permission and approval path.
 4. A stage never depends on unimplemented next-stage module for merchant core sale; public offer projection is optional Stage 1.
 5. Every AI tool scope refers to real source-of-truth; no free-form payment/stock SQL or anonymous merchant data.

@@ -19,7 +19,7 @@
 - **Mahsulot:** 24/7 AI sales, ruxsatli kanallar, katalog-import, mini-sayt, PC compatibility/quote, CRM, stock/rezerv, order/payment proof review, delivery/pickup, status notification, dashboard, UZ/RU/EN voice report.
 - **Kim pul to‘laydi:** Merchant subscription + ixtiyoriy setup/integration; buyer search/chat bepul.
 - **Module range:** `M01`–`M20`.
-- **MVP initial slice:** Owner login → merchant+branch → katalog CSV → stock/price → public storefront + web chat/Telegram → AI advisor → operator handoff → lead/quote → order confirmation → notification → basic dashboard. Payment proof manual; Voice READ-ONLY limited beta; Meta production access-gated.
+- **MVP initial slice (baseline 2026-10-22, DEC-100):** Owner login → merchant+branch → katalog CSV → stock/price (UZS/USD) → storefront (savatcha → buyurtma so'rovi) + Telegram / Instagram / web chat → AI advisor (PC quote) → AI buyurtma qoralamasi → operator handoff → sotuvchi tasdig'i va rezerv → topshirish → notification → matnli hisobot. **To'lov va yetkazish tizimdan tashqarida** (do'kon o'zi); voice — golden set testidan keyin beta.
 - **Stage 1 done:** end-to-end pilot ishlaydi; critical order/stock/tenant leak false claim=0; onboarding va recurring fee sinovga tayyor; buyer marketplace hali mavjud emas.
 
 ## STAGE 2 — Merchant Network
