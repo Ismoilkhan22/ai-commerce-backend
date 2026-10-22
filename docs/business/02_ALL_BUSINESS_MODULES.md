@@ -325,7 +325,7 @@ Modullar uchta bosqichga bo'lingan:
 **Nima qila oladi:**
 1. Shop manzili (subdomen), logotip va ranglar.
 2. Katalog, qidiruv va filtr; telefonda qulay.
-3. Mahsulot sahifasi: rasm, tavsif, narx, mavjudligi.
+3. Mahsulot sahifasi: rasm, tavsif, narx, mavjudligi. Qoldiq qanday ko'rinishini shop tanlaydi: aniq son ("5 ta bor") yoki faqat "bor / kam qoldi / yo'q" (DEC-128). AI ham shu sozlamaga amal qiladi.
 4. Savatcha → buyurtma so'rovi: kontakt, olib ketish yoki yetkazish, manzil. **To'lovsiz** — operator bog'lanib tasdiqlaydi (DEC-115, DEC-100d).
 5. Saytda web chat (AI sotuvchi bilan).
 6. Shop manzili, telefoni, maxfiylik siyosati.
@@ -635,7 +635,7 @@ Texnik tafsilot: `engineering/14-ai-sales-agent-and-tools.md`.
 **Kim ishlatadi:** operator, menejer, omborchi.
 
 **Nima qila oladi:**
-1. Buyurtmaga bog'liq murojaat ochish: muammo, rasm.
+1. Buyurtmaga bog'liq murojaat ochish: muammo, rasm. Murojaatni operator ham ochadi; qabul yoki rad qarorini menejer yoki ega qiladi (DEC-130).
 2. Sotuv paytidagi kafolat shartlarini ko'rish.
 3. Murojaat holatlari: yangi → ko'rib chiqilmoqda → qabul qilindi / rad etildi → xizmatda → hal qilindi → yopildi.
 4. Qaytgan mahsulotni tekshiruvgacha "sotilmaydi" deb belgilash.
@@ -674,7 +674,7 @@ Texnik tafsilot: `engineering/14-ai-sales-agent-and-tools.md`.
 
 **Nima qila oladi:**
 1. Xaridorga: buyurtma qabul qilindi, tasdiqlandi, tayyor, topshirildi, bekor qilindi; PC taklifi; operator javob beradi.
-2. Xodimga: yangi buyurtma, operator kerak, tasdiqlash kerak, eslatmalar (24 soat, 72 soat), kam qolgan mahsulot, kanal uzildi.
+2. Xodimga: yangi buyurtma, operator kerak, tasdiqlash kerak, eslatmalar (24 soat, 72 soat), kam qolgan mahsulot, kanal uzildi. Xodim xabarlari panelda va platformaning Telegram boti orqali xodimning o'z Telegram'iga keladi (xodim botga bir marta ulanadi, DEC-129).
 3. Xabar matnlari uch tilda; ega o'z ohangiga moslab o'zgartira oladi.
 4. Xodim uchun "tinch vaqt" sozlamasi.
 

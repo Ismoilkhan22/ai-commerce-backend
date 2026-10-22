@@ -37,7 +37,7 @@
 | Mavzu | Qoida |
 |---|---|
 | Format | JSON, UTF-8; maydonlar `snake_case` |
-| Resurs nomlari | Ko'plikda, kebab-case: `/orders`, `/catalog-imports`, `/quick-sales`, `/support-cases` |
+| Resurs nomlari | Ko'plikda, kebab-case: `/orders`, `/catalog/imports`, `/quick-sales`, `/support-cases` |
 | Holat o'tishlari | `POST /orders/{id}/confirm` — fe'l alohida yo'lda (FSM buyruqlari), `PATCH status` emas |
 | Ichma-ich resurs | Faqat egalik aniq bo'lsa, 1 daraja: `/orders/{id}/notes`. `/orders/{id}/conversation` kabi boshqa domen resursi — TAQIQ; o'rniga `conversation_id` maydoni yoki `?expand=` |
 | Enum | `UPPER_SNAKE` (K-02); manbai — `../business/05`. Frontend noma'lum qiymatni `UNKNOWN` deb ko'rsatadi, xato bermaydi |
@@ -84,7 +84,7 @@ Muvaffaqiyatli javob **envelope'siz**: resursning o'zi yoki ro'yxat obyekti. Xat
 
 ### 4.2 Uzoq ishlar (202)
 
-`POST /api/v1/shop/catalog-imports` → `202 {"job_id", "status_url": "/api/v1/shop/jobs/{job_id}"}`. `GET /api/v1/shop/jobs/{job_id}` → `{"status": "QUEUED|RUNNING|SUCCEEDED|FAILED", "progress", "result_url", "failure_code"}`. Ish holati shop doirasida (boshqa shop ishi — 404).
+`POST /api/v1/shop/catalog/imports/{id}/dry-run` → `202 {"job_id", "status_url": "/api/v1/shop/jobs/{job_id}"}`. `GET /api/v1/shop/jobs/{job_id}` → `{"status": "QUEUED|RUNNING|SUCCEEDED|FAILED", "progress", "result_url", "failure_code"}`. Ish holati shop doirasida (boshqa shop ishi — 404).
 
 ---
 
@@ -385,7 +385,8 @@ Prefiks `/api/v1/<surface>`. **Idem** — `Idempotency-Key` majburiy. **IfM** �
 | `POST /shop/products/{id}/skus`, `PATCH /shop/skus/{id}` | `catalog.product.edit` | Idem / IfM |
 | `PUT /shop/skus/{id}/price`, `GET /shop/skus/{id}/price-history` | `catalog.price.change` / `catalog.price.view` | Idem + IfM |
 | `GET /shop/exchange-rates`, `POST /shop/exchange-rates` | `catalog.price.view` / `catalog.exchange_rate.edit` | — / Idem |
-| `POST /shop/catalog-imports` (202), `GET /shop/catalog-imports/{id}`, `POST …/{id}/mapping`, `POST …/{id}/dry-run`, `POST …/{id}/commit`, `GET …/{id}/errors.csv` | `catalog.import.run` | Idem (POST'lar) |
+| `POST /shop/catalog/imports` (multipart), `GET /shop/catalog/imports/{id}`, `PUT …/{id}/mapping`, `POST …/{id}/dry-run` (202), `GET …/{id}/errors.csv` | `catalog.import.run` | Idem (POST'lar) |
+| `POST /shop/catalog/imports/{id}/commit` (202) | `catalog.import.commit` (+ `quantity` bo'lsa `commerce.stock.receive`) — [18](18-catalog-import.md) §13 | Idem |
 | `GET /shop/hardware-specs?q=` | `catalog.product.view` | — |
 | `PUT /shop/skus/{id}/spec-link`, `POST /shop/hardware-spec-requests` | `catalog.spec.link` | IfM / Idem |
 | `POST /shop/pc-builds/check` | `catalog.compatibility.check` | Idem (natija saqlanmaydi; taklifda snapshot — `commerce`) |
@@ -452,7 +453,7 @@ Prefiks `/api/v1/<surface>`. **Idem** — `Idempotency-Key` majburiy. **IfM** �
 | `POST /storefront/{slug}/order-requests` | commerce | Savatcha → buyurtma so'rovi (`PENDING_CONFIRMATION`, to'lovsiz, DEC-115). Idem; javobda kuzatuv tokeni |
 | `GET /storefront/{slug}/orders/{tracking_token}` | commerce | Faqat o'z buyurtmasi |
 | `GET /storefront/{slug}/quotes/{token}`, `POST …/quotes/{token}/accept`, `POST …/quotes/{token}/reject` | commerce | Taklif havolasi (FSM-06 `SENT → ACCEPTED/REJECTED`). Idem |
-| `POST /storefront/{slug}/chat/sessions`, `POST …/chat/messages`, `GET …/chat/messages` | messaging | Saytdagi chat; real vaqt — WebSocket ([08](08-cache-and-realtime.md)) |
+| `POST /storefront/{slug}/chat/sessions`, `POST …/chat/messages`, `GET …/chat/messages?after=`, `GET …/chat/sessions/{session_id}/events` (SSE) | messaging | Saytdagi chat; real vaqt — SSE ([08](08-cache-and-realtime.md) §6.6, [13](13-integrations-and-channels.md)) |
 
 ### 9.9 `support` va `reporting`
 
@@ -464,6 +465,7 @@ Prefiks `/api/v1/<surface>`. **Idem** — `Idempotency-Key` majburiy. **IfM** �
 | `POST /shop/support-cases/{id}/start-service`, `POST …/{id}/resolve`, `POST …/{id}/close` | `support.case.service` | Idem + IfM |
 | `GET /shop/reports/summary`, `POST /shop/reports/queries` | `reporting.report.read` (+ `reporting.margin.read` foyda, `reporting.staff_breakdown.read` xodimlar kesimi, `reporting.ai_cost.read` AI xarajati) | — / Idem |
 | `POST /shop/reports/assistant/messages` | `reporting.assistant.ask` | Idem |
+| `POST /shop/reports/voice/transcriptions` (beta, 202, arq `voice_transcribe`) | `reporting.assistant.ask` + flag `reporting.voice` | Idem |
 | `POST /shop/reports/exports` (202) | `reporting.export.run` | Idem |
 
 ### 9.10 `webhooks` va `platform`

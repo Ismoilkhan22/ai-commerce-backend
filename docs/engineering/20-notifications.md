@@ -16,7 +16,7 @@
 - **Trigger — domenda.** Qaysi hodisada qaysi xabar ketishini event'ning egasi domen hal qiladi va o'z service'i yoki subscriber'idan `platform.notifications.request(...)` ni chaqiradi (domen → platform importi ruxsat etilgan).
 - **Shablon, tarjima, takrordan himoya, holat (FSM-12) — `platform/notifications` da.** U faqat `NotificationRequest` kontraktini biladi: `template_key`, qabul qiluvchi, o'zgaruvchilar, `aggregate_type/id/version`.
 - **Yetkazish:**
-  - **Xodimga** — `platform/notifications` o'zi: dashboard (`platform/realtime`) va ixtiyoriy Telegram (platforma tizim boti; xodim o'z akkauntini bog'laydi).
+  - **Xodimga** — `platform/notifications` o'zi, **ikki joyga** (founder qarori, 2026-10-22): dashboard (`platform/realtime`, real vaqt) **va** platformaning tizim Telegram boti. Xodim o'z Telegram akkauntini bir marta bog'laydi (dashboard'dagi bir martalik kod → botga `/start <kod>`); bog'lamagan xodim faqat dashboard'da oladi. Bot shop botlaridan alohida, bitta (platformaniki).
   - **Xaridorga** — `messaging`: platform `platform.notification.customer_delivery_requested` event'ini chiqaradi → `messaging` subscriber matnni oladi va xaridor yozgan kanal orqali yuboradi → natijani platform'ga qaytaradi.
 
 ```

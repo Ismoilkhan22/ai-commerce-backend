@@ -72,7 +72,7 @@ Faqat asosiy ustunlar. To'liq DDL — migratsiyalarda.
 |---|---|---|
 | `shops` | `id`, `slug`, `name`, `status` (FSM-01: `DRAFT, PENDING_VERIFICATION, ACTIVE, SUSPENDED, CLOSED`), `default_locale`, `timezone`, `deployment_mode` (`SHARED`/`DEDICATED`), `version` | `UNIQUE (slug)`. `shop_id` ustuni yo'q — `id` o'zi tenant |
 | `branches` | `id`, `shop_id`, `name`, `address`, `geo`, `working_hours` (JSONB), `phone`, `status` (`ACTIVE`/`CLOSED`) | `UNIQUE (shop_id, id)`; FK `shop_id → shops(id)` |
-| `shop_policies` | `shop_id` (PK), `quote_ttl_hours` (24), `discount_limit_sales_pct` (0), `discount_limit_manager_pct` (5), `reminder_hours` (`{24,72}`), `quote_approval_mode` (`ALL`/`RISKY_ONLY`), `exchange_rate_source` (`MANUAL`/`CBU`), `version` | DEC-102…110 |
+| `shop_policies` | `shop_id` (PK), `quote_ttl_hours` (24), `discount_limit_sales_pct` (0), `discount_limit_manager_pct` (5), `reminder_hours` (`{24,72}`), `quote_approval_mode` (`ALL`/`RISKY_ONLY`), `exchange_rate_source` (`MANUAL`/`CBU`), `stock_display` (`EXACT`/`STATUS_ONLY`, default `STATUS_ONLY`), `low_stock_threshold` (default 2), `version` | DEC-102…110 |
 | `principals` | `id`, `phone`, `email`, `password_hash` (Argon2id), `locale`, `status` | Global (shopdan tashqari), bir odam bir nechta shopda ishlashi mumkin |
 | `memberships` | `id`, `shop_id`, `principal_id`, `status` (`INVITED, ACTIVE, DISABLED`), `branch_scope` (`ALL` yoki filiallar ro'yxati), `version` | `UNIQUE (shop_id, principal_id)` |
 | `membership_roles` | `shop_id`, `membership_id`, `role` (`OWNER, MANAGER, SALES, WAREHOUSE, FINANCE, CATALOG_EDITOR, ANALYST, AI_POLICY_EDITOR`) | PK `(membership_id, role)`; bir xodimga bir nechta rol |
@@ -89,7 +89,8 @@ Faqat asosiy ustunlar. To'liq DDL — migratsiyalarda.
 | `stored_files` | `id`, `shop_id`, `bucket_key` (`shops/{shop_id}/...`), `mime`, `size`, `purpose`, `retention_until` | Signed URL berishdan oldin egalik tekshiriladi |
 | `ai_usage` | `id`, `shop_id`, `occurred_at`, `provider`, `model`, `tokens_in`, `tokens_out`, `cost_minor`, `currency`, `purpose` | `platform/llm`; hisobot va limitlar uchun |
 | `llm_pii_refs` | `id`, `shop_id`, `conversation_id`, `token` (`[PHONE_1]`), `value_enc`, `expires_at` | `platform/llm` redaction xaritasi, shifrlangan ([14](14-ai-sales-agent-and-tools.md)) |
-| `privacy` moduli jadvallari | Rozilik va o'chirish/eksport so'rovlari | `platform/privacy` — [26-privacy-and-retention.md](26-privacy-and-retention.md) |
+| `privacy_requests` | `id`, `shop_id`, `type` (`EXPORT, ERASURE, SHOP_EXPORT, SHOP_PURGE`), `subject_ref` (hash), `status`, `parts_done` (JSONB: domen → natija), `deadline_at`, `requested_by`, `created_at` | `platform/privacy` — [26](26-privacy-and-retention.md). Hamma domen qismi tugaganda `COMPLETED` |
+| `retention_policies` | `data_type`, `shop_id` (NULL = platforma default), `retention_days` | Domenlar `privacy.get_policy()` orqali o'qiydi ([26](26-privacy-and-retention.md) §5) |
 | `subscriptions`, `usage_counters` | `shop_id`, `plan`, `period_start/end`, limitlar; hisoblagichlar (suhbatlar, AI xabarlar, xodimlar, SKU) | `platform/billing`, DEC-119 |
 
 ### 4.2 `audit`
@@ -120,7 +121,7 @@ Faqat asosiy ustunlar. To'liq DDL — migratsiyalarda.
 
 | Jadval | Asosiy ustunlar | Cheklovlar va izoh |
 |---|---|---|
-| `stock_balances` | `shop_id`, `branch_id`, `sku_id`, `on_hand`, `reserved`, `allocated`, `version` | PK `(shop_id, branch_id, sku_id)`. `CHECK (on_hand >= 0 AND reserved >= 0 AND allocated >= 0 AND reserved + allocated <= on_hand)` (K-04). `available = on_hand − reserved − allocated` — hisoblanadi, saqlanmaydi |
+| `stock_balances` | `shop_id`, `branch_id`, `sku_id`, `on_hand`, `reserved`, `allocated`, `quarantine_qty` (qaytgan, "tekshiruvda" — `on_hand` ga kirmaydi, sotilmaydi, BR-X11), `version` | PK `(shop_id, branch_id, sku_id)`. `CHECK (on_hand >= 0 AND reserved >= 0 AND allocated >= 0 AND reserved + allocated <= on_hand)` (K-04). `available = on_hand − reserved − allocated` — hisoblanadi, saqlanmaydi |
 | `stock_ledger` | `id`, `shop_id`, `branch_id`, `sku_id`, `reason` (`RECEIPT, ADJUSTMENT, SALE, OFFLINE_SALE, RETURN_QUARANTINE, RETURN_RESTOCK, RESERVE, RELEASE, ALLOCATE, CONSUME`), `delta_on_hand`, `delta_reserved`, `delta_allocated`, `ref_type`, `ref_id`, `actor_id`, `idempotency_key`, `created_at` | Append-only. Tuzatish — yangi qator, eskisini o'zgartirish yo'q. `UNIQUE (shop_id, reason, ref_type, ref_id, sku_id)` — bir sabab ikki marta qo'llanmaydi |
 | `stock_adjustment_requests` | `id`, `shop_id`, `branch_id`, `sku_id`, `delta`, `reason`, `evidence_file_id`, `status` (`PENDING, APPROVED, REJECTED`), `requested_by`, `approved_by` | Katta tuzatish tasdiqi (`../business/04` §3) |
 | `reservations` | `id`, `shop_id`, `order_id`, `order_line_id`, `branch_id`, `sku_id`, `qty`, `status` (FSM-07, K-05: `ACTIVE, ALLOCATED, CONSUMED, RELEASED, EXPIRED`), `review_at`, `version` | `UNIQUE (shop_id, order_line_id)`; `CHECK (qty > 0)`. Partial indeks `(review_at) WHERE status='ACTIVE'` |
@@ -140,11 +141,10 @@ Faqat asosiy ustunlar. To'liq DDL — migratsiyalarda.
 |---|---|---|
 | `channel_accounts` | `id`, `shop_id`, `provider` (`TELEGRAM, INSTAGRAM, WEBCHAT`), `account_ref` (webhook URL'dagi tasodifiy identifikator), `external_account_id`, `secret_ref` (secret manager), `status` (FSM-03: `PENDING, CONNECTED, DEGRADED, DISCONNECTED`), `capabilities` (JSONB), `version` | `UNIQUE (account_ref)`; `UNIQUE (provider, external_account_id)`. Webhook → shop xaritasi shu jadvaldan |
 | `provider_events` | `id`, `shop_id`, `channel_account_id`, `provider_event_id`, `received_at`, `payload_ref`, `status` | `UNIQUE (channel_account_id, provider_event_id)` — takror webhook (TC-010) |
-| `customer_identities` | `id`, `shop_id`, `provider`, `external_user_id`, `display_name`, `locale`, `consent_flags` | `UNIQUE (shop_id, provider, external_user_id)`. Shoplararo birlashtirish yo'q |
+| `customer_identities` | `id`, `shop_id`, `provider`, `external_user_id`, `display_name`, `locale`, `consent_flags`, `notice_version` | `UNIQUE (shop_id, provider, external_user_id)`. Shoplararo birlashtirish yo'q |
 | `conversations` | `id`, `shop_id`, `channel_account_id`, `customer_identity_id`, `status` (FSM-04: `NEW, AI_ACTIVE, WAITING_CUSTOMER, HUMAN_NEEDED, HUMAN_ACTIVE, RESOLVED, REOPENED`), `speaker_mode` (`AI`/`HUMAN`), `speaker_version`, `assignee_membership_id`, `last_message_at`, `locale`, `version` | Indeks `(shop_id, last_message_at DESC, id DESC)`. `speaker_version` — fencing |
 | `messages` | `id`, `shop_id`, `conversation_id`, `direction` (`IN/OUT`), `author_type` (`CUSTOMER, AI, STAFF, SYSTEM`), `author_id`, `body_enc`, `attachments`, `provider_message_id`, `delivery_status`, `intent_id`, `speaker_version`, `created_at` | `UNIQUE (shop_id, intent_id)` chiquvchilar uchun — takror yuborish yo'q |
 | `handoffs` | `id`, `shop_id`, `conversation_id`, `reason`, `requested_by` (`AI/STAFF`), `status`, `taken_by`, `created_at` | Bitta suhbatda bitta ochiq handoff |
-| `conversation_summaries` | `shop_id`, `conversation_id`, `summary_redacted`, `updated_at` | AI konteksti uchun, PII'siz |
 
 ### 4.6 `sales_ai`
 
@@ -153,7 +153,10 @@ Faqat asosiy ustunlar. To'liq DDL — migratsiyalarda.
 | `agent_profiles` | `shop_id` (PK), `tone`, `languages`, `mode` (`OFF, SUGGEST, AUTO`), `escalation_rules` (JSONB), `active_prompt_version_id`, `version` | |
 | `prompt_versions` | `id`, `shop_id`, `version`, `content`, `status` (`DRAFT, APPROVED, ACTIVE, RETIRED`), `approved_by` | Ega tasdiqlaydi (`../business/04` §3) |
 | `knowledge_items` | `id`, `shop_id`, `type` (`FAQ, POLICY`), `locale`, `title`, `body`, `status`, `version`, `embedding` (pgvector, ixtiyoriy) | Qidiruv har doim `shop_id` filtri bilan |
-| `tool_executions` | `id`, `shop_id`, `conversation_id`, `tool` (`catalog.search` …), `args_redacted`, `result_summary`, `decision` (`ALLOWED/DENIED`), `latency_ms`, `trace_id`, `created_at` | [14](14-ai-sales-agent-and-tools.md). Partition yoki 90 kunlik saqlash |
+| `ai_sessions` | `shop_id`, `conversation_id` (PK), slot'lar (`budget`, `workloads`, `brand_preferences`, `selected_sku_ids`, `fulfillment_method`), `last_quote_ref`, `last_order_ref`, `updated_at` | [14](14-ai-sales-agent-and-tools.md) §6 |
+| `conversation_summaries` | `shop_id`, `conversation_id`, `summary_redacted`, `updated_at` | AI konteksti uchun, PII'siz; egasi `sales_ai` |
+| `ai_turns` | `id` (= event'dagi `reply_id`), `shop_id`, `conversation_id`, `message_id`, `speaker_version`, `mode`, `model_alias`, `prompt_version`, `reply_text_enc`, `outcome`, `tokens_in`, `tokens_out`, `cost_minor`, `latency_ms`, `created_at` | `SalesAiQueryPort.get_reply(reply_id)` shu jadvaldan o'qiydi; [14](14-ai-sales-agent-and-tools.md) §13 |
+| `ai_tool_executions` | `id`, `shop_id`, `turn_id`, `tool` (`catalog.search` …), `args_redacted`, `result_hash`, `decision` (`ALLOWED/DENIED`), `error_code`, `latency_ms`, `trace_id`, `created_at` | [14](14-ai-sales-agent-and-tools.md). Partition yoki 90 kunlik saqlash |
 
 ### 4.7 `storefront`
 
@@ -161,23 +164,26 @@ Faqat asosiy ustunlar. To'liq DDL — migratsiyalarda.
 |---|---|---|
 | `sites` | `shop_id` (PK), `subdomain`, `theme`, `logo_file_id`, `contacts`, `locales`, `status`, `version` | `UNIQUE (subdomain)` |
 | `pages` | `id`, `shop_id`, `slug`, `locale`, `title`, `body`, `status` | `UNIQUE (shop_id, slug, locale)` |
-| `public_products` | `shop_id`, `sku_id`, `product_slug`, `title`, `price_minor`, `currency`, `in_stock` (bool), `media`, `source_version`, `updated_at` | **Proyeksiya** — `catalog`/`commerce` event'laridan quriladi. Faqat ommaviy maydonlar; tannarx, aniq qoldiq, ichki izoh yo'q. Buyurtma tasdiqlashda bu jadval ishlatilmaydi |
+| `public_products` | `shop_id`, `sku_id`, `product_slug`, `title`, `price_minor`, `currency`, `stock_status` (`IN_STOCK`, `LOW`, `OUT_OF_STOCK`), `available_qty` (faqat shop `stock_display = EXACT` bo'lsa, aks holda NULL), `media`, `source_version`, `updated_at` | **Proyeksiya** — `catalog`/`commerce` event'laridan quriladi. Faqat ommaviy maydonlar; tannarx, ichki izoh yo'q. Buyurtma tasdiqlashda bu jadval ishlatilmaydi |
 
 ### 4.8 `support`
 
 | Jadval | Asosiy ustunlar | Izoh |
 |---|---|---|
-| `support_cases` | `id`, `shop_id`, `order_id`, `order_line_id`, `sku_id`, `type` (`WARRANTY, RETURN`), `status` (FSM-11: `NEW, IN_REVIEW, APPROVED, REJECTED, IN_SERVICE, RESOLVED, CLOSED`), `warranty_snapshot`, `resolution`, `reject_reason`, `version` | `order_id` — UUID (commerce'ga FK yo'q). Qaytgan mahsulot `commerce` ga event orqali `RETURN_QUARANTINE` |
+| `support_cases` | `id`, `shop_id`, `order_id`, `order_line_id`, `sku_id`, `type` (`WARRANTY, RETURN`), `status` (FSM-11: `NEW, IN_REVIEW, APPROVED, REJECTED, IN_SERVICE, RESOLVED, CLOSED`), `warranty_snapshot`, `resolution`, `reject_reason`, `version` | `order_id` — UUID (commerce'ga FK yo'q). Qaytgan mahsulot `commerce` da `support.case.status_changed` (→ `IN_SERVICE`) orqali `quarantine_qty +1`, ledger sababi `RETURN_QUARANTINE`; omborchi qarori bilan `RETURN_RESTOCK` (→ `on_hand`) |
 
 ### 4.9 `reporting`
 
 | Jadval | Asosiy ustunlar | Izoh |
 |---|---|---|
-| `metric_definitions` | `key`, `formula_ref`, `permission`, `version` | [19-reporting-metrics.md](19-reporting-metrics.md) |
-| `rm_orders` | `shop_id`, `order_id`, `status`, `source`, `branch_id`, `assigned_membership_id`, `total_minor`, `currency`, `created_at`, `confirmed_at`, `completed_at`, `event_version` | `commerce.order.*` event'laridan. Idempotent upsert (`event_version` kattasi yutadi) |
-| `rm_conversations` | `shop_id`, `conversation_id`, `channel`, `first_response_seconds`, `handoff`, `resolved_at` | `messaging.*` event'laridan |
-| `rm_daily_shop` | `shop_id`, `day`, agregatlar | Kecha uchun yakuniy, bugun uchun "yangilangan vaqt" bilan |
-| `projection_offsets` | `projection`, `last_event_id`, `updated_at` | Qayta qurish (rebuild) uchun |
+| `order_facts`, `order_line_facts`, `quick_sale_facts` | `shop_id`, `order_id`, `status`, `source`, `channel`, `branch_id`, `assigned_staff_id`, `total_minor`, `currency`, vaqtlar, `aggregate_version` | `commerce.*` event'laridan, idempotent upsert (`aggregate_version` kattasi yutadi) |
+| `quote_facts`, `lead_facts`, `stock_facts` | [19](19-reporting-metrics.md) §3 | `commerce.*` event'laridan |
+| `conversation_facts` | `shop_id`, `conversation_id`, `channel`, `first_meaningful_reply_at`, `handoff_count`, ... | `messaging.*` event'laridan |
+| `support_case_facts` | `shop_id`, `case_id`, `status`, `opened_at`, `resolved_at`, `outcome` | `support.case.*` event'laridan |
+| `product_dim` | `shop_id`, `sku_id`, `title`, `category`, `current_price_minor`, `currency` | `catalog.*` event'laridan |
+| `projection_checkpoints` | `projection`, `shop_id`, `last_event_id`, `last_occurred_at` | `data_as_of` manbai; qayta qurish (rebuild) |
+
+Metrika registri DB'da emas — kodda (`reporting/metrics/registry.py`, [19](19-reporting-metrics.md) §4). Ustunlar va manba event'lar — faqat [19](19-reporting-metrics.md) §3 da (yagona manba).
 
 ---
 
@@ -227,10 +233,10 @@ Subscriber o'z tranzaksiyasida receipt yozadi — event ikki marta kelsa, ikkinc
 |---|---|---|
 | `outbox_events` (`PUBLISHED`) | 14 kun | Scheduler kunlik o'chiradi (batch 1000) |
 | `outbox_events` (`DEAD`) | Qo'lda hal qilinguncha | Runbook ([25](25-operations-runbooks.md)) |
-| `consumer_receipts` | 30 kun | Kunlik |
-| `idempotency_keys` | 24 soat | Soatlik |
+| `consumer_receipts` (event consumer idempotency) | 7 kun | Kunlik. 7 kundan eski event'ni dead-letter'dan qayta yuborish faqat qo'lda tekshiruv bilan (`25`) |
+| `idempotency_keys` (HTTP `Idempotency-Key`) | 24 soat | Soatlik |
 | `transition_log`, `audit_entries` | Huquqshunos xulosasigacha — kamida 3 yil (taklif) | Oyma-oy partition, eski partition arxivga |
-| `tool_executions` | 90 kun (taklif) | Kunlik |
+| `ai_tool_executions`, `ai_turns` | 90 kun (taklif) | Kunlik |
 
 ---
 

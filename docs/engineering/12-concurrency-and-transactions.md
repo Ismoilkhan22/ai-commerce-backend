@@ -78,9 +78,8 @@ BEGIN                                                      -- READ COMMITTED
       available = on_hand − reserved − allocated
       available < qty → 409 INSUFFICIENT_AVAILABLE_STOCK {sku_id, available} — butun TX ROLLBACK
  8. narx tekshiruvi:
-      joriy_narx := catalog narxi (DB'dan, shu TX ichida, read-only cross-schema SELECT emas — 
-                    buyurtma qatorida saqlangan price_version bilan catalog.current_price_version
-                    CommerceQueryPort emas, 5.1 ga qarang)
+      joriy_narx := CatalogQueryPort.get_active_price(sku_ids)   -- sinxron, keshsiz (5.1)
+                    va buyurtma qatoridagi price_version / unit_price snapshot bilan solishtiriladi
       PC taklif bo'lsa: quote.status='ACCEPTED', quote.expires_at tekshirilmaydi (qabul qilingan),
                         lekin quote revision qatorlari bilan solishtiriladi
       farq bor → 409 PRICE_CHANGED {old, new} — xaridordan qayta rozilik (TC-031)
@@ -96,13 +95,13 @@ COMMIT  → 200 {order, version}
 
 ### 5.1 Narx qayerdan tekshiriladi
 
-`commerce` boshqa schema'ni (`catalog`) JOIN yoki FK bilan o'qimaydi (ADR-035). Shuning uchun:
-- Buyurtma `DRAFT` yaratilganda har qatorga `unit_price` (Money), `price_version_id` va (USD bo'lsa) `exchange_rate_id` **snapshot** qilinadi.
-- `catalog` narx yoki kurs o'zgarganda `catalog.price.changed` / `catalog.exchange_rate.updated` event'larini chiqaradi; `commerce` subscriber'i `commerce.sku_price_cache` (local read model: `sku_id → current price_version_id, price, updated_at`) jadvalini yangilaydi.
-- Tasdiqlashda 8-qadam shu **commerce ichidagi** jadvalni `FOR SHARE` bilan o'qiydi va snapshot bilan solishtiradi.
-- Read model kechikishi (≤ 2 s, `05` §10) — oynasida narx o'zgarsa va hali yetib kelmagan bo'lsa, eski narx bilan tasdiqlanishi mumkin. Bu qabul qilingan: xaridor shu narxda kelishgan va taklif/snapshot audit'da bor. Kechikish alert bilan nazorat qilinadi.
+**Founder qarori (2026-10-22):** tasdiqlash paytida joriy narx `catalog` dan **sinxron, Query Port orqali** o'qiladi — `CatalogQueryPort.get_active_price()` (ADR-032 §6). Qo'shimcha jadval yoki nusxa yo'q.
 
-*(Bu `01`/ADR-032 dagi "narx DB'dan lock ostida" iborasini aniqlashtiradi — founder/arxitektor tasdig'i kerak, §12.)*
+- Buyurtma `DRAFT` yaratilganda har qatorga `unit_price` (Money), `price_version_id` va (USD bo'lsa) `exchange_rate_id` **snapshot** qilinadi.
+- Tasdiqlashda (8-qadam) `get_active_price()` joriy `price_version_id` va narxni qaytaradi; snapshot bilan farq qilsa — `409 PRICE_CHANGED {old, new}` (TC-031), xaridordan qayta rozilik.
+- Bu faqat o'qish: `commerce` `catalog` jadvaliga JOIN yoki FK qilmaydi (ADR-035), Query Port implementatsiyasi `catalog` ichida. Keshdan o'qilmaydi (ADR-019).
+- Narx lock ostida emas — tasdiqlash va narx o'zgarishi bir necha millisekund farq bilan kelsa, tasdiqlangan buyurtma snapshot narxida qoladi (kelishilgan narx); bu qabul qilingan va audit'da ko'rinadi.
+- Qoldiq esa `commerce` ning o'z jadvali — har doim `FOR UPDATE` bilan (6-qadam).
 
 ### 5.2 Xato kodlari
 
@@ -134,7 +133,7 @@ Hammasi `stock_balances` ni **bir xil tartibda** (`branch_id, sku_id`) lock qila
 | `quick_sale` (tez sotuv) | `on_hand −qty`, faqat `available` dan; ledger `QUICK_SALE`; audit | balances | `Idempotency-Key` | `available < qty` → `409 INSUFFICIENT_AVAILABLE_STOCK`; band mahsulotni sotib bo'lmaydi (DEC-123, BL-109) |
 | `receive_stock` (kirim) | `on_hand +qty`; ledger `RECEIPT` | balances | `Idempotency-Key` | — |
 | `adjust_stock` (tuzatish) | `on_hand ±qty`; ledger `ADJUSTMENT` + sabab; limitdan katta bo'lsa — tasdiq so'rovi | balances | `Idempotency-Key` | `on_hand` < `reserved + allocated` bo'lib qolmaydi — aks holda rad |
-| `support` dan "tekshiruvda" | `inspection_qty +1` (sotuvga mavjudga kirmaydi) | balances | `case_id` | BR-X11 |
+| `support` dan "tekshiruvda" (ledger `RETURN_QUARANTINE`) | `quarantine_qty +1` (`on_hand` ga kirmaydi, sotilmaydi) | balances | `case_id` | BR-X11 |
 
 ### 6.1 DB invariantlari
 
@@ -198,7 +197,7 @@ messaging subscriber, yuborishdan oldin (bitta TX):
 |---|---|---|---|
 | API yozish (`POST`/`PATCH`) | `(shop_id, operation, Idempotency-Key)` | so'rov hash, status, javob | Hash bir xil → saqlangan javob; boshqa → `409 IDEMPOTENCY_KEY_REUSED`; birinchisi hali bajarilmoqda → `409 REQUEST_IN_PROGRESS` |
 | Webhook | `(provider, channel_account_id, provider_event_id)` | normallashtirilgan xabar ID | 200, qayta ishlanmaydi (TC-010) |
-| Event consumer | `(consumer_name, event_id)` | `consumed_events` | O'tkazib yuboriladi (`05` §6) |
+| Event consumer | `(consumer, event_id)` | `consumer_receipts` | O'tkazib yuboriladi (`05` §6) |
 | AI qoralama so'rovi | `sales_ai` `request_id` → `orders.source_request_id UNIQUE` | buyurtma | Mavjud qoralama qaytariladi (BL-046) |
 | Rejali ish | `<job>:<entity_id>:<window>` | eslatma/vazifa | Takror eslatma yo'q (`06` §5) |
 | Xabarnoma | `(shop_id, template_key, aggregate_id, aggregate_version, recipient)` | `platform.notifications` | Bitta hodisaga bitta xabar (FSM-12) |
@@ -233,8 +232,7 @@ Haqiqiy PostgreSQL'da (testcontainers), `sleep` emas — **barrier** bilan (`asy
 
 ## 12. Ochiq savollar
 
-1. **Narx tekshiruvi manbai (§5.1).** `catalog` → `commerce` narx read model'i (event orqali, ≤ 2 s kechikish) taklif qilindi, chunki ADR-035 cross-schema o'qishni taqiqlaydi. Muqobil: tasdiqlash paytida `CatalogQueryPort.get_active_price()` sinxron chaqiruvi (lock'siz, lekin bir xil DB, kechikishsiz). Founder/arxitektor tanlashi kerak; ADR-032 dagi "narx DB'dan lock ostida" iborasi shunga moslab aniqlashtiriladi.
-2. Shop "aniq qoldiqni yashirish" sozlamasi (`08` §4.5) `business/` hujjatlarida yo'q — tasdiqlash kerak.
+Hozircha yo'q. (Narx manbai — 2026-10-22 hal qilindi, §5.1; saytda qoldiqni ko'rsatish — `stock_display` sozlamasi, `08` §4.5.)
 
 ## Keyingi qadam
 

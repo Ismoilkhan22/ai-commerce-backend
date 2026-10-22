@@ -190,6 +190,9 @@ Span atributlarida §4.2 dagi narsalar yo'q. `shop_id` span atributi sifatida mu
 | `cos_sales_ai_tool_calls_total` | counter | tool, outcome |
 | `cos_sales_ai_reply_rejected_total` | counter | reason (`invented_price`, `unknown_sku`, `forbidden_claim`, ...) |
 | `cos_sales_ai_order_draft_requested_total` | counter | — |
+| `cos_sales_ai_turns_total` | counter | outcome (`SENT_TO_MESSAGING`, `DISCARDED`, `HANDOFF`) |
+| `cos_sales_ai_turn_duration_seconds` | histogram | mode |
+| `cos_sales_ai_handoff_total` | counter | reason (AI o'zi operator chaqirgan holatlar) |
 | `cos_billing_ai_quota_exhausted_total` | counter | plan_tier |
 
 **Savdo va ombor (`commerce`, `catalog`)**
@@ -229,6 +232,8 @@ Span atributlarida §4.2 dagi narsalar yo'q. `shop_id` span atributi sifatida mu
 | `cos_reporting_query_duration_seconds` | histogram | metric_key |
 | `cos_reporting_unauthorized_metric_total` | counter | metric_key |
 | `cos_reporting_voice_transcript_corrected_total` | counter | language |
+| `cos_reporting_projection_lag_seconds` | gauge | projection |
+| `cos_reporting_assistant_unmapped_total` | counter | — (registrga mos kelmagan savollar) |
 
 `cos_security_rls_violation_total` — RLS policy rad etgan so'rov (PostgreSQL `insufficient_privilege` / `new row violates row-level security policy` xatosi `ExceptionHandlingMiddleware` da shu counter'ga tushadi). Normal ishda doim 0 — app-layer filtri birinchi qavat.
 

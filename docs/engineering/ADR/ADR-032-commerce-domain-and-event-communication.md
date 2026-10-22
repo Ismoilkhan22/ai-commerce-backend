@@ -19,12 +19,14 @@ Eski ADR-021 buni `workflows/` papkasi orqali hal qilgan edi: ikki modulni bitta
    - `sales_ai.quote_draft.requested` → `commerce` taklif qoralamasi.
    - `sales_ai.reply.ready` → `messaging` (speaker_version tekshirib) yuboradi.
 3. **Domenlar orasida o'qish — faqat read-only Query Port.** Interfeys va DTO `app/shared/contracts/<domain>.py` da, implementatsiya egasi domenda, ulanish `app/dependencies.py` da.
-   - `CatalogQueryPort`: `search`, `get_product`, `get_active_price`, `check_compatibility`.
-   - `CommerceQueryPort`: `get_availability`, `get_order_status` (xaridor o'z buyurtmasi).
-   - `MessagingQueryPort`: `get_conversation_summary`.
+   - `CatalogQueryPort`: `search`, `get_product`, `get_active_price`, `check_compatibility`, ...
+   - `CommerceQueryPort`: `get_availability`, `get_order_status`, `get_order_for_support`, ...
+   - `MessagingQueryPort`: `get_conversation_context`, ...
+   - `SalesAiQueryPort`: `get_reply`, `resolve_contact_ref`.
+   - To'liq ro'yxat — `05-events-and-outbox.md` §8.9.
 4. **Ko'p va tez o'qish** (hisobotlar) — local read model: `reporting` event'lardan proyeksiya quradi.
 5. **Platform xizmatlari** (audit, notifications, use, billing) — domen ularni to'g'ridan-to'g'ri chaqiradi (qatlam qoidasi ruxsat beradi).
-6. Buyurtma tasdiqlashda narx va qoldiq **har doim DB'dan, lock ostida** qayta o'qiladi — Query Port yoki keshdan emas (ADR-019).
+6. Buyurtma tasdiqlashda **qoldiq** — `commerce` ning o'z jadvalidan, `FOR UPDATE` bilan; **narx** — `CatalogQueryPort.get_active_price()` orqali sinxron, keshsiz o'qiladi va buyurtma qatoridagi snapshot bilan solishtiriladi (farq bo'lsa `409 PRICE_CHANGED`). Hech qachon keshdan emas (ADR-019). Founder qarori, 2026-10-22; batafsil `12` §5.1.
 7. Storefront'dan buyurtma so'rovi — `commerce` domenining `storefront` surface router'i (`POST /api/v1/storefront/{slug}/order-requests`), sinxron; event shart emas.
 
 ## Ko'rib chiqilgan variantlar

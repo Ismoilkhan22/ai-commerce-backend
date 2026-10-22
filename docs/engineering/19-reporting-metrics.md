@@ -40,6 +40,7 @@ platform/llm (AI xarajati) ──────── to'g'ridan-to'g'ri platform 
 | `stock_facts` | `commerce.stock.changed`, `commerce.reservation.created|released|expired` | `shop_id`, `branch_id`, `sku_id`, `on_hand`, `available`, `active_reservations`, `oldest_reservation_at` |
 | `conversation_facts` | `messaging.message.received|sent`, `messaging.conversation.handed_off|returned_to_ai` | `shop_id`, `conversation_id`, `channel`, `started_at`, `first_meaningful_reply_at`, `first_reply_author` (`AI`/`STAFF`), `handoff_count`, `last_handoff_reason`, `handoff_first_staff_reply_at`, `ai_reply_count` |
 | `product_dim` | `catalog.product.published|hidden|archived`, `catalog.price.changed` | `shop_id`, `sku_id`, `title`, `category`, `current_price_minor`, `currency` |
+| `support_case_facts` | `support.case.opened|status_changed|resolved` | `shop_id`, `case_id`, `type`, `status`, `opened_at`, `decided_at`, `resolved_at`, `outcome` |
 | `projection_checkpoints` | — | `projection`, `shop_id`, `last_event_id`, `last_occurred_at` — `data_as_of` manbai |
 
 ### Read model qoidalari
@@ -82,9 +83,9 @@ Registr — kodda (`reporting/metrics/registry.py`), versiyalangan (`metric_regi
 |---|---|---|---|---|---|---|
 | `reporting.report.read` | Ha | Ha (o'z filiallari) | O'ziniki (`row_scope=OWN`) | O'z filiali (stok metrikalari) | Ha | Ha (umumiy) |
 | `reporting.staff_breakdown.read` (xodim bo'yicha guruhlash) | Ha | Ha | — | — | Ha | — |
-| `reporting.ai_cost.read` | Ha | — | — | — | — | — |
+| `reporting.ai_cost.read` | Ha | — | — | — | Ha | — |
 | `reporting.margin.read` (tannarx, foyda) | Ha | Ruxsat bilan | — | — | Ruxsat bilan | — |
-| `reporting.export.run` | Ha | Ha | — | — | Ha | Ha |
+| `reporting.export.run` | Ha (qo'shimcha tasdiq bilan) | Ha | — | — | Ha | Faqat umumiy (agregat) |
 
 Hisobot yordamchisi har doim **so'rayotgan foydalanuvchining** ruxsatlari bilan ishlaydi (`04` §2). Ruxsat yo'q metrika so'ralsa — o'sha metrika `FORBIDDEN`, qiymat oshkor qilinmaydi, urinish audit'ga yoziladi (TC-013).
 
@@ -138,7 +139,14 @@ Hisobot yordamchisi har doim **so'rayotgan foydalanuvchining** ruxsatlari bilan 
 | `stock_value_amount` | `on_hand × joriy sotuv narxi` (`product_dim`; tannarx emas) | money | Ega, menejer |
 | `reservations_review_due_count` | 72 soatdan oshgan faol band qilishlar (DEC-104) | count | Ega, menejer |
 
-### 7.5 Hozircha yo'q
+### 7.5 Kafolat (`support_case_facts`, M16)
+
+| `metric_id` | Formula | Unit | Ruxsat |
+|---|---|---|---|
+| `support_cases_open_count` | Yopilmagan murojaatlar | count | Ega, menejer |
+| `support_case_resolution_time_p50` | `resolved_at − opened_at` medianasi | seconds | Ega, menejer |
+
+### 7.6 Hozircha yo'q
 
 | Metrika | Holat |
 |---|---|

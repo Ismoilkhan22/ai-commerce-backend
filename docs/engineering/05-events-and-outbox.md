@@ -14,7 +14,7 @@ Agar service COMMIT'dan keyin to'g'ridan-to'g'ri "xabar yuborsa", server shu ikk
 ```
 Service tranzaksiyasi:  biznes o'zgarishi + outbox_events qatori  ──COMMIT──▶ (ikkalasi ham bor yoki ikkalasi ham yo'q)
 outbox_worker:          outbox_events ──▶ har subscriber uchun arq vazifasi ──▶ published_at
-task_worker:            subscriber o'z tranzaksiyasida: consumed_events + o'z o'zgarishi ──COMMIT
+task_worker:            subscriber o'z tranzaksiyasida: consumer_receipts + o'z o'zgarishi ──COMMIT
 ```
 
 Uch xil narsani adashtirmang:
@@ -126,7 +126,7 @@ loop (har 200 ms yoki LISTEN outbox_new orqali uyg'onadi):
 - `LISTEN/NOTIFY` faqat uyg'otish uchun, ishonchlilik uchun emas — poll baribir ishlaydi.
 - Subscriber'i yo'q event ham `PUBLISHED` bo'ladi (kelajakdagi consumer uchun tarix — 7 kun).
 - **Redis ishlamasa:** qatorlar `PENDING` qoladi va qayta urinadi; hech qachon Redis sabab `DEAD` bo'lmaydi. `DEAD` — faqat dasturiy xato (noma'lum `event_type`, envelope buzilgan). Alert: eng eski `PENDING` yoshi > 120 s (`09`).
-- **Rekonsilyatsiya** (Redis ma'lumoti yo'qolsa): `published_at` 10 daqiqadan eski, lekin kutilgan subscriber uchun `consumed_events` yozuvi yo'q event'lar qayta navbatga qo'yiladi (`06` §5).
+- **Rekonsilyatsiya** (Redis ma'lumoti yo'qolsa): `published_at` 10 daqiqadan eski, lekin kutilgan subscriber uchun `consumer_receipts` yozuvi yo'q event'lar qayta navbatga qo'yiladi (`06` §5).
 
 ### 5.1 Inline subscriber (istisno)
 
@@ -149,23 +149,23 @@ async def on_order_draft_requested(envelope: EventEnvelope, db: AsyncSession) ->
 ```
 BEGIN
   set_config('app.shop_id', envelope.shop_id, true)
-  INSERT INTO <consumer_schema>.consumed_events (consumer_name, event_id) ... ON CONFLICT DO NOTHING
+  INSERT INTO <consumer_schema>.consumer_receipts (consumer, event_id) ... ON CONFLICT DO NOTHING
   agar qator qo'shilmagan bo'lsa → allaqachon bajarilgan → COMMIT, chiqish
   subscriber(envelope, db)                 # o'z domenidagi o'zgarishlar + o'z outbox'i
 COMMIT
 ```
 
 ```sql
-CREATE TABLE commerce.consumed_events (
-    consumer_name TEXT NOT NULL,
-    event_id      UUID NOT NULL,
-    consumed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (consumer_name, event_id)
+CREATE TABLE commerce.consumer_receipts (
+    consumer   TEXT NOT NULL,          -- 'commerce.on_order_draft_requested'
+    event_id   UUID NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (consumer, event_id)
 );
 ```
 
 Qoidalar:
-1. **Idempotent** — `consumed_events` dedup + biznes darajasida tabiiy kalit (masalan, `orders.source_event_id UNIQUE`).
+1. **Idempotent** — `consumer_receipts` dedup + biznes darajasida tabiiy kalit (masalan, `orders.source_event_id UNIQUE`).
 2. **Ruxsat va holatni qayta o'qiydi** — envelope'dagi ma'lumotga ko'r-ko'rona ishonmaydi (shop to'xtatilgan bo'lishi, xodim o'chirilgan bo'lishi mumkin).
 3. **Tranzaksiya ichida tashqi chaqiruv yo'q.** Tashqi ish kerak bo'lsa — o'z outbox'iga yangi event yoki vazifa niyatini yozadi.
 4. **Tartib:** tartib muhim bo'lgan proyeksiyalar `last_applied_version` saqlaydi; kichik versiyani e'tiborsiz qoldiradi. Iloji bo'lsa — event'dagi deltaga emas, manbadan absolyut holatni o'qiydi.
@@ -179,7 +179,7 @@ Qoidalar:
 - `dispatch_event` retry siyosati: 8 urinish, eksponensial (2 s → ~4 daqiqa) + jitter (`06`).
 - Tugagach: `platform.dead_letters` ga yozuv — `event_id`, `event_type`, `consumer_name`, `shop_id`, `attempts`, `last_error` (PII'siz), `first_failed_at`. Sentry'ga `error`, alert (`09`).
 - Platforma paneli: ro'yxat, sabab, **qayta yuborish** (`POST /api/v1/platform/dead-letters/{id}/replay`) — ruxsat `platform.dead_letter.replay`, audit yozuvi, asl `causation_id` saqlanadi.
-- Qayta yuborish idempotent: `consumed_events` tufayli bajarilgan ish takrorlanmaydi.
+- Qayta yuborish idempotent: `consumer_receipts` tufayli bajarilgan ish takrorlanmaydi.
 - Butun proyeksiyani qayta qurish (`reporting`) — event tarixidan emas, manba jadvallardan (Query Port yoki eksport) qilinadi; buyurtma va qoldiq hech qachon event oqimidan tiklanmaydi.
 
 ---
@@ -250,22 +250,22 @@ Xabar matni payload'da yo'q — sales_ai `MessagingQueryPort.get_conversation_co
 
 | Event | Qachon | Payload | Consumer'lar | Idempotency |
 |---|---|---|---|---|
-| `sales_ai.reply.ready` | AI javobi tayyor va tekshirildi | `conversation_id`, `reply_id`, `speaker_version` (javob tayyorlangan paytdagi), `mode` (`AUTO`/`SUGGEST`), `reply_ref` | messaging (`AUTO`: versiya mos bo'lsa yuboradi, aks holda tashlaydi — TC-009; `SUGGEST`: operatorga taklif sifatida ko'rsatadi) | `reply_id` |
+| `sales_ai.reply.ready` | AI javobi tayyor va tekshirildi | `conversation_id`, `reply_id`, `speaker_version` (javob tayyorlangan paytdagi), `mode` (`AUTO`/`SUGGEST`) | messaging (`AUTO`: versiya mos bo'lsa yuboradi, aks holda tashlaydi — TC-009; `SUGGEST`: operatorga taklif sifatida ko'rsatadi) | `reply_id` |
 | `sales_ai.reply.validation_failed` | AI javobi tekshiruvdan o'tmadi (narx/qoldiq katalogga mos emas, taqiqlangan da'vo — TC-007) | `conversation_id`, `reply_id`, `speaker_version`, `failure_codes[]` | messaging (javob yuborilmaydi; `REQUEST_HUMAN`), reporting | `reply_id` |
 | `sales_ai.quote_approval.requested` | AI tuzgan taklifni menejer tasdig'iga yuborishni so'radi (tool `commerce.request_quote_approval`) | `request_id`, `quote_id`, `revision`, `conversation_id` | commerce (`SUBMIT_FOR_REVIEW`) | `request_id` |
 | `sales_ai.handoff.requested` | AI operator chaqirdi | `conversation_id`, `speaker_version`, `reason_code` | messaging (`REQUEST_HUMAN`, operatorga vazifa) | `conversation_id`+`speaker_version`+`reason_code` |
-| `sales_ai.order_draft.requested` | xaridor "olaman" (BL-110) | `request_id`, `conversation_id`, `customer_ref`, `lines[]` (sku_id, qty), `quote_id?`, `fulfillment_method?` | commerce (`DRAFT` yaratadi) | `request_id` → `orders.source_request_id UNIQUE` |
+| `sales_ai.order_draft.requested` | xaridor "olaman" (BL-110) | `request_id`, `conversation_id`, `contact_ref_id`, `lines[]` (sku_id, qty), `quote_id?`, `fulfillment_method?` | commerce (`DRAFT` yaratadi) | `request_id` → `orders.source_request_id UNIQUE` |
 | `sales_ai.quote_draft.requested` | AI PC yig'ma tuzdi | `request_id`, `conversation_id`, `lead_id?`, `lines[]`, `compatibility_check_id` | commerce (taklif qoralamasi) | `request_id` |
 | `sales_ai.lead_capture.requested` | AI ehtiyojni aniqladi | `request_id`, `conversation_id`, `budget?` (Money), `purpose_code?`, `lost_reason_hint?` | commerce (lead yaratish yoki `QUALIFY`) | `request_id` |
 
-`reply_ref` — `sales_ai.replies` jadvalidagi matnga havola; matn event'da emas. messaging yuborishdan oldin uni `SalesAiQueryPort` (yoki reply snapshot jadvali) orqali oladi. *(`SalesAiQueryPort` `01` §3 ro'yxatida yo'q — qo'shilishi kerak, 11-bo'lim.)*
+`reply_id` = `sales_ai.ai_turns.id`; javob matni event'da emas. messaging yuborishdan oldin uni `SalesAiQueryPort.get_reply(reply_id)` orqali oladi (`01` §3, `14` §3). `contact_ref_id` — xaridor kontaktiga havola; `commerce` uni `SalesAiQueryPort.resolve_contact_ref()` orqali bir marta o'qiydi (`14` §7).
 
 ### 8.5 `support`
 
 | Event | Qachon | Payload | Consumer'lar | Idempotency |
 |---|---|---|---|---|
 | `support.case.opened` | FSM-11 `NEW` | `case_id`, `order_id`, `sku_id` | reporting | `case_id` |
-| `support.case.status_changed` | FSM-11 o'tishi | `case_id`, `from`, `to`, `sku_id`, `branch_id?` | commerce (→ `IN_SERVICE` bo'lsa mahsulot "tekshiruvda" — sotilmaydi, BR-X11), reporting | `case_id`+`aggregate_version` |
+| `support.case.status_changed` | FSM-11 o'tishi | `case_id`, `from`, `to`, `sku_id`, `branch_id?` | commerce (→ `IN_SERVICE` bo'lsa `quarantine_qty +1`, ledger `RETURN_QUARANTINE` — sotilmaydi, BR-X11), reporting | `case_id`+`aggregate_version` |
 | `support.case.resolved` | → `RESOLVED` | `case_id`, `outcome` (`REPAIRED`/`REPLACED`/`RETURNED`), `sku_id`, `branch_id?` | commerce (tekshiruvdagi mahsulot bo'yicha omborchiga qaror vazifasi), reporting | `case_id` |
 
 ### 8.6 `platform`
@@ -275,9 +275,9 @@ Xabar matni payload'da yo'q — sales_ai `MessagingQueryPort.get_conversation_co
 | `platform.shop.activated` | FSM-01 → `ACTIVE` | `shop_id`, `slug` | storefront (sayt yoqiladi), sales_ai (agent yoqiladi), reporting | `shop_id`+`aggregate_version` |
 | `platform.shop.suspended` | → `SUSPENDED` | `shop_id`, `reason_code` | storefront (yangi buyurtma yopiladi), sales_ai (agent o'chadi), messaging (avtomatik javob to'xtaydi) | `shop_id`+`aggregate_version` |
 | `platform.staff.access_revoked` | a'zolik `DISABLED` yoki rol olib tashlandi | `principal_id`, `revoked_roles[]` | messaging (suhbatlarni qayta taqsimlash), commerce (buyurtmalar uchun qayta biriktirish vazifasi) | `principal_id`+`aggregate_version` |
+| `platform.shop.policy_changed` | Shop sozlamalari (`shop_policies`) o'zgardi | `changed_fields[]` (masalan `stock_display`, `quote_ttl_hours`), `version` | storefront (`stock_display` → `public_products` qayta hisoblanadi, kesh tozalanadi), sales_ai (siyosat keshini yangilaydi), commerce (muddatlar) | `shop_id`+`version` |
 | `platform.ai_quota.exhausted` | AI limiti tugadi (DEC-119) | `period`, `limit`, `used` | sales_ai (rejim `OFF`, yangi xabarlar operatorga) | `period` |
 | `platform.notification.customer_delivery_requested` | xaridorga kanal orqali xabar kerak (FSM-12 `SCHEDULED`) | `notification_id`, `conversation_id`, `template_key`, `locale`, `rendered_ref` | messaging (shop kanali orqali yuboradi) | `notification_id` |
-
 | `platform.privacy.export_requested` | xaridor ma'lumotlarini eksport so'rovi (`26`) | `request_id`, `subject_ref` (hash), `deadline_at` | commerce, messaging, support, sales_ai, reporting (o'z qismini tayyorlaydi) | `request_id`+consumer |
 | `platform.privacy.erasure_requested` | xaridor ma'lumotini o'chirish/anonimlashtirish | `request_id`, `subject_ref`, `deadline_at` | commerce, messaging, support, sales_ai, reporting | `request_id`+consumer |
 | `platform.privacy.shop_export_requested` | pilot tugadi / shop yopilmoqda — butun shop eksporti | `request_id`, `deadline_at` | barcha domenlar | `request_id`+consumer |
@@ -290,6 +290,33 @@ Privacy event'lari — yangi `platform/privacy` moduli (`26`). Har domen consume
 ### 8.7 Keyinga qoldirilgan
 
 `payments.*` (DEC-100), `fulfillment.*` (DEC-113). Stage 2: `network.public_offer.published`, `network.public_offer.updated`, `network.public_offer.withdrawn`, `network.canonical_match.changed`, `network.pos_stock.received`. Stage 3: `marketplace.referral.consented`. Payload va consumer'lar domenlar qo'shilganda shu katalogga yoziladi (`28`).
+
+### 8.8 `storefront`
+
+| Event | Qachon | Payload | Consumer'lar | Idempotency |
+|---|---|---|---|---|
+| `storefront.site.updated` | Sayt sozlamalari o'zgardi (logo, kontaktlar, mavzu) | `site_id`, `version` | storefront (o'z keshini tozalaydi, `08` §4) | `site_id`+`version` |
+
+`storefront.public_products` proyeksiyasi `catalog.product.*`, `catalog.price.changed`, `catalog.exchange_rate.updated` va `commerce.stock.changed` event'laridan quriladi (`07` §4.7).
+
+### 8.9 Query Port'lar — domenlararo o'qish (to'liq ro'yxat)
+
+Interfeys va DTO — `app/shared/contracts/<domain>.py`, implementatsiya — egasi domenda, ulanish — `app/dependencies.py` (ADR-032). Faqat o'qish.
+
+| Port | Metod | Kim ishlatadi |
+|---|---|---|
+| `CatalogQueryPort` | `search`, `get_product`, `get_active_price` | sales_ai (tool'lar), commerce (buyurtma tasdiqlashda joriy narx, `12` §5.1) |
+| | `check_compatibility`, `suggest_builds` | sales_ai, commerce (taklif) |
+| | `get_import_stock_rows` | commerce (import qoldig'ini qo'llash, `18`) |
+| | `get_public_projection`, `list_reference_specs` | storefront (proyeksiyani qayta qurish), reporting |
+| `CommerceQueryPort` | `get_availability`, `get_stock_levels` | sales_ai, catalog (PC tavsiyasi), storefront (proyeksiyani qayta qurish) |
+| | `get_order_status` | sales_ai (`commerce.lookup_order_status`) |
+| | `get_order_for_support(order_id)` | support — buyurtma shu shopga tegishli va `COMPLETED` ekanini tekshirish, qatorlar va `warranty_snapshot` (kafolat shartlari, muddati) manbai (BL-057) |
+| | `get_import_stock_results`, `list_orders_for_backfill` | catalog (import holati), reporting (read model'ni qayta qurish) |
+| `MessagingQueryPort` | `get_conversation_context`, `list_conversations_for_backfill` | sales_ai, reporting |
+| `SalesAiQueryPort` | `get_reply(reply_id)` | messaging — AI javob matni (`ai_turns`), event'da matn yo'q |
+| | `resolve_contact_ref(contact_ref_id)` | commerce — xaridor kontakti (`14` §7) |
+| `NetworkQueryPort` | (Stage 2) | marketplace (`28`) |
 
 ---
 
@@ -328,7 +355,7 @@ Har dispatch span'i `traceparent` bilan bog'lanadi: Grafana'da bitta trace'da we
 ## 11. Testlar
 
 1. COMMIT'dan keyin, dispatch'dan oldin worker o'ldirildi → event baribir yetib keladi.
-2. Consumer COMMIT'dan keyin, ACK'dan oldin o'ldi → qayta kelganda `consumed_events` tufayli o'zgarish takrorlanmaydi (TC-022).
+2. Consumer COMMIT'dan keyin, ACK'dan oldin o'ldi → qayta kelganda `consumer_receipts` tufayli o'zgarish takrorlanmaydi (TC-022).
 3. Bir xil `sales_ai.order_draft.requested` 3 marta → bitta `DRAFT` (`source_request_id UNIQUE`).
 4. Narx versiyalari tartibsiz keldi (10, keyin 8) → storefront'da 10 qoladi.
 5. Redis 5 daqiqa o'chirildi → outbox `PENDING` to'planadi, Redis qaytgach hammasi yetib boradi; yo'qolgan arq vazifalari rekonsilyatsiya bilan tiklanadi.
@@ -337,8 +364,7 @@ Har dispatch span'i `traceparent` bilan bog'lanadi: Grafana'da bitta trace'da we
 
 ## 12. Ochiq savollar
 
-1. `SalesAiQueryPort` (`get_reply`) `01` §3 dagi Query Port ro'yxatiga qo'shilishi kerak — `messaging` AI javob matnini shu orqali oladi.
-2. `platform.notification.customer_delivery_requested` — platform → domen yo'nalishidagi yagona yozish event'i; `01` §3 jadvaliga qo'shilishi kerak.
+Hozircha yo'q (`SalesAiQueryPort` va platform → domen event'i `01` §3 ga qo'shildi).
 
 ## Keyingi qadam
 

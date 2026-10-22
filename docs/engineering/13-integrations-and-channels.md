@@ -212,13 +212,13 @@ Sayt chati ham `messaging` adapteri (`WEB_CHAT`), lekin webhook o'rniga `storefr
 | Mavzu | Qoida |
 |---|---|
 | Joylashuv | Shop sayti sahifalarida (S1); keyin istalgan saytga `<script>` snippet |
-| Transport | REST (yuborish) + WebSocket (javoblar, `platform/realtime`); WS uzilsa polling |
+| Transport | REST (yuborish) + SSE (javoblar, server → brauzer, `08` §6.6); SSE uzilsa `GET …/chat/messages?after=` polling. Xodimlar WebSocket'idan butunlay alohida |
 | Mehmon | `visitor_id` — httpOnly cookie, sayt domenida; login yo'q |
 | Kontakt | Ixtiyoriy telefon/ism (buyurtma uchun majburiy), rozilik belgisi bilan |
 | Spam | IP va `visitor_id` bo'yicha rate limit; shubhada oddiy challenge |
 | Tarix | Shu brauzerda davom etadi; boshqa qurilmada — yangi suhbat |
 | Javob oynasi | Cheklov yo'q |
-| Endpoint'lar | `POST /api/v1/storefront/{slug}/chat/messages`, `GET …/chat/messages?after=`, WS `/ws/v1/storefront/{slug}/chat?ticket=` |
+| Endpoint'lar | `POST /api/v1/storefront/{slug}/chat/sessions`, `POST …/chat/messages`, `GET …/chat/messages?after=`, SSE `GET …/chat/sessions/{session_id}/events` |
 
 Boshqa shop `slug`i bilan suhbat ID'si so'ralsa — 404 (TC-CH-06).
 

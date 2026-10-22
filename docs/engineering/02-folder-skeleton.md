@@ -122,7 +122,7 @@ ai-commerce-backend/
 │   │   │
 │   │   ├── storefront/
 │   │   │   ├── sites/                       # sayt sozlamalari, sahifalar
-│   │   │   └── public_catalog/              # surface=storefront: mahsulotlar ro'yxati (CatalogQueryPort + kesh)
+│   │   │   └── public_catalog/              # surface=storefront: mahsulotlar ro'yxati — public_products proyeksiyasi (event'lardan) + kesh
 │   │   │
 │   │   ├── support/
 │   │   │   └── cases/                       # FSM-11

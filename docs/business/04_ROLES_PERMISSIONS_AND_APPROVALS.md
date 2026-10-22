@@ -39,6 +39,7 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 - Lead va PC taklif qoralamasini tuzadi.
 - **O'ziga biriktirilgan buyurtmani tasdiqlaydi** (mahsulot borligi tekshiriladi), tayyorlaydi va topshiradi (DEC-108).
 - Do'konda "tez sotuv" qiladi.
+- Kafolat murojaatini ochadi va ma'lumot yig'adi; qarorni menejer yoki ega qiladi (DEC-130).
 - Qila olmaydi: narx o'zgartirish, chegirma berish (faqat so'raydi), buyurtmani bekor qilish, PC taklifini tasdiqlash, tannarxni ko'rish.
 
 **Omborchi (Warehouse)**
@@ -97,7 +98,7 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 | Mahsulotni saytga chiqarish | Tasdiqlaydi | Tasdiqlaydi | — | — | — | — |
 | Narx o'zgartirish | Ha | Ha | — | — | Ko'radi | Ko'radi |
 | Chegirma | Ha (cheklovsiz) | 5% gacha | So'raydi | — | — | — |
-| Stok kirimi | Ko'radi | Tasdiqlaydi | Ko'radi | Ha | Ko'radi | Ko'radi |
+| Stok kirimi | Ha | Tasdiqlaydi | Ko'radi | Ha | Ko'radi | Ko'radi |
 | Stok tuzatish | Tasdiqlaydi | Tasdiqlaydi | — | So'raydi | — | — |
 | "Tez sotuv" (do'kondagi sotuv) | Ha | Ha | Ha | Ha | — | — |
 | Suhbatlar va inbox | Ha | Ha | O'ziniki | — | — | Javob beradi |
@@ -108,7 +109,8 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 | Buyurtmani tayyorlash va topshirish | Ha | Ha | O'ziniki | Tayyorlash | Ko'radi | — |
 | Buyurtmani bekor qilish | Ha | Ha | — | — | Ko'radi | — |
 | "To'landi" belgisi | Ha | Ha | O'ziniki | — | Ha | — |
-| Kafolat murojaatlari | Ha | Ha | Ko'radi | Ko'radi | — | — |
+| Kafolat murojaatini ochish | Ha | Ha | Ha | Ko'radi | — | — |
+| Kafolat murojaati bo'yicha qaror (qabul/rad) | Ha | Ha | — | — | — | — |
 | Hisobotlar | Ha | Ha | O'ziniki | O'z filiali | Ha | — |
 | Tannarx va foyda | Ha | Ruxsat bilan | — | — | Ruxsat bilan | — |
 | AI sozlamalari | Ha | Ko'radi | — | — | — | — |

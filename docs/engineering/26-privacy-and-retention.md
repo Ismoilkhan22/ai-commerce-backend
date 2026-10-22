@@ -37,14 +37,14 @@ O'zbekiston "Shaxsga doir ma'lumotlar to'g'risida"gi qonuni (https://lex.uz/docs
 
 | Turi | Misollar | Schema / jadval (egasi) | Shifrlash | Kim ko'radi |
 |---|---|---|---|---|
-| Xaridor kanal identifikatori | Telegram/IG ID, taxallus | `messaging.contacts` | at rest | Biriktirilgan operator, menejer, ega |
+| Xaridor kanal identifikatori | Telegram/IG ID, taxallus | `messaging.customer_identities` | at rest | Biriktirilgan operator, menejer, ega |
 | Xaridor kontakti buyurtmada | ism, telefon | `commerce.orders`, `commerce.leads` | telefon — ustun darajasida | O'sha buyurtma bilan ishlovchilar |
 | Yetkazish manzili | manzil matni | `commerce.orders.delivery_address` | ✅ ustun | O'sha buyurtma bilan ishlovchilar |
 | Suhbat matni | xabarlar | `messaging.messages` | at rest | O'z shopi operatorlari |
 | Ovozli xabarlar | audio | `platform/storage` private bucket | ✅ | — (transkripsiyadan keyin o'chiriladi, DEC-117) |
 | Rasm va fayllar | xaridor yuborgan rasm | private bucket, havolasi `messaging.attachments` | ✅, signed URL | Operatorlar |
 | PII token xaritasi | `[PHONE_1]` → raqam | `platform.llm_pii_refs` (`14`) | ✅ | Faqat tizim |
-| Kafolat murojaati kontakti | ism, telefon | `support.cases` | telefon — ustun | Menejer, operator |
+| Kafolat murojaati kontakti | ism, telefon | `support.support_cases` | telefon — ustun | Menejer, operator |
 | Xodim ma'lumoti | ism, email, telefon, login tarixi | `platform.principals`, `platform.sessions` | parol — Argon2id | Ega, xodimning o'zi |
 | Biznes ma'lumoti | katalog, narx, qoldiq | `catalog.*`, `commerce.*` | at rest | Shop xodimlari |
 | Read model'lar | agregat raqamlar | `reporting.*` | at rest | Ruxsat bo'yicha — **PII yo'q** (`19` §3) |
@@ -83,7 +83,7 @@ Ustun darajasida shifrlash kaliti — secret manager'da, rotatsiya bilan; `share
 | Tuzating | Ega yoki operator kontaktni tahrirlaydi, audit bilan | Darhol |
 | Meta talabi (Instagram foydalanuvchisini o'chirish callback'i) | `messaging` webhook → xuddi `erasure_requested` oqimi + tasdiq kodi | Meta talabi bo'yicha |
 
-Xaridor qanday aniqlanadi: so'rov `customer_ref` bilan (`messaging.contacts.id`). Domenlar o'z jadvallarida shu ref yoki unga bog'langan `conversation_id`/`order_id` lar bo'yicha qidiradi; `commerce` va `support` buyurtma va murojaatlarda `contact_id` ni saqlaydi (FK'siz UUID, ADR-035).
+Xaridor qanday aniqlanadi: so'rov `customer_ref` bilan (`messaging.customer_identities.id`). Domenlar o'z jadvallarida shu ref yoki unga bog'langan `conversation_id`/`order_id` lar bo'yicha qidiradi; `commerce` va `support` buyurtma va murojaatlarda `contact_id` ni saqlaydi (FK'siz UUID, ADR-035).
 
 Platformaga to'g'ridan-to'g'ri kelgan so'rov tegishli shopga yo'naltiriladi (biz qayta ishlovchimiz).
 
@@ -119,7 +119,7 @@ Qoidalar:
 | Xodim taklifnomasi | Xodim ma'lumotlari va login tarixi | Foydalanish shartlari |
 | Shop kelishuvi | Platforma roli, sub-processor'lar, AI o'qitilmasligi, muddatlar | `../business/14` |
 
-Rozilik `commerce.orders.consent_version` va `messaging.contacts.notice_version` da saqlanadi. Marketing roziligi Stage 1 da yig'ilmaydi.
+Rozilik `commerce.orders.consent_version` va `messaging.customer_identities.notice_version` da saqlanadi. Marketing roziligi Stage 1 da yig'ilmaydi.
 
 ## 9. Texnik himoya (xulosa)
 

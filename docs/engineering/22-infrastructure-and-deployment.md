@@ -111,6 +111,7 @@ Production `deploy/docker-compose.prod.yml`: yuqoridagilar + `api`, `outbox-work
 - Ishga tushishda tekshiriladi: DB, Redis, MinIO, public URL'lar, ruxsat etilgan origin'lar, JWT kalitlari, OTel endpoint. Muhimi yetishmasa — jarayon ishga tushmaydi.
 - Production secret'lari: VM'da faqat root o'qiy oladigan `.env.prod` (pilot) → keyinroq secret manager. Repo'da faqat `.env.example`.
 - Shop kanal tokenlari (Telegram bot token, Meta token) — DB'da shifrlangan (`app/shared/crypto`, kalit env'da), logga hech qachon tushmaydi.
+- Platformaning xodimlar uchun tizim Telegram boti (`20` §1): token `STAFF_TELEGRAM_BOT_TOKEN` env/secret'da, webhook `POST /api/v1/webhooks/telegram/staff-bot` (imzo — `secret_token`). Har muhit (dev/staging/prod) uchun alohida bot.
 - Kalit almashtirish: ikki kalitli oyna (eski + yangi bir vaqtda qabul qilinadi), audit yozuvi bilan.
 
 ---

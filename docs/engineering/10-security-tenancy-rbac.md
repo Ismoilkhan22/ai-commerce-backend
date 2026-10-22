@@ -82,8 +82,8 @@ RLS — ikkinchi qavat. Birinchi qavat — repository'dagi `WHERE shop_id = :sho
 | Schema | Jadvallar |
 |---|---|
 | `commerce` | `orders`, `order_lines`, `order_notes`, `reservations`, `stock_balances`, `stock_ledger`, `quick_sales`, `leads`, `quotes`, `quote_revisions`, `quote_lines` |
-| `messaging` | `conversations`, `messages`, `customer_identities`, `handoffs`, `conversation_summaries` |
-| `sales_ai` | `knowledge_items`, `prompt_versions`, `tool_executions` |
+| `messaging` | `conversations`, `messages`, `customer_identities`, `handoffs` |
+| `sales_ai` | `knowledge_items`, `prompt_versions`, `ai_sessions`, `ai_turns`, `ai_tool_executions`, `conversation_summaries` |
 | `support` | `support_cases` |
 | `platform` | `memberships`, `sessions`, `notifications`, `staff_tasks`, `stored_files` |
 | `catalog` | `price_versions`, `current_prices`, `exchange_rates` (tannarx qo'shilganda — o'sha ham) |
@@ -225,7 +225,7 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 |---|---|---|---|---|---|---|---|---|---|---|
 | `storefront.site.edit` | ✓ | — | — | — | — | — | — | — | — | Shop sozlamalari (sayt) |
 | `support.case.view` | ✓ | ✓ | ✓ | ✓ | — | — | agg | — | — | Kafolat murojaatlari |
-| `support.case.create` | ✓ | ✓ | ✓ | — | — | — | — | — | — | Kafolat murojaatlari (§12 savol 1) |
+| `support.case.create` | ✓ | ✓ | ✓ | — | — | — | — | — | — | Operator ochadi va ma'lumot yig'adi (founder, 2026-10-22) |
 | `support.case.decide` | ✓ | ✓ | — | — | — | — | — | — | — | Qabul / rad (UAT-M16) |
 | `support.case.service` | ✓ | ✓ | — | ✓ br | — | — | — | — | — | Xizmatda → hal qilindi |
 | `reporting.report.read` | ✓ | ✓ | own | br | ✓ | — | agg | — | — | Hisobotlar |
@@ -367,7 +367,7 @@ Qo'shimcha xavfsizlik testlari: `TC-SEC-02` muhim amalda step-up; `03` imzoli we
 
 ## 13. Ochiq savollar (founder uchun)
 
-1. **Kafolat murojaatini kim ochadi?** `business/04` jadvalida operator kafolat murojaatlarini faqat "Ko'radi", lekin `business/05` FSM-11 da "operator ko'rib chiqishni boshladi" deyilgan. Hozir: operator ochadi va ko'rib chiqishni boshlaydi (`support.case.create`), qaror — menejer/ega.
+1. ✅ **Kafolat murojaatini kim ochadi** — hal qilindi (founder, 2026-10-22): operator (`SALES`) ochadi va ma'lumot yig'adi (`support.case.create`), qabul/rad — menejer yoki ega (`support.case.decide`). `business/04` jadvali shunga moslab yangilanadi.
 2. **Ega stok kirimini faqat "Ko'radi"mi?** `business/04` jadvalida shunday, lekin egada "hammasini qila oladi". Hozir: ega ham qila oladi.
 3. **Menejer AI'ni to'xtata oladimi** (masalan, AI xato qilayotganda kechqurun)? Eski hujjatda `agent.pause` menejerda edi; `business/04` da AI sozlamalari faqat egada. Hozir: faqat ega (+ platforma kill switch).
 4. **Tahlilchi** shaxsiy ma'lumotni "alohida ruxsat bilan" ko'radi — Stage 1 da bunday ruxsat kerakmi? Hozir: yo'q, faqat `agg`.

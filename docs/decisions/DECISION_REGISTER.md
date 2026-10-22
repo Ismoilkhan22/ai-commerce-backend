@@ -219,6 +219,15 @@ Aniq kataklar `DEC-108` (buyurtmani kim tasdiqlaydi) va `DEC-109` da hal qilinad
 | B | Ombor va buyurtma alohida, `workflows/` istisnosi bilan | Domenlar kichik | Bismuth 4-qoidasiga istisno, istisnolar ko'payishi mumkin |
 | C | Faqat event (saga) | To'liq mustaqillik | "Tasdiqlandi" dan keyin "mahsulot yo'q" — TC-002/027 buziladi |
 
+### DEC-127 — Buyurtma tasdiqlashda narx qayerdan tekshiriladi — `APPROVED (2026-10-22, founder): A`
+**Nima:** operator buyurtmani tasdiqlaganda tizim narx o'zgarmaganini tekshiradi (TC-031). Narx `catalog` da, buyurtma `commerce` da.
+**Qayerda:** `engineering/12-concurrency-and-transactions.md`, `engineering/ADR/ADR-032-commerce-domain-and-event-communication.md`.
+
+| Variant | Mazmuni | Afzallik | Kamchilik |
+|---|---|---|---|
+| A ✅ | Tasdiqlashda `CatalogQueryPort.get_active_price()` sinxron o'qiladi va buyurtma qatoridagi narx bilan solishtiriladi | Har doim eng yangi narx, qo'shimcha jadval yo'q | `commerce` tasdiqlashda catalog interfeysiga bog'liq |
+| B | `commerce` ichida narx nusxasi (event orqali yangilanadi) | Domenlar to'liq mustaqil | Qo'shimcha jadval; ~2 s kechikish oynasi |
+
 ## 2. Konvensiyalar — K-01…K-10 — `APPROVED (2026-10-21, founder): hammasi ⭐ bo'yicha`
 
 Hujjatlarda bitta narsa turli nom bilan yozilgan; quyidagi standartlar barcha hujjat va kodda majburiy. Ta'sir: DB ustunlari, enum'lar, API, event'lar, AI tool'lar — hujjatlarni birlashtirish bosqichida (5-bo'lim, 2-band) kiritiladi.
@@ -526,6 +535,34 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 - `business/` da faqat odam o'qiydigan hujjatlar qoladi; dasturchilar uchun yozilgan `07` (entity'lar), `09` (event'lar), `12` (bog'lanish indeksi) `engineering/07-data-layer.md`, `35`, `36` ga ko'chirildi.
 - Biznes hujjatlari oddiy o'zbek tilida, boshqa odamlar ham tushunadigan qilib qayta yoziladi; holatlar strelka ketma-ketligi bilan tushuntiriladi.
 - Engineering hujjatlari `bismuth_platform_v2/docs/v2` standartlariga moslab qayta ko'rib chiqiladi (biznes hujjatlaridan keyin).
+
+### DEC-128 — Saytda qoldiq qanday ko'rsatiladi — `APPROVED (2026-10-22, founder): A`
+**Nima:** shop saytida va AI javoblarida mahsulot qoldig'i aniq son bilanmi yoki faqat holat bilanmi.
+**Qayerda:** `business/02` M07, `engineering/08-cache-and-realtime.md`, `modules/storefront`.
+
+| Variant | Mazmuni | Afzallik | Kamchilik |
+|---|---|---|---|
+| A ✅ | Shop sozlamasi: `EXACT` (aniq son) yoki `STATUS_ONLY` ("bor / kam qoldi / yo'q") | Qoldig'ini yashirmoqchi bo'lgan shoplarga qulay | Bitta qo'shimcha sozlama |
+| B | Har doim aniq son | Oddiy | Ba'zi shoplar istamaydi |
+| C | Har doim faqat holat | Oddiy, xavfsiz | Xaridor nechta qolganini bilmaydi |
+
+### DEC-129 — Xodimlarga xabar kanali — `APPROVED (2026-10-22, founder): A`
+**Nima:** yangi buyurtma, uzatilgan suhbat, eslatmalar haqida xodim qayerdan biladi.
+**Qayerda:** `business/02` M17, `engineering/20-notifications.md`, `engineering/22-infrastructure-and-deployment.md`.
+
+| Variant | Mazmuni | Afzallik | Kamchilik |
+|---|---|---|---|
+| A ✅ | Panel (real vaqt) + platformaning Telegram tizim boti; xodim botga bir marta ulanadi | Panel yopiq bo'lsa ham xodim biladi | Yana bitta bot; ulash qadami |
+| B | Faqat panel | Oddiy | Panel yopiq bo'lsa javob kechikadi |
+
+### DEC-130 — Kafolat murojaatini kim ochadi — `APPROVED (2026-10-22, founder): A`
+**Nima:** `business/04` (operator faqat ko'radi) va `business/05` FSM-11 (operator ko'rib chiqishni boshlaydi) o'rtasidagi ziddiyat.
+**Qayerda:** `business/04`, `business/02` M16, `engineering/10-security-tenancy-rbac.md`, `modules/support`.
+
+| Variant | Mazmuni | Afzallik | Kamchilik |
+|---|---|---|---|
+| A ✅ | Operator ochadi va ma'lumot yig'adi; qabul/rad qarorini menejer yoki ega qiladi | Xaridor bilan gaplashayotgan odam darhol ro'yxatga oladi | — |
+| B | Faqat menejer ochadi | Nazorat kuchli | Sekinroq |
 
 ## 4. Eski ID'lar xaritasi
 

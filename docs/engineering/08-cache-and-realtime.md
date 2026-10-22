@@ -99,7 +99,11 @@ Qo'shimcha: TTL jitter, va tugashiga 10% qolganda fonda yangilash (probabilistic
 
 Saytda ko'rsatilgan qoldiq — "taxminiy" (60 s gacha eski). Xaridor buyurtma so'rovi yuborganda `commerce` uni DB'dan qayta tekshiradi; mos kelmasa — xaridorga "mahsulot qolmagan / narx o'zgardi" (`409 INSUFFICIENT_AVAILABLE_STOCK` / `PRICE_CHANGED`). Operator tasdiqlashda yana bir marta lock ostida tekshiriladi (`12`).
 
-Shop "aniq qoldiqni ko'rsatmaslik" sozlamasini tanlasa — sayt faqat "bor / kam qoldi / yo'q" ko'rsatadi.
+Qanday ko'rsatilishini shop tanlaydi (founder qarori, 2026-10-22) — `platform.shop_policies.stock_display`:
+- `EXACT` — aniq son ("5 ta bor");
+- `STATUS_ONLY` (default) — faqat "bor / kam qoldi / yo'q" (`low_stock_threshold` dan kam bo'lsa "kam qoldi").
+
+Sozlama `storefront.public_products` proyeksiyasida (`available_qty` faqat `EXACT` da to'ldiriladi) va AI javoblarida (`14` §4) qo'llanadi. Sozlama o'zgarsa — `platform.shop.policy_changed` (`05` §8.6), storefront proyeksiyani qayta hisoblaydi va keshni tozalaydi.
 
 ---
 
@@ -193,7 +197,7 @@ Klient oxirgi `sequence` ni saqlaydi; qayta ulanganda `GET /api/v1/shop/realtime
 
 ### 6.6 Storefront chati (xaridor)
 
-Sayt chati vidjeti uchun Stage 1 da long-poll/SSE (`GET /api/v1/storefront/{slug}/chat/{session}/events`) — anonim sessiya tokeni bilan; xabarlar `messaging` da boshqa kanallar kabi (`13`). Xaridor WS'i alohida, xodim kanallariga hech qanday aloqasi yo'q.
+Sayt chati vidjeti uchun **SSE** (`GET /api/v1/storefront/{slug}/chat/sessions/{session_id}/events`) — anonim sessiya tokeni bilan, xabar yuborish oddiy `POST …/chat/messages`; SSE uzilsa `GET …/chat/messages?after=` polling. Nega SSE: anonim mehmon uchun ticket kerak emas, bir tomonlama oqim yetarli, nginx orqali oddiy; xabarlar `messaging` da boshqa kanallar kabi (`13`). Xaridor WS'i alohida, xodim kanallariga hech qanday aloqasi yo'q.
 
 ---
 

@@ -58,7 +58,7 @@ Ikkita arq navbati (Redis **db1**; db0 — kesh va rate limit, db2 — pub/sub v
 
 | Vazifa | Navbat | Kim qo'yadi | Idempotency kaliti | Retry | Timeout | Muvaffaqiyatsiz bo'lsa |
 |---|---|---|---|---|---|---|
-| `dispatch_event` | default | outbox_worker | `consumed_events (consumer, event_id)` | 8, eksp. 2 s → 4 daq + jitter | 30 s | dead-letter (`05` §7) |
+| `dispatch_event` | default | outbox_worker | `consumer_receipts (consumer, event_id)` | 8, eksp. 2 s → 4 daq + jitter | 30 s | dead-letter (`05` §7) |
 | `ai_reply` | default | `messaging.message.received` subscriber (sales_ai) | `ai_reply:{conversation_id}:{message_id}` | 2 (faqat LLM 5xx/timeout) | 45 s | `sales_ai.handoff.requested` (sabab `AI_UNAVAILABLE`), xaridorga "operator javob beradi" |
 | `channel_send` | default | messaging (`outbound_messages`) | `outbound_message_id` (provayderga idempotency kaliti bo'lsa — beriladi) | 5; 429 → `Retry-After`; 4xx (403 bloklangan) → yo'q | 15 s | `messaging.message.failed`, vazifa xodimga (TC-011, TC-032) |
 | `notification_send` | default | platform.notifications (in-app, platforma boti) | `notification_id` | 5 (FSM-12) | 15 s | FSM-12 `FAILED`, xodimga vazifa |
@@ -125,9 +125,9 @@ async def main():
 | `channel_health_check` | har 30 daq | messaging | token muddati yaqin / xatolar ko'p → `DEGRADED`, egaga ogohlantirish | `channel_health:{channel_id}:{hour}` | FSM-03 |
 | `audit_partition_create` | har oy 25-sanasi | platform/audit | keyingi oy partitsiyalari (`audit.events`, `platform.transition_log`) | partition nomi | `07` |
 | `audio_purge` | har soat | reporting | transkripsiya qilingan audio fayllarni o'chiradi | `audio_id` | DEC-117 |
-| `outbox_reconcile` (`app.workers.reconcile_tasks`) | har 5 daq | workers | `PUBLISHED` > 10 daq, lekin kutilgan consumer uchun `consumed_events` yo'q → `dispatch_event` qayta qo'yiladi | `{event_id}:{consumer}` | ADR-033 |
-| `outbox_cleanup` | har kuni 03:00 | platform | `PUBLISHED` > 7 kun va `consumed_events` > 30 kun — o'chirish (bo'laklab) | — | — |
-| `idempotency_cleanup` | har kuni 03:30 | platform | idempotency yozuvlari > 7 kun — o'chirish | — | — |
+| `outbox_reconcile` (`app.workers.reconcile_tasks`) | har 5 daq | workers | `PUBLISHED` > 10 daq, lekin kutilgan consumer uchun `consumer_receipts` yo'q → `dispatch_event` qayta qo'yiladi | `{event_id}:{consumer}` | ADR-033 |
+| `outbox_cleanup` | har kuni 03:00 | platform | `PUBLISHED` > 14 kun va `consumer_receipts` > 7 kun — o'chirish (bo'laklab, 1000 tadan; muddatlar manbai — `07` §5.3) | — | — |
+| `idempotency_cleanup` | har soat | platform | HTTP `idempotency_keys` > 24 soat — o'chirish (`07` §5.3) | — | — |
 | `retention_purge` | har kuni 04:00 | platform | `26` dagi muddatlar bo'yicha (huquqshunos tasdig'idan keyin yoqiladi) | `retention:{table}:{date}` | `26` |
 | `ai_usage_rollup` | har 10 daq | platform/billing | AI xarajatini shop bo'yicha yig'adi; limitga yaqin → ogohlantirish; tugasa → `platform.ai_quota.exhausted` | `ai_quota:{shop_id}:{period}` | DEC-119 |
 
@@ -140,7 +140,7 @@ Vaqtlar `Asia/Tashkent`; shop sozlamalari (`shop_policy`) o'qiladi. Hech bir rej
 | Holat | Nima bo'ladi | Tiklanish |
 |---|---|---|
 | Redis o'chdi | API ishlayveradi (yozish, buyurtma, tasdiqlash — PostgreSQL'da). Outbox `PENDING` to'planadi. Kesh yo'q → DB'dan o'qiladi. Rate limit — `08` §5.3 dagi konservativ fallback. WS realtime to'xtaydi (dashboard REST poll'ga o'tadi). | Redis qaytgach outbox_worker hammasini yuboradi |
-| Redis qayta ishga tushdi, AOF'dan oxirgi ~1 s yo'qoldi | Ba'zi `PUBLISHED` qilingan arq vazifalari yo'q | `app.workers.reconcile_tasks` 5–15 daqiqada qayta qo'yadi: (1) outbox — `consumed_events` yo'q consumer'lar; (2) tashqi niyatlar — `messaging.outbound_messages` `PENDING` > 5 daq, `catalog.imports` `RUNNING` heartbeat'siz > 10 daq, `platform.notifications` `SCHEDULED` > 5 daq |
+| Redis qayta ishga tushdi, AOF'dan oxirgi ~1 s yo'qoldi | Ba'zi `PUBLISHED` qilingan arq vazifalari yo'q | `app.workers.reconcile_tasks` 5–15 daqiqada qayta qo'yadi: (1) outbox — `consumer_receipts` yo'q consumer'lar; (2) tashqi niyatlar — `messaging.outbound_messages` `PENDING` > 5 daq, `catalog.imports` `RUNNING` heartbeat'siz > 10 daq, `platform.notifications` `SCHEDULED` > 5 daq |
 | arq vazifasi bajarilish o'rtasida worker o'ldi | arq qayta beradi (`max_tries`) | idempotency kaliti ikki marta bajarishdan saqlaydi (TC-022) |
 | Rejali ish o'tkazib yuborildi (scheduler o'chiq edi) | — | Ishlar "oxirgi ishga tushgandan beri" emas, **holat bo'yicha** tanlaydi (`created_at < now() - 24h AND reminder_sent_at IS NULL`) — keyingi ishga tushishda yetib oladi |
 

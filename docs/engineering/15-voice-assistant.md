@@ -21,12 +21,13 @@
 
 ```
 Ega "Gapirish"ni bosib turadi (press-to-talk, yozish belgisi ko'rinadi)
-  ──▶ POST /api/v1/shop/reports/voice/transcriptions   (audio, ≤ 60 s)
-        reporting/assistant ──▶ platform/llm.SpeechToTextPort (server tomonida, kalit brauzerga chiqmaydi)
-        ◀── matn + til + ishonch darajasi
-        audio darhol o'chiriladi (DEC-117); faqat matn qaytadi
+  ──▶ POST /api/v1/shop/reports/voice/transcriptions   (audio, ≤ 60 s) ──▶ 202 {job_id}
+        arq: voice_transcribe(audio_id) (`06`) ──▶ reporting/assistant ──▶ platform/llm.SpeechToTextPort
+             (server tomonida, kalit brauzerga chiqmaydi)
+        ◀── natija WebSocket orqali (yoki GET /api/v1/shop/jobs/{job_id}): matn + til + ishonch darajasi
+        audio transkripsiyadan keyin darhol o'chiriladi (DEC-117); faqat matn qaytadi
   ──▶ UI: tahrirlanadigan matn. Ishonch past, katta summa yoki noaniq metrika → tasdiq majburiy
-  ──▶ POST /api/v1/shop/reports/assistant/queries   (tasdiqlangan matn — matnli yordamchi bilan BIR XIL endpoint)
+  ──▶ POST /api/v1/shop/reports/assistant/messages   (tasdiqlangan matn — matnli yordamchi bilan BIR XIL endpoint, `11`)
         intent → metric_ids + davr + filtrlar (LLM faqat ajratadi, platform/llm redaction bilan)
         ruxsat: foydalanuvchi roli (ActorContext) — operator faqat o'z raqamlarini
         reporting.metrics.query(...) → qiymat, valyuta, timezone, data_as_of, quality_flags
@@ -50,7 +51,7 @@ Ikki bosqich ataylab ajratilgan: matn tasdiqlanmaguncha so'rov bajarilmaydi.
 
 ## 4. Metrikalar
 
-**Yagona manba:** `19-reporting-metrics.md`. Ovozli va matnli yordamchi faqat u yerdagi `metric_id` larni ishlatadi. Stage 1 asosiylari: `orders_completed_count`, `orders_completed_amount`, `orders_paid_marked_amount` (tekshirilmagan, `quality_flags: UNVERIFIED_PAID_MARK`), `orders_pending_confirmation_count`, `leads_by_channel`, `top_products_by_units`, `conversation_first_response_p50`, `stock_low_count`. Foyda — Stage 1 da yo'q: `NO_COST_DATA`.
+**Yagona manba:** `19-reporting-metrics.md`. Ovozli va matnli yordamchi faqat u yerdagi `metric_id` larni ishlatadi. Stage 1 asosiylari: `orders_completed_count`, `orders_completed_amount`, `orders_paid_marked_amount` (tekshirilmagan, `quality_flags: UNVERIFIED_PAID_MARK`), `orders_pending_confirmation_count`, `leads_by_channel`, `top_products_by_units`, `first_response_time_p50`, `stock_low_count`. Foyda — Stage 1 da yo'q: `NO_COST_DATA`.
 
 Har javobda: davr, timezone, valyuta, `data_as_of`. So'm va dollar jim qo'shilmaydi.
 
@@ -60,8 +61,8 @@ Har javobda: davr, timezone, valyuta, `data_as_of`. So'm va dollar jim qo'shilma
 
 | Metod va yo'l | Ruxsat | Izoh |
 |---|---|---|
-| `POST /api/v1/shop/reports/voice/transcriptions` | `reporting.assistant.use` + feature flag | multipart audio, ≤ 60 s, ≤ 2 MB; javob: `{transcript, language, confidence, needs_confirmation}` |
-| `POST /api/v1/shop/reports/assistant/queries` | `reporting.assistant.use` | `{text, source: "TEXT" \| "VOICE"}`; javob: `{answer_text, metrics[], period, data_as_of, quality_flags, tts_url?}` |
+| `POST /api/v1/shop/reports/voice/transcriptions` | `reporting.assistant.ask` + feature flag `reporting.voice` | multipart audio, ≤ 60 s, ≤ 2 MB; `202 {job_id}`; natija (WS yoki `GET /api/v1/shop/jobs/{job_id}`): `{transcript, language, confidence, needs_confirmation}` |
+| `POST /api/v1/shop/reports/assistant/messages` | `reporting.assistant.ask` | `{text, source: "TEXT" \| "VOICE"}`; javob: `{answer_text, metrics[], period, data_as_of, quality_flags, tts_url?}` |
 
 Rate limit: foydalanuvchiga daqiqasiga 10 so'rov. Xarajat `platform/billing` ga yoziladi.
 

@@ -45,7 +45,8 @@ task_worker: ai_reply
    3. platform/llm: redaction (§7) → LLMPort.generate(prompt qatlamlari §5, tool sxemalari)
    4. loop (maks 6 tool chaqiruvi):  LLM → tool_call → tool broker (§3.1) → natija → LLM
    5. Javob tekshiruvi (§8): OK | bir marta qayta yozish | handoff
-   6. sales_ai.ai_turns ga yozuv + outbox [sales_ai.reply.ready {conversation_id, speaker_version, mode, text_ref}]
+   6. sales_ai.ai_turns ga yozuv (reply_text_enc) + outbox [sales_ai.reply.ready {conversation_id, reply_id = ai_turns.id, speaker_version, mode}]
+      messaging matnni SalesAiQueryPort.get_reply(reply_id) orqali oladi
    7. platform/billing.record_usage(tokens, cost)
 messaging subscriber: speaker_mode == AI va speaker_version o'zgarmaganmi?
    ├─ Ha, rejim AUTO    → channel_send (13 §4)
@@ -105,7 +106,7 @@ class CatalogItem(BaseModel):
     spec_linked: bool                                      # DEC-011
     observed_at: datetime
 ```
-Faqat shu shopning saytga chiqarilgan (`PUBLISHED`) SKU'lari. Aniq qoldiq soni emas, `availability` darajasi (shop siyosati).
+Faqat shu shopning saytga chiqarilgan (`PUBLISHED`) SKU'lari. Qoldiq shop sozlamasi `stock_display` bo'yicha (`08` §4.5): `STATUS_ONLY` — faqat `availability` darajasi, AI aniq son aytmaydi; `EXACT` — qo'shimcha `available_qty` beriladi va AI uni aytishi mumkin.
 
 ### 4.2 `catalog.get_price_stock`
 Kirish: `sku_ids: list[UUID]` (≤ 10). Chiqish: har SKU uchun `price` (xaridorga so'mda; dollar narxli SKU — kurs snapshot'i bilan, DEC-121), `price_version`, `availability`, `observed_at`. Narx yo'q yoki eskirgan — `PRICE_UNKNOWN` / `STALE_PRICE`.
@@ -183,7 +184,7 @@ Kirish: `reason` (§9), `summary` (≤ 300 belgi, PII'siz). `messaging` suhbatni
 - Shop profili 1-qatlam qoidalarini bekor qila olmaydi.
 - Prompt almashtirish: yangi versiya → eval (`16`) → shadow → aktivlashtirish. Har javob `prompt_version` va `agent_profile.version` bilan saqlanadi.
 
-`knowledge` sub-moduli: `agent_profiles`, `faq_entries`, `policies` (versiyalangan, `DRAFT → APPROVED` — ega tasdig'i, xato bo'lsa oldingi versiyaga qaytariladi). Stage 1 da FAQ to'liq matn sifatida promptga kiritiladi (kichik hajm); semantik qidiruv faqat o'lchangan foyda bo'lsa (`16` §4).
+`knowledge` sub-moduli: `agent_profiles`, `prompt_versions`, `knowledge_items` (`type` = `FAQ` | `POLICY`; versiyalangan, `DRAFT → APPROVED` — ega tasdig'i, xato bo'lsa oldingi versiyaga qaytariladi). Stage 1 da FAQ to'liq matn sifatida promptga kiritiladi (kichik hajm); semantik qidiruv faqat o'lchangan foyda bo'lsa (`16` §4).
 
 ---
 
@@ -208,7 +209,7 @@ Xotira `shop_id` + `conversation_id` bilan cheklangan; boshqa suhbat yoki shop x
 Redaction `platform/llm` da — LLM'ga boradigan har bir so'rov undan o'tadi (`sales_ai` ham, `reporting/assistant` ham).
 
 1. Yuborishdan oldin: telefon, email, karta raqami, manzil, aniqlangan ismlar → `[PHONE_1]`, `[ADDRESS_1]`, `[NAME_1]`.
-2. Token → haqiqiy qiymat jadvali faqat serverda, suhbat doirasida (`sales_ai.conversation_pii_refs`, shifrlangan, RLS).
+2. Token → haqiqiy qiymat jadvali faqat serverda, suhbat doirasida (`platform.llm_pii_refs`, shifrlangan, RLS — `07` §4.1).
 3. AI tool'larga token yuboradi (`contact_ref: "PHONE_1"`).
 4. **Domenlararo:** event payload'ida haqiqiy kontakt yo'q — `contact_ref_id` (UUID). `commerce` subscriber `SalesAiQueryPort.resolve_contact_ref(contact_ref_id)` orqali bir marta o'qiydi va o'z jadvaliga (`commerce.order_contacts`) yozadi. Ref 30 kunda o'chiriladi (`26`).
 5. AI javobida token bo'lsa ("[PHONE_1] ga qo'ng'iroq qilamiz") — yuborishdan oldin haqiqiy qiymat qaytariladi.
@@ -230,7 +231,7 @@ Provayder sharti: zero-retention / no-training (ADR-027). Shop ma'lumotida AI o'
 | Til | Xaridor tilida va yozuvida (lotin/kirill) | Qayta yozish |
 | Uzunlik | Kanal limitidan oshmaydi | Qisqartirish |
 
-Qayta yozish — bir marta, validator izohi bilan. Yana yiqilsa — handoff `VALIDATION_FAILED`. Metrika: `cos_sales_ai_validation_failures_total{check}`.
+Qayta yozish — bir marta, validator izohi bilan. Yana yiqilsa — handoff `VALIDATION_FAILED`. Metrika: `cos_sales_ai_reply_rejected_total{reason}` (`09`).
 
 ---
 
@@ -263,7 +264,7 @@ Ish vaqtidan tashqarida AI shop ish vaqtini va operator qachon javob berishini a
 | `SUGGEST` | AI javob yozadi, operator ko'rib yuboradi | **Pilotning birinchi haftasi uchun default** |
 | `AUTO` | AI o'zi javob beradi, xavfli holatda operatorni chaqiradi | Ega yoqadi — eval va shadow natijalari yaxshi bo'lsa (`../business/13` 6.4) |
 
-Rejimni ega tanlaydi (`sales_ai.agent.configure`). Global kill switch — platforma (`25`). AI o'chganda savdo to'xtamaydi.
+Rejimni ega tanlaydi (`sales_ai.settings.edit`). Global kill switch — platforma (`25`). AI o'chganda savdo to'xtamaydi.
 
 **`ai_stage`** (ruxsat uchun emas, operator ekrani va hisobot uchun): `IDLE → QUALIFYING → RECOMMENDING → QUOTE_PENDING → ORDER_DRAFTED → HANDED_OFF` (yoki `STOPPED`). Asosiy holat — `messaging` dagi FSM-04.
 
@@ -288,10 +289,10 @@ Rejimni ega tanlaydi (`sales_ai.agent.configure`). Global kill switch — platfo
 
 ## 13. Kuzatuv va audit
 
-- `sales_ai.ai_turns`: `shop_id, conversation_id, message_id, speaker_version, mode, model_alias, prompt_version, agent_profile_version, outcome (SENT_TO_MESSAGING | DISCARDED | HANDOFF), tokens_in, tokens_out, cost_minor, latency_ms`.
+- `sales_ai.ai_turns`: `id` (= `reply_id`), `shop_id, conversation_id, message_id, speaker_version, mode, model_alias, prompt_version, agent_profile_version, reply_text_enc, outcome (SENT_TO_MESSAGING | DISCARDED | HANDOFF), tokens_in, tokens_out, cost_minor, latency_ms`.
 - `sales_ai.ai_tool_executions`: `shop_id, turn_id, tool, args_redacted, result_hash, error_code, latency_ms`.
 - Span'lar: `sales_ai.turn`, `sales_ai.tool.<name>`, `sales_ai.validate`, `llm.generate` — prompt va xaridor matni telemetriyaga yozilmaydi.
-- Metrikalar: `cos_sales_ai_turns_total{outcome}`, `cos_sales_ai_handoff_total{reason}`, `cos_sales_ai_validation_failures_total{check}`, `cos_sales_ai_turn_duration_seconds`, `cos_llm_cost_minor_total{model_alias}`.
+- Metrikalar (yagona ro'yxat — `09`): `cos_sales_ai_turns_total{outcome}`, `cos_sales_ai_handoff_total{reason}`, `cos_sales_ai_reply_rejected_total{reason}` (javob tekshiruvidan o'tmagan), `cos_sales_ai_turn_duration_seconds`, `cos_sales_ai_tool_calls_total`, `cos_llm_cost_minor_total`.
 - Suhbat namunalari eval uchun faqat shop opt-in bilan va anonimlashtirilgan holda (DEC-118, `16`).
 
 ---
