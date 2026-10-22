@@ -1,102 +1,171 @@
-# 08 — AI AGENTS, VOICE, CHANNELS: BIZNES CAPABILITY CONTRACTS
+# 08 — AI va kanallar: AI nima qila oladi va nima qila olmaydi
 
-**Version:** v1.0. Provider/model choice and prompts are **technical ADR / experiment**, this file defines permissions, business expectations, fallback and test boundaries.
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). Texnik tafsilot (tool'lar, prompt, xavfsizlik qatlamlari): `engineering/26`. Kanallar texnikasi: `engineering/30`.
 
-## 1. Three explicitly separated AI identities
+## Bu hujjat nima uchun
 
-| AI agent | Scope | Allowed reads | Allowed write/propose | Strict no-go |
+Tizimda AI xaridorlar bilan gaplashadi va egaga hisobot beradi. Bu hujjat biznes nuqtai nazaridan javob beradi:
+- AI qanday vazifalarni bajaradi,
+- qanday ma'lumotga tayanadi,
+- nimani **hech qachon** qilmaydi,
+- qachon operatorni chaqiradi,
+- xaridor qaysi kanallarda yozishi mumkin.
+
+**Asosiy tamoyil:** AI — yordamchi, qaror qiluvchi emas. U tushunadi, savol beradi, tavsiya qiladi va tushuntiradi. Narx, qoldiq, moslik va buyurtma tasdig'i esa tizim qoidalari va odamlar zimmasida.
+
+---
+
+## 1. Uch xil AI
+
+| AI | Qayerda ishlaydi | Nima ko'radi | Nima qila oladi | Nima qila olmaydi |
 |---|---|---|---|---|
-| `MerchantSalesAI` (Stage 1) | Single merchant and one conversation | Approved catalog, pricing, stock, FAQ, compatible PC parts | Lead draft, quote draft, operator handoff, approved permitted reply | Set paid, change stock, discount without approval, read other merchant |
-| `MerchantVoiceCopilot` (Stage 1) | Requesting merchant principal and branch | Authorized semantic reporting metrics | Read-only Stage 1: report/query/export if role permits | Raw AI SQL unrestricted, write order, refund, transfer funds without approval |
-| `GlobalShoppingAdvisor` (Stage 3) | Public index and consented buyer context | Canonical product, opted-in offer, public trust, location | Compare and create referral with buyer consent | Merchant private margin, sales stats, CRM, catalog unpublished items |
+| **AI sotuvchi** (Stage 1) | Shop Telegram boti, Instagram, saytdagi chat | Faqat shu shopning katalogi, narxlari, qoldig'i, FAQ | Javob berish, mahsulot va PC tavsiya qilish, lead va taklif qoralamasi, **buyurtma qoralamasi**, operatorni chaqirish | Buyurtmani tasdiqlash, narx yoki chegirma berish, stokni o'zgartirish, boshqa shop ma'lumotini ko'rish |
+| **AI hisobot yordamchisi** (Stage 1) | Shop paneli | Foydalanuvchiga ruxsat etilgan raqamlar | Raqamlar bilan javob, grafik, eksport | Hech narsani o'zgartirish, ruxsatdan tashqari raqam ko'rsatish |
+| **Global AI maslahatchi** (Stage 3) | Global qidiruv sayti va boti | Faqat shoplar ochiq chiqargan takliflar | Solishtirish, tushuntirish, xaridorni shopga yo'naltirish | Shoplarning ichki ma'lumotiga kirish (tannarx, savdo, xaridorlar) |
 
-## 2. Merchant Sales Agent full business cycle
+Uchalasi bir-biridan to'liq ajratilgan: har birining ma'lumoti va ruxsatlari alohida.
 
-1. Channel ingress validates identity and message event, stores durable message.
-2. Conversation manager resolves merchant, channel policy, AI/human mode.
-3. AI determines language (`uz`, `ru`, `en`) and intent; asks only needed parameters: category, budget, specs, location, delivery preferences.
-4. Product search tool responds with merchant-scoped SKU, versioned price, stock freshness, restrictions. AI never reconstructs nonexistent SKU.
-5. For PC buyer, compatibility rules engine determines `PASS / REVIEW_REQUIRED / BLOCK`; LLM can summarize reasons but cannot override.
-6. AI presents up to policy allowed recommendations with pros/cons, uncertainties, pricing validity.
-7. If buyer ready: CRM tool records consented lead. PC yig'ma uchun quote builder immutable draft hisoblaydi (DEC-100e); pilotda har quote Manager/Owner tasdig'idan o'tadi (DEC-102). AI chegirma bermaydi (DEC-110).
-8. Xaridor "olaman" desa: AI `orders.create_draft` bilan buyurtma qoralamasini (mahsulot, miqdor, kontakt, olib ketish/yetkazish, manzil) yaratadi va operatorni chaqiradi (DEC-100c). AI buyurtmani tasdiqlamaydi va "band qilindi/tasdiqlandi" demaydi — faqat "buyurtmangiz qabul qilindi, operator bog'lanadi" (BL-110, BR-X14). Stage 1 da to'lov tizimdan tashqarida (DEC-100).
-9. Post-order status only from order state (FSM-08). AI cannot claim completed before `COMPLETED`.
-10. Missing tools/provider down/angry customer/no consent → stop safely, store conversation and open human task.
+---
 
-### Sale AI tools (business typed contracts, implementation later) — nomlar K-10 formatida (`kontekst.amal`)
+## 2. AI sotuvchi qanday ishlaydi
 
-| Tool | Inputs | Returns | Side effect? | AI rights |
-|---|---|---|---|---|
-| `catalog.search` | merchant context (server-side), query, filters | versioned SKU candidates, evidence | No | Read |
-| `pricing.get_price_stock` | SKU+branch | amount, currency, available, freshness | No | Read |
-| `pc.compatibility_check` | component SKU IDs + rules version | `PASS / REVIEW_REQUIRED / BLOCK` and explanations (K-09) | No | Read |
-| `leads.capture` | consented contact, preferences | lead_id, state | Yes | Draft only |
-| `quotes.prepare_draft` | item SKUs, quantities, branch (faqat PC yig'ma) | quote_id, immutable snapshot, approval policy | Yes | Draft only |
-| `quotes.request_approval` | quote id, reason | approval task id | Yes | May request |
-| `chat.request_handoff` | conversation id, reason | queue assignment | Yes | Always allowed |
-| `orders.lookup_status` | scoped order auth | validated state | No | Read authenticated buyer only |
-| `orders.create_draft` | SKU(lar), miqdor, kontakt, fulfillment method, manzil; conversation | order_id (`DRAFT`), operator vazifasi | Yes | Draft only — stok band qilmaydi, tasdiqlamaydi (DEC-100c) |
-| `orders.confirm` | — | — | Yes | **Forbidden** (faqat odam, DEC-108) |
-| `payments.confirm` | — | — | Yes | **Forbidden** (Stage 1 da to'lov moduli yo'q) |
-| `inventory.write` | — | — | Yes | **Forbidden** |
+```
+1. Xaridor yozadi ──▶ Xabar saqlanadi   [qaysi shop, qaysi kanal — tizim aniqlaydi]
+2. Hozir kim javob beradi — AI yoki operator? ──(operator olgan bo'lsa)──▶ AI jim turadi
+3. AI tilni aniqlaydi (o'zbek lotin/kirill, rus, ingliz) va shu tilda javob beradi
+4. AI kerakli savollarni beradi: nima kerak, byudjet, maqsad, olib ketish yoki yetkazish
+5. AI katalogdan qidiradi   [faqat shu shop, narx va qoldiq tizimdan]
+6. PC yig'ma bo'lsa ──▶ moslik tekshiriladi   [qoidalar hal qiladi, AI faqat tushuntiradi]
+7. AI 1–3 variant taklif qiladi: afzalliklari, kamchiliklari, narx qancha muddat amal qilishi
+8. Xaridor tayyor bo'lsa:
+     - PC yig'ma ──▶ taklif qoralamasi ──▶ menejer tasdiqlaydi ──▶ xaridorga havola
+     - "Olaman" ──▶ buyurtma qoralamasi ──▶ operatorni chaqiradi
+       [xaridorga: "buyurtmangiz qabul qilindi, operator bog'lanadi"]
+9. Buyurtmadan keyin AI faqat tizimdagi holatni aytadi ("tayyorlanmoqda" va h.k.)
+```
 
-## 3. Voice Business Copilot UZ/RU/EN
+### AI qanday ma'lumotga tayanadi
 
-**User journey:** owner taps mic → STT yields transcript with language + confidence → UI displays editable transcription → intent parser produces typed `metric_id`, `period`, `timezone`, `branch`, `filters` → reporting permission enforced → approved semantic metric service computes numbers → answer displayed with period/freshness/evidence → TTS audio as requested. User can fallback to text.
+| Ma'lumot | Manba |
+|---|---|
+| Mahsulotlar, variantlar | Shop katalogi (faqat saytga chiqarilganlar) |
+| Narx | Tizimdagi joriy narx (dollarda bo'lsa — shop kursi bo'yicha so'mda) |
+| Mavjudligi | Ombordagi "sotuvga mavjud" son |
+| PC mosligi | Moslik tekshiruvi natijasi (`engineering/25`) |
+| Ish vaqti, yetkazish, kafolat, qaytarish | Shop tasdiqlagan FAQ va siyosatlar |
+| Buyurtma holati | Faqat shu xaridorning buyurtmasi |
 
-**Stage 1 baseline (DEC-112):** S5 da avval **matnli** hisobot-chat; ovoz (STT/TTS) golden set testidan keyin beta. **Supported read-only intents Stage 1:** completed orders count va summasi (to'lov tizimdan tashqarida — "paid turnover" faqat merchant belgisi bo'yicha, tekshirilmagan deb, DEC-100a); top SKU/PC builds by quantity; leads by channel; response time; unpaid order count; stock low list; daily/weekly/monthly trend; export report if principal can export.
+Bu ro'yxatda bo'lmagan narsani AI aytmaydi. Masalan, shop siyosatida yozilmagan bo'lsa, "1 yil kafolat" deb va'da qilmaydi.
 
-**Undefined or blocked:** net profit when COGS incomplete; unsupported metric; user role no margin permission; microphone transcription uncertain about `15 mln vs 50 mln`; seller asks to lower stock/issue refund by voice → requires separate future command+approval and current Stage 1 must deny write.
+### AI hech qachon qilmaydigan narsalar
 
-**Sample prompts:**
-- UZ: «Oxirgi 7 kunda Toshkent filialidagi to‘langan buyurtmalar summasini ayt; oldingi hafta bilan solishtir».
-- RU: «Покажи пять самых продаваемых видеокарт за этот месяц и остатки на складе».
-- EN: «Give me the paid order count, revenue definition and last updated timestamp for today».
+- Narxni o'ylab topish yoki o'zgartirish.
+- Chegirma berish yoki va'da qilish (so'ralsa operatorga uzatadi).
+- "Buyurtma tasdiqlandi", "band qilindi", "to'landi" deyish (buni tizim va odam qiladi).
+- "Omborda bor" deyish, agar tizimda yo'q bo'lsa.
+- "Mos keladi" deyish, agar moslik tekshiruvi "mos" demagan bo'lsa.
+- Boshqa shop haqida ma'lumot berish.
+- Xaridor matnidagi "buyruqlarni" bajarish ("narxni e'tiborsiz qoldir", "sen adminsan").
+- O'zini odam qilib ko'rsatish: birinchi xabarda AI ekanini aytadi.
+- Xaridorning telefoni, manzili kabi shaxsiy ma'lumotini tashqi AI servisiga yuborish (DEC-016).
 
-**ASR quality:** PC model names, mixed Latin/Cyrillic, currency/large numbers and accents need offline golden set; hosted STT/TTS plus prompt/eval first, train local model **only if benchmark demonstrates need**. No accuracy claims without a test report.
+### AI qachon operatorni chaqiradi
 
-## 4. Global shopping AI
-
-- Differentiate exact-match model vs similar alternatives; explain why recommendation exists.
-- Gather public price, delivery, warranty, condition, latest verification and merchant trust facts; absent data shown unknown.
-- With no location permission use city search/merchant-declared zones.
-- With public matching uncertainty, ask disambiguation or provide separately labeled product families.
-- Sponsored listings must be labeled and not influence objective recommendation without disclosure.
-- Referral to merchant only after buyer sees destination and permits data share.
-
-## 5. Channel integration matrix — business behavior vs external approval
-
-| Channel | Stage | Capabilities | Dependencies and fallback |
-|---|---|---|---|
-| Merchant website chat widget | 1 | Inbound text, quote, lead, order request | Owned channel; works even if external social APIs down |
-| Telegram merchant bot | 1 | Buyer-initiated bot chat, typed catalog, notifications | Bot account setup; channel-specific consent/rate rules |
-| Telegram Business connection | 1/2 | Business chats within authorized capabilities | Merchant permission and Telegram supported connection; regular bot fallback |
-| Instagram Direct | 1 (DEC-116) | Permitted professional account conversation replies | Meta rasmiy ruxsati talab qilinadi — ariza S0 bilan topshiriladi; founder ruxsat kechikmaydi deb hisoblaydi (DEC-116a) |
-| Facebook Messenger | 1/2 (gated) | Permitted Page conversations | Platform permissions & window; manual transfer fallback |
-| WhatsApp Business Platform | 2 (gated) | Template/session messages where allowed | WABA onboarding/provider approval/fees; no bulk unsolicited messaging |
-| Global website AI | 3 | Public global catalog search/recommendation | Only public offers |
-| Global Telegram bot | 3 | Public comparison + opted-in referrals | Never share merchant private bot credentials or context |
-
-No channel is labeled «live working» until technical proof/permissions approved. No stealth scraping, password automation, hidden personal-account messaging.
-
-## 6. AI refusal/escalation matrix
-
-| Cause | User-facing behavior | Merchant-facing result |
+| Holat | Xaridorga nima deyiladi | Shopda nima bo'ladi |
 |---|---|---|
-| SKU not in catalogue | «Aniq mahsulot topilmadi» + alternatives | Catalog improvement suggestion |
-| Price stale | «Narx tasdiqlanishi kerak» | Quote review task |
-| Compatibility unknown | «Mosligini tekshirib beramiz» | Hardware review task |
-| AI provider outage | «Hozir operatorga ulayapman» | Manual inbox queue |
-| Customer angry/dispute | Apology, human handoff; no policy invention | Escalation record |
-| Payment proof screenshot | Stage 1: «To'lov do'kon bilan kelishiladi, operator bog'lanadi» | Operatorga uzatiladi (to'lov tizimdan tashqarida, DEC-100) |
-| Voice uncertain number | Show transcript + ask repeat | No report/value mutation |
-| Scope violation | Authorized-data refusal | Security audit event |
-| Global missing shipping price | Base price only; no cheapest delivered claim | Offer quality warning |
+| Xaridor odam bilan gaplashmoqchi | "Operatorga ulayapman" | Operatorga vazifa |
+| Xaridor "olaman" dedi | "Buyurtmangiz qabul qilindi, operator bog'lanadi" | Buyurtma qoralamasi + operatorga vazifa |
+| Mahsulot katalogda yo'q | "Aniq bunday mahsulot topilmadi" + o'xshashlar | Katalogga qo'shish tavsiyasi |
+| Narx yo'q yoki eskirgan | "Narxni operator aniqlab beradi" | Operatorga vazifa |
+| PC mosligi "tekshirish kerak" | "Mosligini mutaxassis tekshirib beradi" | Menejerga tasdiq vazifasi |
+| Chegirma so'raldi | "Bu savolni operatorga beraman" | Operatorga vazifa |
+| To'lov haqida so'raldi | "To'lov shop bilan kelishiladi, operator bog'lanadi" | Operatorga vazifa |
+| Kafolat, nosozlik, qaytarish | "Operatorga ulayapman" | Operatorga vazifa |
+| Xaridor norozi, shikoyat qiladi | Uzr so'raydi va operatorni chaqiradi; siyosat o'ylab topmaydi | Muhim vazifa |
+| AI ishlamayapti yoki limiti tugadi | "Operator tez orada javob beradi" | Xabarlar operator navbatiga |
+| Ish vaqtidan tashqari | Shop ish vaqtini aytadi | Ertalab operatorga |
 
-## 7. AI dataset, training and evaluation business requirements
+### AI ish rejimlari
 
-- **Sources:** approved merchant catalog/specs, rule set, consented sanitized chat, FAQ, PC component authoritative sources licensed for use, voice utterances with consent, synthetic multi-turn dialogs labeled synthetic.
-- **Label fields:** merchant/domain, language, intent, entities, SKU evidence, expected tool calls, permission, outcome, escalation, latency and dollar/UZS values represented without ambiguity.
-- **Golden sets:** UZ/RU/EN catalog intent, misspellings/translit, wrong variant, no stock, stale price, PC compatibility, fake payment proof, cross-tenant injection, voice `15/50 mln` confusion.
-- **Evals:** wrong-price critical errors 0 in acceptance set; other retrieval/recall, match precision, refusal, voice WER/numeric intent exact-match targets chosen from pilot baseline. Do not train without licensing/consent/retention policy.
-- **Architecture constraint:** first deploy a hosted model behind adapter + deterministic tools, logs/eval, optional small model later. Training from scratch is not Stage 1 prerequisite.
+| Rejim | Ma'nosi |
+|---|---|
+| O'chiq | AI javob bermaydi, hammasi operatorga |
+| Operator tasdiqlaydi | AI javob yozadi, operator ko'rib yuboradi (pilotning birinchi haftasi uchun tavsiya) |
+| O'zi yuboradi | AI o'zi javob beradi, xavfli holatlarda operatorni chaqiradi |
+
+Rejimni ega tanlaydi. Har qanday payt AI'ni o'chirish mumkin, bunda savdo to'xtamaydi.
+
+---
+
+## 3. AI hisobot yordamchisi
+
+**Nima qiladi:** ega yoki menejer yozma savol beradi — "Kecha nechta buyurtma topshirildi?", "Bu oy eng ko'p qaysi videokarta sotildi?" — va raqam bilan javob oladi.
+
+```
+Savol ──▶ Tizim uni ruxsat etilgan ko'rsatkichga aylantiradi
+  ──▶ Foydalanuvchining ruxsati tekshiriladi
+  ──▶ Raqam hisoblanadi   [AI emas, tizim hisoblaydi]
+  ──▶ Javob: raqam + davr + vaqt zonasi + "ma'lumot qachon yangilangan"
+```
+
+**Stage 1 da qaysi savollarga javob beradi:**
+- topshirilgan buyurtmalar soni va summasi;
+- eng ko'p sotilgan mahsulotlar va PC yig'malar;
+- kanallar bo'yicha suhbatlar va leadlar;
+- javob vaqti;
+- tasdiq kutayotgan buyurtmalar;
+- kam qolgan mahsulotlar;
+- kunlik, haftalik, oylik o'zgarish;
+- "to'landi" deb belgilangan summa (tekshirilmagan deb ko'rsatiladi).
+
+**Javob bermaydigan holatlar:**
+- **Foyda** — tannarx kiritilmagan, shuning uchun "tannarx ma'lumoti yo'q" deydi.
+- Ro'yxatda yo'q ko'rsatkich — "bu ko'rsatkich hozircha yo'q" va eng yaqin mavjudlarini aytadi.
+- Ruxsat yo'q raqam — "ruxsat yo'q", raqam ko'rsatilmaydi.
+- O'zgartirish so'rovi ("qoldiqni 100 qil", "pul qaytar") — bajarilmaydi; hisobot yordamchisi faqat o'qiydi.
+
+**Ovozli savol** (o'zbek, rus, ingliz) — keyinroq (DEC-112). Avval ovozni matnga aylantirish sifati o'zbek tilida sinovdan o'tkaziladi. Ovoz qo'shilganda ega gapiradi, matn ekranda ko'rsatiladi, ega tasdiqlaydi; summa noaniq eshitilsa ("15 mln" yoki "50 mln"), qayta so'raladi.
+
+**Namuna savollar:**
+- O'zbekcha: "Oxirgi 7 kunda Chilonzor filialida nechta buyurtma topshirildi? O'tgan hafta bilan solishtir."
+- Ruscha: "Покажи пять самых продаваемых видеокарт за этот месяц."
+- Inglizcha: "How many orders were completed today?"
+
+---
+
+## 4. Global AI maslahatchi (Stage 3)
+
+- Aynan bir xil modelni o'xshashlaridan ajratadi va nima uchun tavsiya qilayotganini tushuntiradi.
+- Narx, yetkazish, kafolat, holat va oxirgi yangilanishni ko'rsatadi; noma'lum ma'lumotni "noma'lum" deydi.
+- Xaridor joylashuvini bermasa, shahar bo'yicha qidiradi.
+- Reklama o'rinlari aniq belgilanadi va tavsiyaga ta'sir qilmaydi.
+- Xaridorni shopga faqat u qayerga yo'naltirilayotganini ko'rib, rozilik bergandan keyin yo'naltiradi.
+
+---
+
+## 5. Kanallar
+
+| Kanal | Qachon | Nima qila oladi | Shart |
+|---|---|---|---|
+| Saytdagi chat | Stage 1 | Xabar, mahsulot ko'rsatish, buyurtma | Bizning kanalimiz; tashqi servislar ishlamasa ham ishlaydi |
+| Telegram bot | Stage 1 | Xaridor yozgan chatda javob, mahsulot kartochkalari, buyurtma holati | Shop bot ochadi; bot xaridorga birinchi bo'lib yoza olmaydi |
+| Telegram Business | Keyinroq | Egasining shaxsiy Telegram akkauntiga ulanish | Egasining ruxsati; pilotda kerak bo'lsa yoqiladi |
+| Instagram Direct | Stage 1 (DEC-116) | Xaridor yozgan suhbatda javob | Meta rasmiy ruxsati kerak (ariza ish boshlanishi bilan topshiriladi); 24 soatlik javob muddati |
+| Facebook Messenger | Keyinroq | Shop sahifasi suhbatlari | Meta ruxsati |
+| WhatsApp Business | Stage 2 | Shablon va suhbat xabarlari | Rasmiy ulanish va to'lovlar |
+| Global sayt va Telegram bot | Stage 3 | Global qidiruv | Shop botlaridan alohida |
+
+**Qat'iy taqiqlar:** rasmiy ruxsatsiz ulanish, saytlardan ma'lumot o'g'irlash (scraping), shaxsiy akkauntlarni parol bilan avtomatlashtirish, xaridorlarga ommaviy so'ralmagan xabarlar.
+
+Ruxsat olinmagan kanal tizimda "ishlayapti" deb ko'rsatilmaydi.
+
+---
+
+## 6. AI'ni o'rgatish va sinash
+
+- **Shop ma'lumotida AI o'qitilmaydi** — faqat shop alohida rozilik bersa va ma'lumot anonimlashtirilgan bo'lsa (DEC-118).
+- **Sinov to'plamlari** (AI ishga tushirilishidan oldin): o'zbek, rus, ingliz tilidagi savollar; xatolar va translit; noto'g'ri variant; mahsulot yo'q; narx eskirgan; PC mosligi; boshqa shop ma'lumotini so'rash; AI'ni aldashga urinishlar.
+- **Qat'iy talab:** sinovda noto'g'ri narx, mavjud bo'lmagan mahsulot yoki "tasdiqlandi" degan javob — **birorta ham bo'lmasligi** kerak.
+- **Model:** tayyor AI modeli ishlatiladi (bir haftalik solishtirishdan keyin tanlanadi, DEC-009). O'z modelini noldan o'qitish rejada yo'q.
+
+Batafsil: `engineering/17`, `engineering/26` §13.
