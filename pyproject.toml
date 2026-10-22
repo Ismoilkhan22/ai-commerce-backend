@@ -44,7 +44,7 @@ packages = ["app"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-src = ["app", "tests"]
+src = ["."]
 extend-exclude = ["docs"]
 
 [tool.ruff.lint]
@@ -59,7 +59,13 @@ select = [
     "TID",              # banned imports
     "RUF",
 ]
-ignore = ["S101"]       # assert is fine in tests (see per-file below for app/)
+ignore = [
+    "S101",             # assert
+    "RUF001", "RUF002", "RUF003",  # o'zbek (‘ ʼ) va rus matnlari ataylab ishlatiladi
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]

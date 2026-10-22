@@ -233,7 +233,9 @@ class FeatureNotAvailableError(DomainError):  code = "FEATURE_NOT_AVAILABLE"
 class ProviderUnavailableError(DomainError):  code = "PROVIDER_UNAVAILABLE"
 ```
 
-`code → HTTP status` lug'ati bitta joyda (`app/shared/errors/handlers.py`), §6.2 jadvali bilan bir xil. Test: jadval, lug'at va `locales/` sinxron.
+Katalogdagi qolgan kodlar uchun ham klass bor: `InvalidRequestError` (`INVALID_REQUEST`), `UnauthenticatedError`, `PayloadTooLargeError`, `UnsupportedMediaTypeError`, `ServiceUnavailableError`. Faqat `METHOD_NOT_ALLOWED` ni framework o'zi chiqaradi. Abstrakt klasslar (`ConflictError`) `abstract = True` bilan belgilanadi va to'g'ridan-to'g'ri tashlanmaydi.
+
+`code → HTTP status` lug'ati bitta joyda (`app/shared/errors/catalog.py`, `ERROR_CATALOG`), §6.2 jadvali bilan bir xil. Test: jadval, lug'at va `locales/` sinxron.
 
 ### 7.2 Global handler'lar (barcha surface)
 
