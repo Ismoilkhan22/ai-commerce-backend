@@ -33,9 +33,16 @@ Agro/B2B, custody and marketing studio are **outside current 3-stage scope** pen
 - `24_API_CONVENTIONS_ERRORS_I18N.md` — TECH-24 — Javob formatlari, xato kodlari va exception ierarxiyasi, global handler'lar, i18n (tillar, tarjima joyi, ICU, shablonlar)
 - `25_PC_COMPATIBILITY_ENGINE.md` — TECH-25 — Reference spec kutubxonasi, atributlar sxemasi, SKU bog'lash, qoidalar katalogi `pc-2026-10-v1`, yig'ma tavsiyasi
 - `26_AI_TOOL_CONTRACTS.md` — TECH-26 — AI Sales Agent: tool sxemalari, broker qoidalari, prompt qatlamlari, xotira, PII redaction, javob tekshiruvi, handoff
-- Ochiq qarorlar: `../decisions/DECISION_REGISTER.md`
+- `27_DEVELOPMENT_SETUP_AND_WORKFLOW.md` — TECH-27 — Vositalar, lokal muhit, git va PR qoidalari, CI, kod qoidalari, AI yordamchi bilan ishlash, DoD
+- `28_CATALOG_IMPORT_SPEC.md` — TECH-28 — CSV/XLSX import: ustunlar, validatsiya, to'qnashuv siyosati, stok, rasmlar, spec bog'lash, xato hisoboti, API
+- `29_REPORTING_METRICS_REGISTRY.md` — TECH-29 — Hisobot metrikalari: formulalar, ruxsatlar, quality flag'lar, so'rov kontrakti, matnli hisobot-chat
+- `30_CHANNELS_TELEGRAM_INSTAGRAM_WEBCHAT.md` — TECH-30 — Telegram bot, Instagram Direct (Meta tekshiruvi), web chat: ulash, xabar turlari, cheklovlar
+- `31_NOTIFICATIONS_MESSAGE_CATALOG.md` — TECH-31 — Xaridor va xodimlarga xabarlar: shablon kalitlari, triggerlar, uz/ru/en matnlar
+- `32_DATA_PRIVACY_AND_RETENTION.md` — TECH-32 — Shaxsiy ma'lumot turlari, saqlash muddatlari (taklif), rozilik, o'chirish so'rovlari, huquqshunosga savollar (DRAFT)
+- `33_OPERATIONS_RUNBOOKS.md` — TECH-33 — Muhimlik darajalari, kill switch'lar, 10 ta runbook, postmortem, pilotdan oldingi tekshiruv
+- Atamalar: `../GLOSSARY.md` · Ochiq qarorlar: `../decisions/DECISION_REGISTER.md`
 
-- `../business/` — canonical 13 business specifications M01–M39 / BL-001–BL-111 / FSM / UI / UAT.
+- `../business/` — canonical 15 business specifications (00–14) M01–M39 / BL-001–BL-111 / FSM / UI / UAT, onboarding playbook, pilot shartnomasi.
 
 ## Important decisions and gaps
 - Stage 1 architecture **baseline (2026-10-22)**: FastAPI modular monolith (`src/commerce_os/`, ADR-022), PostgreSQL core with atomic order+stock UoW (ADR-021) and transactional outbox; PG leased jobs (ADR-005); Redis cache/rate limit only; frontend separate repo with 2 Next.js apps (ADR-010); infra in backend repo; shared-first tenant model + RLS spike (ADR-026, TECH-23); auth — ADR-023; API surfaces — ADR-024; money — ADR-025; LLM — ADR-027; PC spec library — ADR-028; observability — ADR-029; hosting — ADR-030.

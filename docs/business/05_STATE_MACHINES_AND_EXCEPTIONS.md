@@ -120,6 +120,7 @@
 | DRAFT | submit | PENDING_CONFIRMATION | Sales / Storefront buyer | Operatorga vazifa + xabar (M17); `order_confirm_reminder_hours` (default 24) taymeri |
 | PENDING_CONFIRMATION | confirm | CONFIRMED | Sales (o'ziga biriktirilgan) / Manager (DEC-108) | Fresh price + stock check under lock; rezerv `ACTIVE` (FSM-07); narx o'zgargan bo'lsa xaridordan qayta rozilik |
 | CONFIRMED | start_processing | PROCESSING | Sales / Warehouse / Manager | Rezerv `ALLOCATED`; xaridorga status xabari |
+| PROCESSING | mark_ready | PROCESSING | Sales / Warehouse / Manager | Status o'zgarmaydi: `ready_at` yoziladi, PICKUP bo'lsa xaridorga `customer.order_ready_pickup` (TECH-31) |
 | PROCESSING | complete | COMPLETED | Sales / Manager | Xaridorga topshirildi; rezerv `CONSUMED`, `on_hand` kamayadi; Lead `WON` |
 | DRAFT | discard | CANCELLED | Sales / Buyer | Hech qanday stok effekti yo'q |
 | PENDING_CONFIRMATION | cancel | CANCELLED | Manager / Owner | Sabab majburiy; Lead `LOST` + sabab |

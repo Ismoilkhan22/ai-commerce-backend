@@ -146,6 +146,7 @@ CREATE TABLE orders (
   delivery_address text,                      -- PII: encrypted at rest
   currency char(3) NOT NULL REFERENCES currencies(code),
   total_minor bigint NOT NULL CHECK (total_minor >= 0),
+  ready_at timestamptz,                       -- PROCESSING ichida "olib ketishga tayyor" belgisi (TECH-31)
   paid_mark_at timestamptz,                   -- DEC-100a: merchant belgisi, tekshirilmagan
   paid_mark_by uuid,
   paid_mark_method text CHECK (paid_mark_method IN ('CASH','CARD','TRANSFER','OTHER')),

@@ -6,9 +6,10 @@
 
 | Papka | Nima bor | Kim uchun |
 |---|---|---|
-| [`business/`](business/00_README_AND_SCOPE.md) | 3 bosqich, 39 modul (`M01–M39`), 111 qoida (`BL-001…111`), 18 FSM, rollar, UI, UAT | Founder, PM, hamma |
+| [`business/`](business/00_README_AND_SCOPE.md) | 3 bosqich, 39 modul (`M01–M39`), 111 qoida (`BL-001…111`), 18 FSM, rollar, UI, UAT, onboarding playbook (13), pilot shartnomasi (14) | Founder, PM, hamma |
+| [`GLOSSARY.md`](GLOSSARY.md) | Atamalar lug'ati: o'zbekcha ↔ kodda | Hamma |
 | [`discovery/`](discovery/A01_MARKET_PROBLEM_DISCOVERY.md) | Bozor muammosi, intervyu rejasi, gipotezalar (`HYP-xxx`) | Founder, sotuv |
-| [`engineering/`](engineering/00_ENGINEERING_README.md) | `TECH-03…26`: DDD, C4, ADR, DB, API, events, security, AI, voice, infra, test, roadmap; konvensiyalar va i18n (24), PC compatibility (25), AI tool kontraktlari (26) | Backend, frontend, AI |
+| [`engineering/`](engineering/00_ENGINEERING_README.md) | `TECH-03…33`: DDD, C4, ADR, DB, API, events, security, AI, voice, infra, test, roadmap; konvensiyalar va i18n (24), PC compatibility (25), AI tool kontraktlari (26), dev setup (27), katalog importi (28), metrikalar (29), kanallar (30), xabarnomalar (31), shaxsiy ma'lumotlar (32), runbook'lar (33) | Backend, frontend, AI |
 | [`decisions/`](decisions/DECISION_REGISTER.md) | Qarorlar registri: har qaror uchun variantlar, afzallik/kamchilik, tanlov va sana (baseline — o'zgartirish mumkin) | Founder |
 
 **Qoidalar:**

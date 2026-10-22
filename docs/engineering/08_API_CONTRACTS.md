@@ -29,7 +29,7 @@
 | Merchant/C02 | `GET/PATCH /merchant/profile`, `GET/POST /merchant/branches` | settings, branches | `merchant.settings.*` |
 | Staff/C01 | `GET /merchant/members`, `POST /merchant/members/invites`, `PATCH /merchant/members/{id}` | rollar (bitta xodimga bir nechta) | `members.manage` |
 | Policy/C16 | `GET/PATCH /merchant/policies` | quote TTL, discount limits, reminder hours, quote approval mode | `merchant.policy.write` (Owner) |
-| Catalog/C03 | `GET/POST /merchant/products`, `POST /merchant/products/import-jobs` | products/import | `catalog.write`; 202 import |
+| Catalog/C03 | `GET/POST /merchant/products`; import: `POST /merchant/catalog/imports`, `/mapping`, `/dry-run`, `/commit`, `/errors.csv` (TECH-28 §9) | products/import | `catalog.write`; 202 import |
 | Pricing/C04 | `GET/PUT /merchant/skus/{id}/price`, `GET/POST /merchant/exchange-rates` | approved revision (UZS/USD), kurs | If-Match; audit |
 | Stock/C05 | `GET /merchant/stock`, `POST /merchant/stock/receipts`, `POST /merchant/stock/adjustments`, `POST /merchant/stock/quick-sales` | ledger movement; "tez sotuv" (DEC-123) | `stock.*`, `stock.quick_sale`; idempotent |
 | PC/C07 | `POST /merchant/pc-builds/evaluate`, `POST /merchant/pc-builds/quotes`, `GET /merchant/hardware-specs?query=` | validate/build; reference spec qidiruvi | no quote on `BLOCK` |
@@ -40,7 +40,7 @@
 | Inbox/C08 | `POST /merchant/conversations/{id}/takeover`, `/resume-ai`, `/assign`, `/reply` | speaker claim | `speaker_version` CAS |
 | Leads/C10 | `GET/POST /merchant/leads`, `PATCH /merchant/leads/{id}` | pipeline | sales |
 | Quotes/C10 | `POST /merchant/quotes`, `POST /merchant/quotes/{id}/submit`, `/approve`, `/send` | faqat PC (DEC-100e) | `quotes.approve` — Manager/Owner (DEC-109) |
-| Orders/C11 | `GET/POST /merchant/orders` (DRAFT), `POST /merchant/orders/{id}/submit`, `/confirm`, `/start-processing`, `/complete`, `/cancel`, `/notes`, `/paid-mark` | FSM-08 (DEC-100) | `orders.confirm` (Sales — o'ziga biriktirilgan / Manager), `orders.cancel` (Manager/Owner), workflow UoW (ADR-021) |
+| Orders/C11 | `GET/POST /merchant/orders` (DRAFT), `POST /merchant/orders/{id}/submit`, `/confirm`, `/start-processing`, `/mark-ready` (PICKUP, status o'zgarmaydi), `/complete`, `/cancel`, `/notes`, `/paid-mark` | FSM-08 (DEC-100) | `orders.confirm` (Sales — o'ziga biriktirilgan / Manager), `orders.cancel` (Manager/Owner), workflow UoW (ADR-021) |
 | Storefront/C06 | `GET /storefront/{slug}/products`, `GET /storefront/{slug}/products/{product_slug}`, `POST /storefront/{slug}/order-requests`, `GET /storefront/{slug}/quotes/{token}`, `GET /storefront/{slug}/orders/{tracking_token}` | katalog, buyurtma so'rovi (to'lovsiz, DEC-115), PC taklif, kuzatuv | public + rate limit; no private joins |
 | Support/C13 | `GET/POST /merchant/support-cases`, `PATCH /merchant/support-cases/{id}` | kafolat murojaati (DEC-114, S5) | support/manager |
 | Reports/C15 | `GET /merchant/reports/summary`, `POST /merchant/reports/queries`, `POST /merchant/reports/export-jobs` | approved metrics; matnli hisobot-chat (DEC-112) | role + 202 export |

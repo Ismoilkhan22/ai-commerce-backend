@@ -34,15 +34,18 @@ sequenceDiagram
 UZ Latin+mixed Cyrillic, Russian, English; code-switch terms GPU/RTX/SSD, spoken currency sum/dollar, decimals, quantities, date expressions ('shu oy', 'прошлая неделя', 'last Friday'). Normalize timezone with merchant `Asia/Tashkent` default configurable, distinguish paid revenue vs created-order amount. Human transcript correction mandatory on low confidence, metric ambiguity or large sum.
 
 ## 4. Metric allowlist
+
+**Yagona manba:** `29_REPORTING_METRICS_REGISTRY.md` (2026-10-22). Quyidagi jadval — ovoz uchun qisqa ko'rinish; farq bo'lsa 29 to'g'ri.
+
 | Approved metric | Definition | Visibility |
 |---|---|---|
 | `orders_completed_count` | `COMPLETED` buyurtmalar soni (Stage 1 asosiy, DEC-100) | owner, manager, approved sales |
-| `orders_completed_amount_minor` | `COMPLETED` buyurtmalar summasi, valyuta bo'yicha | owner, manager, finance |
-| `orders_paid_marked_amount_minor` | merchant "to'landi" belgilagan summa — **tekshirilmagan** (DEC-100a) | owner, finance |
+| `orders_completed_amount` | `COMPLETED` buyurtmalar summasi, valyuta bo'yicha | owner, manager, finance |
+| `orders_paid_marked_amount` | merchant "to'landi" belgilagan summa — **tekshirilmagan** (DEC-100a) | owner, finance |
 | `orders_pending_confirmation_count` | tasdiq kutayotgan buyurtmalar | owner, manager, sales |
 | `leads_by_channel` | kanal bo'yicha leadlar (Telegram / Instagram / web) | owner, manager |
 | `orders_paid_count`, `sales_paid_gross_minor`, `sales_refunded_minor` | verified settlement — `DEFERRED` (DEC-100) | — |
-| `profit_gross_minor` | paid net less captured COGS (explicit missing-data flags) | owner, authorized finance |
+| `profit_gross` | Stage 1 da yo'q — tannarx kiritilmaydi; so'ralsa `NO_COST_DATA` (TECH-29 §3.5) | — |
 | `top_products_by_units` | unit count on paid/fulfilled policy version | owner, manager, authorized sales |
 | `conversation_first_response_p50` | median first response latency on eligible conversations | owner, manager |
 | `stock_low_count` | SKU-by-branch below merchant threshold | owner, warehouse |

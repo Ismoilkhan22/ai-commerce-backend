@@ -30,6 +30,8 @@
 | 10 | `10_UAT_ACCEPTANCE_AND_RELEASES.md` | Har modul uchun acceptance + kritikal regression va phase gates |
 | 11 | `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md` | Default qilingan qarorlar, farazlar, kelajakdagi imkoniyatlar |
 | 12 | `12_TRACEABILITY_INDEX.md` | Module → BL → FSM → UI → UAT ko‘rsatkichlari |
+| 13 | `13_MERCHANT_ONBOARDING_PLAYBOOK.md` | Pilot do'konni ulash bosqichlari va tekshiruv ro'yxati (DEC-122) |
+| 14 | `14_PILOT_AGREEMENT_AND_PRICING.md` | Pilot shartnomasi qoralamasi va narxlash gipotezalari (DEC-119, DRAFT) |
 
 ## Hozirgi ishning yakunlash mezoni
 
