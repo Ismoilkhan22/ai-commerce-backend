@@ -1,156 +1,254 @@
-# 03 — BIZNES QOIDALAR REYESTRI (`BL-001..BL-111`)
+# 03 — Biznes qoidalari
 
-**Versiya:** v1.0 | **Status:** Review-ready rules. Raqamlar qatʼiy ID, tartib muhim emas.  
-**Normativ:** MUST bo‘lgan qoidani buzgan action commit bo‘lmasligi yoki compensating exception bilan kuzatilishi shart.
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). 111 ta qoida: `BL-001` … `BL-111`. Fayl nomidagi "108" tarixiy qoldi.
 
-## Tamoyil
+## Bu hujjat nima uchun
 
-- `BL` talabi modulga tegishli, lekin platformadagi boshqalar ham shu qoidaga amal qiladi.
-- Biznes policy `IF condition THEN effect ELSE reject/approval/retry` sifatida implementatsiya qilinadi; technical concurrency batafsil ADRlarda yoziladi.
-- Noaniq parametrlar (reserve TTL, discount cap, freshness TTL) `merchant_policy` orqali versioned configurable. Baseline default'lar founder tomonidan tasdiqlangan (2026-10-22, `../decisions/DECISION_REGISTER.md`): quote 24 soat (DEC-103), buyurtma eslatmasi 24 soat va rezerv review 72 soat (DEC-104), chegirma Sales 0% / Manager 5% (DEC-110). Pilotda qayta ko'riladi.
-- **Stage 1 baseline:** to'lov tizimdan tashqarida (DEC-100) — BL-050…053 `DEFERRED`; yetkazish moduli yo'q (DEC-113) — BL-054…056 `DEFERRED`. Yangi qoidalar: BL-109…111.
-- Callback bilan yozilgan paid holati source reconciliationga zid bo‘lsa exception queuega tushadi; qayta hisoblash imkoni saqlanadi.
+Bu yerda tizim **har doim** amal qilishi shart bo'lgan qoidalar yozilgan. Qoida buzilsa, amal bajarilmaydi yoki odam tasdig'iga yuboriladi. Dasturchilar shu qoidalarni kodga, sinovchilar esa testlarga aylantiradi.
 
-| ID | Trigger / Shart | Majburiy qoida | Rad etish/istisno |
+**Har qoidada uchta narsa bor:**
+- **Qachon** — qaysi vaziyatda qo'llaniladi.
+- **Qoida** — tizim nima qilishi shart.
+- **Aks holda** — qoida bajarilmasa nima bo'ladi.
+
+**Belgilar:**
+- ⏸ — qoida keyingi bosqichga qoldirilgan modulga tegishli (hozir ishlatilmaydi).
+- Raqamlar (masalan, "24 soat", "5%") — boshlang'ich qiymatlar, shop sozlamalarda o'zgartira oladi (`decisions/DECISION_REGISTER.md`).
+
+---
+
+# Stage 1 qoidalari
+
+## Shop va xodimlar
+
+| ID | Qachon | Qoida | Aks holda |
 |---|---|---|---|
-| `BL-001` | Merchant ro‘yxatdan o‘tadi | Bitta tasdiqlangan owner va mustaqil merchant identity yaratiladi | Egalik tekshiruvisiz aktivlashmaydi |
-| `BL-002` | Tenant resursga murojaat qiladi | Har qanday read/write merchant scope bilan filtrlanadi | Cross-tenant ma’lumot 404/deny, audit alert |
-| `BL-003` | Onboarding yakunlanadi | Minimal identifikatsiya, aloqa va public terms tasdiq bo‘lmaguncha live emas | Draft va checklist |
-| `BL-004` | Merchant suspended/offboarded | Yangi sotuv va publikatsiya to‘xtaydi, tarixiy buyurtmalar boshqariladi | Mavjud majburiyatlar uchun controlled access |
-| `BL-005` | Foydalanuvchi amal qiladi | RBAC + scope (merchant, branch, ownership) tekshiriladi | 403 + audit, sukut bo‘yicha deny |
-| `BL-006` | Sezgir chegirma/refund/stock adjustment | Rol va limitdan oshsa second approval talab | Pending approval, write yo‘q |
-| `BL-007` | Owner o‘zini o‘chiradi | Oxirgi ownerni o‘chirish taqiqlanadi | Yangi owner tayinlash talab |
-| `BL-008` | AI tool buyruq beradi | AI ham aynan actor permissionlari bilan cheklanadi | Tool denied, operatorga eskalatsiya |
-| `BL-009` | Filial joylashuvi e’lon qilinadi | Manzil/koordinata merchant tomonidan tasdiqlanadi | Unverified pin public emas |
-| `BL-010` | Filial yopiqligi/ish vaqti o‘zgaradi | Pickup va delivery promise filial holatidan kelib chiqadi | Unavailable flag ko‘rsatiladi |
-| `BL-011` | SKU yaratiladi | Merchant ichida unique SKU, variant va condition mustaqil saqlanadi | Duplicate validation error |
-| `BL-012` | Mahsulot publish qilinadi | Majburiy atribut, narx va public kontent tekshiriladi | Missing fields = draft |
-| `BL-013` | Import qilinadi | Preview/dry-run va row error; tanlangan yozuvlargina commit | Partial success summary, rollback policy |
-| `BL-014` | Mahsulot archived | Yangi orderga kirmaydi, eski order snapshots saqlanadi | References delete qilinmaydi |
-| `BL-015` | Narx belgilanadi | Currency+minor units, version, source va valid_until bo‘ladi | Invalid price reject |
-| `BL-016` | Narx o‘zgardi | Yuborilgan quote immutable snapshot; qayta tasdiqda fresh pricing | Re-quote kerak |
-| `BL-017` | Chegirma beriladi | Max discount rule/approver check; margin confidential. Baseline: Sales 0% (so'raydi), Manager ≤5%, undan yuqori Owner (DEC-110) | Out-of-limit approval |
-| `BL-018` | Exchange price ishlatiladi | SKU narxi UZS yoki USD; xaridorga UZS; kurs manbasi/vaqti snapshot; eskirsa final quote block (DEC-121) | Manual price confirmation |
-| `BL-019` | Stock ko‘rsatiladi | available = on_hand - reserved - allocated, >= 0 | Negative available block + reconcile |
-| `BL-020` | Reservation yaratildi | Atomik check+increment, expiry; unique order/item reference | Insufficient stock = no reserve |
-| `BL-021` | Reservation expiry/cancel | Faqat faol rezerv bo‘shatiladi; qayta release no-op | Idempotency required |
-| `BL-022` | Stock adjustment | Ledger sababi, actor, timestamp va approval bilan | Unsourced adjustment reject |
-| `BL-023` | Ikki buyurtma bitta SKUga | Row lock/CAS va DB constraint bilan oversell oldi olinadi | Bittasi conflict/retry |
-| `BL-024` | Storefront publish | Faqat shu merchantning visible mahsulotlari chiqadi | Data scope violation block |
-| `BL-025` | Storefront domain | Unique slug; domain verification; tls; revocation | Domain verified bo‘lmasa default subdomain |
-| `BL-026` | Storefront stale stock | Display label va checkoutda fresh check | Stale claim bilan order confirm block |
-| `BL-027` | PC komponent tanlandi | CPU/board/RAM/PSU/case bo‘yicha deterministik rules | BLOCK bo‘lsa quote yuborilmaydi |
-| `BL-028` | Critical PC atribut noma’lum | Unknown != compatible; REVIEW_REQUIRED | Human assessment |
-| `BL-029` | PC maslahati beriladi | Narx va stock filtrdan so‘ng tavsiya | Unavailable SKU exclude |
-| `BL-030` | Rule set o‘zgargan | Quote rule_version va evidence snapshot saqlanadi | Revalidate if materially changed |
-| `BL-031` | Channel connect | Rasmiy scope, account owner authorization va token vault | Permission yo‘q bo‘lsa connected deb ko‘rsatma |
-| `BL-032` | Inbound webhook | Auth/signature, provider event uniqueness, durable persistence before ACK | Replay duplicate no-op |
-| `BL-033` | Outbound channel | Provider window/recipient consent/rate-policy amal qilinadi | Blocked = manual fallback |
-| `BL-034` | Conversation ownership | Bitta vaqtda AI yoki human send authority, har ikkisi emas | Atomic mode switch |
-| `BL-035` | Incoming message order | Provider timestamp/event id bilan reorder/dedupe; unsafe gap = wait/reconcile | No double reply |
-| `BL-036` | Consent handling | Xabarlardan kontakt/marketingga ruxsat farqlanadi | Marketing opt-in bo‘lmasa follow-up no-send |
-| `BL-037` | Escalation | AI uncertain/complaint/payment/warranty = operator handoff | Human queue + SLA |
-| `BL-038` | AI mahsulot aytadi | Faqat merchant allowlisted catalog tool natijasidagi SKU, narx, stock | Unsupported detail taqiqlanadi |
-| `BL-039` | AI text/tool | Prompt injection va PII egress limit; tool-call schema validation | Unsafe instruction ignored/escalated |
-| `BL-040` | AI bilan suhbat | Configurable quota/timeout/fallback; foydalanuvchiga inson mavjud | Quota exhaustion manual mode |
-| `BL-041` | AI taklif yaratadi | Narx/delivery/discountni backend policy computes | LLM state mutation directly forbidden |
-| `BL-042` | Lead yoziladi | Consent va minimal contact; duplicate logic scoped per merchant | Cross-merchant identities merged emas |
-| `BL-043` | Quote yaratildi | Immutable SKU, price, taxes/fee if any, condition, warranty snapshot | No incomplete quote send |
-| `BL-044` | Quote tugaydi | Expiry/stock/price qayta check; old quote paid order qilinmaydi | Re-quote requested |
-| `BL-045` | Quote approval | Authorized approver = Manager (limit ichida) yoki Owner, Sales emas (DEC-109); pilotda har quote, keyin `RISK_ONLY` (DEC-102) | Approval bypass reject |
-| `BL-046` | Order yaratiladi | Quote/order idempotency key, tenant and source uniqueness | Duplicate = same result |
-| `BL-047` | Order confirm | Odam tasdiqlaydi: Sales (o'ziga biriktirilgan) yoki Manager (DEC-108); stok va narx qulf bilan qayta tekshiriladi, rezerv yaratiladi (DEC-105) | Conflict -> customer re-confirm |
-| `BL-048` | Order transition | Only allowed FSM transition with role and reason | Invalid transition = 409 |
-| `BL-049` | Order cancelled | Rezerv/allocation aynan bir marta bo'shatiladi; sabab majburiy; bekor qilish — Manager/Owner (DEC-108). Pul qaytarish tizimdan tashqarida (DEC-100) | Takroriy bekor qilish no-op |
-| `BL-050` | Manual payment proof | **`DEFERRED` (DEC-100)** — Proof != verified; authorized reviewer matches actual receipt | Remain pending until evidence |
-| `BL-051` | Payment callback | **`DEFERRED` (DEC-100)** — Authenticity, amount, currency, merchant account and provider ref checked | Mismatch quarantine |
-| `BL-052` | Payment/reversal | **`DEFERRED` (DEC-100)** — Idempotent processing and ledger reconciliation | Duplicate webhook no double paid/refund |
-| `BL-053` | Refund | **`DEFERRED` (DEC-100)** — Merchant policy, evidence, approval, exact amount limits | Provider failed: refund pending, not completed |
-| `BL-054` | Delivery booked | **`DEFERRED` (DEC-113)** — Address, contact permission, branch and shipment method verified. Stage 1: buyurtmada `fulfillment_method` + manzil saqlanadi | Missing address -> no dispatch |
-| `BL-055` | Shipment status | **`DEFERRED` (DEC-113)** — Courier/manager scoped; POD where applicable | Delivered requires evidence policy |
-| `BL-056` | Delivery failure | **`DEFERRED` (DEC-113)** — Retry/reschedule/return recorded, customer informed | No silent status skip |
-| `BL-057` | Warranty sold | Terms snapshot order line at time of sale | Future policy edit does not change old sale |
-| `BL-058` | Return request | Eligibility and product condition reviewed by human | Refund only approved case |
-| `BL-059` | Return-to-stock | Inspect return; damaged not saleable | Ledger records disposition |
-| `BL-060` | Notification created | Event/template/version/recipient and dedup key recorded | Duplicate deliver suppressed |
-| `BL-061` | Recipient opt-out/quiet | Respect legal and channel transactional exceptions | Suppress marketing push |
-| `BL-062` | Provider delivery error | Retry bounded; DLQ and visible merchant task | Never lose error silently |
-| `BL-063` | Financial report | Metric registry defines paid turnover vs profit vs revenue. Stage 1: "yakunlangan buyurtmalar" asosiy, "to'landi" belgisi tekshirilmagan deb alohida (DEC-100a) | No undefined metric |
-| `BL-064` | Voice report | Speech-to-text transcript confirmation for sensitive sums | Low-confidence ask to repeat |
-| `BL-065` | Reporting permissions | Branch/role; sensitive costs hidden from sales users | Aggregates filtered at DB access |
-| `BL-066` | Reporting freshness | Every generated answer displays period/timezone/data_as_of | Stale report explicitly flagged |
-| `BL-067` | Subscription quota | Usage measured by merchant and stable billing windows | Exceeded: explain and limit noncritical functions |
-| `BL-068` | Billing failure | Grace and downgrade policies; existing paid orders remain accessible | No orphaned pending orders |
-| `BL-069` | AI switch off | Human sale/catalog/order operate independent of AI model | Manual fallback |
-| `BL-070` | Merchant offboarding | Export available according to policy, access revoke, retention purge | No public offers remain |
-| `BL-071` | Critical write | Actor, trace, entity, before/after safe diff audit in same logical operation | Fail closed for stock/payment if audit unavailable |
-| `BL-072` | Audit visibility | Secrets, card data and unnecessary PII not logged | Redaction and access controls |
-| `BL-073` | External source connected | Source-of-truth priority per field (stock, price, metadata) declared | Conflict -> review, no blind overwrite |
-| `BL-074` | Sync job | Provider-specific cursor, idempotency and rate limits | Retry/backoff + visible health |
-| `BL-075` | Mapping conflict | Test import dry-run and log unresolved SKU | Ambiguous overwrite prevented |
-| `BL-076` | Canonical match | GTIN/MPN/brand+model+variant evidence required | Low-confidence auto-merge forbidden |
-| `BL-077` | Variant difference | Capacity, color, condition, revision/material specs never silently merged | Split/review |
-| `BL-078` | Canonical merge rollback | Keep provenance and reversible links | Wrong merge can be undone |
-| `BL-079` | Public offer opt-in | Merchant explicitly selects offered public fields | Default private |
-| `BL-080` | Offer publish/update/revoke | Index is eventually consistent but withdrawal prioritized; fail closed after revoke | Stale offer hidden until reverify |
-| `BL-081` | Public offer content | Only approved public price, terms, branch location; never COGS/leads | Reject sensitive fields |
-| `BL-082` | Inter-branch transfer | Atomic decrement origin at dispatched, receive destination after confirmation; in-transit tracked | Reconcile discrepancy |
-| `BL-083` | Tenant plan change | Effective dates/usage and rights calculated deterministically | No retroactive unexpected charge |
-| `BL-084` | Merchant knowledge revision | Policies reviewed and versioned before AI answers | Draft knowledge not active |
-| `BL-085` | Index processing | Event ordering/aggregate_version and replay semantics | Older update cannot overwrite newest |
-| `BL-086` | Index freshness | Merchant-defined TTL; stale prices hidden/warned | Checkout live reconfirmation |
-| `BL-087` | Merchant verification | Badges require verified evidence and expiry | No unverifiable trusted label |
-| `BL-088` | Fraud/moderation | Complaint, appeal, removal policy; unbiased written reasons | Abusive offer removed with audit |
-| `BL-089` | Partner API | Scoped key, throttle, revoke, service audit | Compromised key disabled |
-| `BL-090` | Global search | Search only published canonical and opt-in offers | Private items absent |
-| `BL-091` | Product result | Condition/variant discriminators respected | Incomparable SKUs separate |
-| `BL-092` | Price comparison | Show base price, delivery cost if known, currency, warranty, updated_at | Unknown total cannot claim cheapest |
-| `BL-093` | Comparison sort | Total cost used only when comparable and valid | Otherwise base-price label |
-| `BL-094` | User reports wrong offer | Evidence and merchant review, suppress severe false claim | Correction feedback tracked |
-| `BL-095` | Location | Request explicit consent for device precise geo; city query without it | Denied -> manual area search |
-| `BL-096` | Distance claims | Straight-line vs provider travel distance clearly labeled | No invented travel times |
-| `BL-097` | Global AI recommendation | Explain input constraints and evidence source; no invented product quality | If no evidence, state uncertainty |
-| `BL-098` | Global AI tool | Public index only, no merchant internal data | Cross boundary denied |
-| `BL-099` | Ranked recommendations | Organic unaffected by paid ads; sponsored clearly separated | Disclosure mandatory |
-| `BL-100` | Lead routed to merchant | Buyer consent and visible destination; tracked referral id | No unauthorized bulk solicitation |
-| `BL-101` | Lead attribution | Merchant receives only necessary lead data after opt-in | No platform-wide identity leakage |
-| `BL-102` | Saved alerts | Explicit opt-in with one-click unsubscribe | Default off |
-| `BL-103` | Price watch | Alerts only on fresh verified offer and throttled per user | Stale offer no alert |
-| `BL-104` | Sponsored slots | Clearly marked and approved; not presented as AI-best | Disclose paid placement |
-| `BL-105` | Ranking quality | Match quality, offer freshness and disclosed scoring criteria | Complaints trigger review |
-| `BL-106` | SEO public pages | Structured data only for currently valid public offers | Invalid markup removed |
-| `BL-107` | Duplicate global/product pages | Canonical URL and noindex for thin duplicate states | No low-quality doorway pages |
-| `BL-108` | Global Telegram bot | Separate bot identity and principal from merchant bot | No implicit cross-store context sharing |
-| `BL-109` | Do'konda offline sotuv | "Tez sotuv" amali stokni darhol kamaytiradi: ledger `OFFLINE_SALE`, actor, vaqt (DEC-123) | Stokdan ortiq miqdor rad etiladi |
-| `BL-110` | AI xaridorning "olaman" niyatini aniqlaydi | AI faqat `DRAFT` buyurtma yaratadi va operatorni chaqiradi; stok band qilmaydi, tasdiqlamaydi (DEC-100c) | Tasdiqlash tool'i AI uchun yo'q |
-| `BL-111` | Buyurtma tasdiqlanadi (Stage 1) | Chat va saytdan kelgan har buyurtma odam tasdig'idan o'tadi; avtomatik tasdiq yo'q (DEC-100d) | Avto-tasdiq Stage 2 da merchant opt-in bilan |
+| BL-001 | Shop ro'yxatdan o'tadi | Kamida bitta tasdiqlangan ega bo'ladi | Ega tasdiqlanmaguncha shop faollashmaydi |
+| BL-002 | Kimdir ma'lumot o'qiydi yoki yozadi | Faqat o'z shopi ma'lumotiga ruxsat | Boshqa shop ma'lumoti so'ralsa "topilmadi" deyiladi va bu urinish yozib qo'yiladi |
+| BL-003 | Shop ishga tushiriladi | Egasi, kontaktlari va shartlar tasdiqlangan bo'lishi kerak; Stage 1 da platforma jamoasi faollashtiradi | Shop "tekshiruvda" holatida qoladi |
+| BL-004 | Shop to'xtatiladi yoki yopiladi | Yangi savdo va saytga chiqarish to'xtaydi | Mavjud buyurtmalarni yakunlashga ruxsat beriladi |
+| BL-005 | Xodim biror amal qiladi | Rol, filial va egalik tekshiriladi; ruxsat berilmagan narsa taqiqlangan | Rad etiladi va yozib qo'yiladi |
+| BL-006 | Katta chegirma, katta stok tuzatish | Limitdan oshsa yuqoriroq rol tasdiqlaydi | Tasdiq kelguncha hech narsa o'zgarmaydi |
+| BL-007 | Ega o'zini o'chirmoqchi | Oxirgi egani o'chirib bo'lmaydi | "Avval boshqa ega tayinlang" |
+| BL-008 | AI biror amal qilmoqchi | AI ham ruxsatlardan tashqariga chiqa olmaydi | Amal rad etiladi, suhbat operatorga uzatiladi |
 
-## Eng muhim kombinatsiyalangan edge-case ssenariylari
+## Filiallar
 
-**Case BR-X01: last SKU race.** 1 dona bor, ikkita order har biri 1 dona reserve qiladi. Faqat bittasi muvaffaqiyatli; ikkinchisi stock conflict oladi. `BL-019/020/023/046/047`.
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-009 | Filial manzili saytga chiqariladi | Manzil va xaritadagi joyni shop tasdiqlagan bo'lishi kerak | Tasdiqlanmagan joy ko'rsatilmaydi |
+| BL-010 | Filial yopiq yoki ish vaqti o'zgardi | Olib ketish taklifi filial holatiga qarab beriladi | Yopiq filialdan olib ketish taklif qilinmaydi |
 
-**Case BR-X02: late payment** — `DEFERRED` (DEC-100, to'lov moduli qaytganda). Rezerv muddati tugadi, keyin `payment.verified` keldi. Paid yozuvi ledgerda saqlanadi, order avtomatik `fulfilled` bo‘lmaydi; operator refund/rebook qarorini beradi. `BL-021/049/051/052`.
+## Katalog
 
-**Case BR-X03: price drift.** AI 4,5 mln so‘mlik quote berdi, merchant narxni 4,8 mln qildi. Old quote snapshot o‘zgarmaydi; expiry/business policyga ko‘ra order confirmdan avval qayta rozilik talab. `BL-015/016/044/047`.
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-011 | Yangi variant (SKU) qo'shiladi | Shop ichida SKU kodi yagona; variant va holat (yangi/ishlatilgan) alohida saqlanadi | Takror kod qabul qilinmaydi |
+| BL-012 | Mahsulot saytga chiqariladi | Narx va majburiy maydonlar to'ldirilgan bo'lishi kerak | Mahsulot qoralamada qoladi |
+| BL-013 | Fayldan yuklash | Avval sinov; xato qatorlar ko'rsatiladi; faqat tanlangan to'g'ri qatorlar saqlanadi | Qaysi qatorlar o'tdi va qaysilari o'tmadi — hisobot |
+| BL-014 | Mahsulot arxivlanadi | Yangi buyurtmaga kirmaydi | Eski buyurtmalardagi ma'lumot o'chirilmaydi |
 
-**Case BR-X04: channel duplicates.** Telegram/Meta xabari ikki marta keldi. Inboxda bitta logical message, AI bitta response, notification bitta transaction intent. `BL-032/035/060`.
+## Narx va chegirma
 
-**Case BR-X05: AI takeover race.** Operator suhbatni oldi; AI parallel javob generate qildi. Mode generation/cas check javob yuborishdan oldin to‘xtatadi. `BL-034/037`.
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-015 | Narx belgilanadi | Narxda valyuta, versiya va manba bo'ladi; pul butun son sifatida saqlanadi | Noto'g'ri narx (manfiy, nol, valyutasiz) qabul qilinmaydi |
+| BL-016 | Narx o'zgardi | Yuborilgan taklifdagi narx o'zgarmaydi; buyurtma tasdiqlanganda yangi narx tekshiriladi | Xaridordan qayta rozilik so'raladi |
+| BL-017 | Chegirma beriladi | Operator 0% (faqat so'raydi), menejer 5% gacha, undan yuqorisi — ega; tannarx operatorga ko'rinmaydi | Limitdan katta chegirma tasdiqga yuboriladi |
+| BL-018 | Narx dollarda | Xaridorga shop kursi bo'yicha so'mda ko'rsatiladi; kurs manbai va vaqti saqlanadi | Kurs eskirgan bo'lsa, yakuniy taklif berilmaydi |
 
-**Case BR-X06: cross-tenant voice data.** Merchant A xodimi Merchant B foydasini so‘radi; agent tool-level permission deny qaytaradi, hech qanday metric chiqmaydi. `BL-002/005/008/065/098`.
+## Ombor
 
-**Case BR-X07: public opt-out.** Merchant global searchdan taklifini olib tashladi. Public index eski bo‘lsa ham request authorization/visibility gate offerni chiqarishni taqiqlaydi. `BL-079/080/081/085/090`.
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-019 | Mahsulot mavjudligi ko'rsatiladi | Sotuvga mavjud = qoldiq − band − ajratilgan; hech qachon noldan kam emas | Manfiy chiqsa sotuv to'xtatiladi va tekshiriladi |
+| BL-020 | Buyurtma tasdiqlanadi | Mahsulot borligini tekshirish va band qilish bitta amalda | Yetmasa band qilinmaydi va tasdiqlanmaydi |
+| BL-021 | Band bekor qilinadi | Faqat faol band bo'shatiladi; ikkinchi marta bo'shatish hech narsa qilmaydi | — |
+| BL-022 | Stok tuzatiladi | Sababi, kim qilgani, vaqti va kerak bo'lsa tasdiq bilan | Sababsiz tuzatish qabul qilinmaydi |
+| BL-023 | Ikki buyurtma bitta oxirgi mahsulotga | Faqat bittasi o'tadi | Ikkinchisiga "mahsulot qolmagan" |
+| BL-109 | Do'konda oddiy sotuv ("tez sotuv") | Qoldiq darhol kamayadi; kim, qachon yozib qo'yiladi | Sotuvga mavjud sondan ko'p sotib bo'lmaydi |
 
-**Case BR-X08: wrong match.** RTX 5060 8GB ni RTX 5060 Ti yoki boshqa memory variant bilan merge qilish taqiqlanadi; yuqori confidence bo‘lmasa manual review. `BL-076/077/078/091`.
+## Shop sayti
 
-**Case BR-X09: payment proof forgery** — `DEFERRED` (DEC-100). Mijoz skrinshot yubordi. Status pending qoladi, reviewer real tushum yoki trusted provider transaction bilan solishtiradi. `BL-050/051`.
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-024 | Sayt mahsulot ko'rsatadi | Faqat shu shopning chiqarilgan mahsulotlari | — |
+| BL-025 | Sayt manzili | Manzil yagona; o'z domeni bo'lsa tasdiqlanadi | Domen tasdiqlanmaguncha platforma manzili ishlatiladi |
+| BL-026 | Mavjudlik eskirgan | Saytda belgilanadi; buyurtmada qayta tekshiriladi | Eski ma'lumot bilan buyurtma tasdiqlanmaydi |
 
-**Case BR-X10: false cheapest claim.** Bitta merchantda delivery unknown, ikkinchisida 50k. AI «eng arzon yetkaziladigan» deya olmaydi; «asosiy narx» va unknown delivery ni alohida belgilaydi. `BL-092/093/097`.
+## PC yig'ish
 
-**Case BR-X11: return of damaged SKU.** Returned hardware tekshirilmaguncha saleable stockga kirmaydi. `BL-057/059/019`.
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-027 | PC qismlari tanlandi | Moslikni AI emas, qat'iy qoidalar tekshiradi | "Mos emas" bo'lsa taklif yuborilmaydi |
+| BL-028 | Qism haqida muhim ma'lumot noma'lum | Natija "tekshirish kerak", hech qachon "mos" emas | Menejer dalil bilan tasdiqlaydi |
+| BL-029 | PC tavsiya qilinadi | Faqat narxi bor va sotuvda mavjud qismlar | Mavjud bo'lmagan qism tavsiya qilinmaydi |
+| BL-030 | Moslik qoidalari yangilandi | Taklifda qaysi qoidalar versiyasi ishlatilgani saqlanadi | Yuborilmagan takliflar qayta tekshiriladi |
 
-**Case BR-X12: POS vs dashboard edit.** Bir paytning o‘zida POS va merchant qoldiqni o‘zgartirdi. Version/source priority va reconcile, blind last-write-wins taqiqlanadi. `BL-073/075/019`.
+## Kanallar va suhbatlar
 
-**Case BR-X13: online buyurtma va offline sotuv poygasi.** Omborda 1 ta RTX 4060. Online buyurtma `PENDING_CONFIRMATION` da turganda xodim xuddi shu donani do'konda "tez sotuv" bilan sotdi. Operator tasdiqlamoqchi bo'lganda stok qulf bilan qayta tekshiriladi va tasdiq rad etiladi; operatorga muqobil taklif vazifasi. `BL-047/109/111`.
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-031 | Kanal ulanadi | Faqat rasmiy ruxsat bilan; kalitlar xavfsiz joyda saqlanadi | Ruxsat bo'lmasa "ulangan" deb ko'rsatilmaydi |
+| BL-032 | Xabar keladi | Avval tekshiriladi va saqlanadi, keyin qayta ishlanadi | Takror kelgan xabar bir marta hisoblanadi |
+| BL-033 | Xaridorga xabar yuboriladi | Kanal qoidalariga amal qilinadi (masalan, Instagram'da 24 soat) | Yuborib bo'lmasa operatorga vazifa |
+| BL-034 | Suhbatda javob yoziladi | Bir vaqtda faqat bitta tomon: AI yoki operator | Eskirgan javob yuborilmaydi |
+| BL-035 | Xabarlar tartibsiz yoki takror keldi | Vaqt va xabar raqami bo'yicha to'g'ri tartib | Bitta xabarga ikki marta javob berilmaydi |
+| BL-036 | Kontakt va marketing | Kontakt uchun ruxsat va reklama uchun ruxsat alohida | Reklamaga ruxsat bo'lmasa, reklama xabari yuborilmaydi |
+| BL-037 | AI ishonchsiz yoki shikoyat, to'lov, kafolat | AI operatorga uzatadi | Operator navbatiga tushadi |
 
-**Case BR-X14: AI "buyurtma tasdiqlandi" deb aytmoqchi.** Xaridor "olaman" dedi, AI `DRAFT` yaratdi. AI javobi faqat "buyurtmangiz qabul qilindi, operator bog'lanadi" bo'lishi mumkin; "tasdiqlandi" yoki "band qilindi" deyish taqiqlanadi. `BL-038/041/110`.
+## AI sotuvchi
+
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-038 | AI mahsulot haqida gapiradi | Faqat tizimdan olingan mahsulot, narx va qoldiq | Tasdiqlanmagan ma'lumot aytilmaydi |
+| BL-039 | Xaridor matni yoki hujjatda "buyruq" bor | AI ularni bajarmaydi; shaxsiy ma'lumot tashqi AI'ga yuborilmaydi | Shubhali so'rov operatorga uzatiladi |
+| BL-040 | AI limiti tugadi yoki AI ishlamayapti | Xaridorga operator mavjudligi aytiladi | Xabarlar operatorga ketadi |
+| BL-041 | Taklif tuziladi | Narx, chegirma va yetkazishni tizim hisoblaydi | AI holatni o'zgartira olmaydi |
+| BL-110 | Xaridor "olaman" dedi | AI faqat buyurtma qoralamasini yaratadi va operatorni chaqiradi; mahsulot band qilinmaydi | AI "tasdiqlandi" yoki "band qilindi" demaydi |
+
+## Leadlar va takliflar
+
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-042 | Lead yaratiladi | Kontakt faqat rozilik bilan; dublikatlar faqat shop ichida birlashtiriladi | Boshqa shop xaridori bilan birlashtirilmaydi |
+| BL-043 | Taklif yaratiladi | Mahsulotlar, narxlar, holat va kafolat shartlari muzlatiladi | To'liq bo'lmagan taklif yuborilmaydi |
+| BL-044 | Taklif muddati tugadi | Eski narxda buyurtma qilinmaydi | Yangi taklif kerak |
+| BL-045 | Taklif tasdiqlanadi | Menejer (limit ichida) yoki ega; pilotda har taklif | Tasdiqsiz yuborib bo'lmaydi |
+
+## Buyurtmalar
+
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-046 | Buyurtma yaratiladi | Bir xil so'rov ikki buyurtma yaratmaydi | Takror so'rovga birinchi buyurtma qaytariladi |
+| BL-047 | Buyurtma tasdiqlanadi | Odam tasdiqlaydi; qoldiq va narx qayta tekshiriladi | Farq bo'lsa xaridordan qayta rozilik |
+| BL-048 | Buyurtma holati o'zgaradi | Faqat ruxsat etilgan o'tishlar (`05`), rol va sabab bilan | Noto'g'ri o'tish rad etiladi |
+| BL-049 | Buyurtma bekor qilinadi | Faqat menejer yoki ega, sabab bilan; band qilingan mahsulot bir marta bo'shatiladi | — |
+| BL-111 | Har qanday buyurtma (chat yoki saytdan) | Avtomatik tasdiqlanmaydi, odam tasdiqlaydi | Stage 2 da shop xohlasa avtomatik tasdiqni yoqishi mumkin |
+
+## To'lov va yetkazish ⏸
+
+Stage 1 da to'lov va yetkazish tizimdan tashqarida (DEC-100, DEC-113). Quyidagi qoidalar ular qo'shilganda ishlaydi.
+
+| ID | Qachon | Qoida |
+|---|---|---|
+| BL-050 ⏸ | Xaridor chek rasmini yubordi | Chek "to'landi" degani emas; moliya xodimi haqiqiy tushumni tekshiradi |
+| BL-051 ⏸ | To'lov provayderidan xabar keldi | Haqiqiyligi, summa, valyuta va hisob raqami tekshiriladi |
+| BL-052 ⏸ | To'lov yoki qaytarish takror keldi | Bir marta hisoblanadi |
+| BL-053 ⏸ | Pul qaytariladi | Sabab, tasdiq va aniq summa bilan; provayder tasdiqlamaguncha "qaytarildi" emas |
+| BL-054 ⏸ | Yetkazish rejalashtiriladi | Manzil va kontakt tasdiqlangan bo'lishi kerak (hozir buyurtmada faqat manzil saqlanadi) |
+| BL-055 ⏸ | Yetkazish holati o'zgaradi | Faqat tayinlangan kuryer yoki menejer; topshirilgani dalil bilan |
+| BL-056 ⏸ | Yetkazib bo'lmadi | Sabab va qayta rejalashtirish yoziladi, xaridorga xabar beriladi |
+
+## Kafolat va qaytarish
+
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-057 | Mahsulot kafolat bilan sotildi | Kafolat shartlari sotuv paytidagidek saqlanadi | Keyingi o'zgarishlar eski sotuvga ta'sir qilmaydi |
+| BL-058 | Qaytarish so'raldi | Ruxsatni odam beradi | — |
+| BL-059 | Mahsulot qaytdi | Tekshirilmaguncha sotuvga chiqmaydi | Shikastlangan mahsulot ombor tarixida alohida belgilanadi |
+
+## Xabarnomalar
+
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-060 | Xabar yaratiladi | Qaysi hodisa, qaysi shablon va kimga ekani yoziladi | Bir hodisa uchun ikkinchi xabar yuborilmaydi |
+| BL-061 | Xaridor xabarlardan voz kechgan | Reklama yuborilmaydi; faqat buyurtma bilan bog'liq xabarlar | — |
+| BL-062 | Xabar yuborilmadi | Cheklangan marta qayta uriniladi | Keyin xodimga vazifa; xato yo'qolib ketmaydi |
+
+## Hisobotlar
+
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-063 | Raqam so'raladi | Har ko'rsatkichning aniq formulasi bor (`engineering/29`); "to'landi" — tekshirilmagan belgi | Formulasi yo'q raqam aytilmaydi |
+| BL-064 | Ovozli savolda summa bor | Matn ko'rsatiladi va tasdiqlash so'raladi | Noaniq bo'lsa qayta so'raladi |
+| BL-065 | Hisobot ko'rsatiladi | Har kim faqat ruxsat etilgan raqamlarni ko'radi; tannarx operatorga ko'rinmaydi | — |
+| BL-066 | Javob beriladi | Davr, vaqt zonasi va ma'lumot qachon yangilangani ko'rsatiladi | Eskirgan ma'lumot belgilanadi |
+
+## Tarif, AI va audit
+
+| ID | Qachon | Qoida | Aks holda |
+|---|---|---|---|
+| BL-067 | Ishlatish hisoblanadi | Shop bo'yicha va aniq davrlar bo'yicha | Limit oshsa, egaga tushuntiriladi va qo'shimcha funksiyalar cheklanadi |
+| BL-068 | Obuna to'lovi kechikdi | Imtiyozli muddat beriladi | Mavjud buyurtmalar ochiq qoladi |
+| BL-069 | AI o'chirilgan | Katalog, inbox va buyurtmalar AI'siz ishlaydi | — |
+| BL-070 | Shop yopiladi | Ma'lumot eksporti beriladi, kirish to'xtaydi, ma'lumot muddati bo'yicha o'chiriladi | Ommaviy takliflar qolmaydi |
+| BL-071 | Muhim o'zgarish | Kim, qachon, nima o'zgargani (oldin va keyin) tarixga yoziladi | Tarixga yozib bo'lmasa, stok va pul bilan bog'liq o'zgarish bajarilmaydi |
+| BL-072 | Tarix yoziladi | Parol, karta raqami va keraksiz shaxsiy ma'lumot yozilmaydi | — |
+
+---
+
+# Stage 2 va Stage 3 qoidalari (keyinroq)
+
+| ID | Qachon | Qoida |
+|---|---|---|
+| BL-073 | Tashqi tizim (POS, ERP) ulanadi | Har maydon uchun (narx, qoldiq) qaysi tizim asosiy ekanligi aniq yoziladi; nizo bo'lsa odam ko'radi |
+| BL-074 | Sinxronizatsiya ishlaydi | Takrorlarga chidamli, tezlik limitiga amal qiladi, holati ko'rinadi |
+| BL-075 | Moslashda nizo | Avval sinov; noaniq yozuv ustiga yozilmaydi |
+| BL-076 | Turli shoplardagi mahsulot bog'lanadi | Part number, brend, model va variant dalili bo'lishi kerak; shubhada avtomatik birlashtirilmaydi |
+| BL-077 | Variantlar farq qiladi | Xotira hajmi, rang, holat, revision hech qachon jim birlashtirilmaydi |
+| BL-078 | Noto'g'ri bog'lash | Bekor qilish mumkin; tarix saqlanadi |
+| BL-079 | Shop mahsulotini global qidiruvga chiqaradi | Shop qaysi ma'lumot ochiq bo'lishini o'zi tanlaydi; standart holatda yopiq |
+| BL-080 | Ommaviy taklif o'zgaradi yoki qaytarib olinadi | Qaytarib olish darhol kuchga kiradi, qidiruv indeksi kechiksa ham |
+| BL-081 | Ommaviy taklif mazmuni | Faqat ruxsat etilgan narx, shartlar, filial; tannarx va xaridorlar hech qachon |
+| BL-082 | Filiallar orasida ko'chirish | Jo'natilganda bir filialdan kamayadi, qabul qilinganda boshqasiga qo'shiladi; yo'lda kuzatiladi |
+| BL-083 | Tarif o'zgaradi | Sana va hisob aniq; kutilmagan to'lov olinmaydi |
+| BL-084 | AI bilimlari yangilanadi | Tasdiqlanmaguncha AI ishlatmaydi |
+| BL-085 | Qidiruv indeksi yangilanadi | Eski yangilanish yangisini bosib o'tmaydi |
+| BL-086 | Taklif eskirdi | Yashiriladi yoki belgilanadi; xaridda qayta tekshiriladi |
+| BL-087 | "Tasdiqlangan shop" belgisi | Faqat dalil bilan va muddatli |
+| BL-088 | Shikoyat yoki qoidabuzarlik | Ko'rib chiqish, e'tiroz va sabab bilan olib tashlash |
+| BL-089 | Hamkor API kaliti | Ruxsatlari cheklangan, tezlik limitli, bekor qilinadigan; sizib chiqsa darhol o'chiriladi |
+| BL-090 | Global qidiruv | Faqat ochiq takliflar; yopiq mahsulotlar ko'rinmaydi |
+| BL-091 | Qidiruv natijasi | Variant va holat farqlari hisobga olinadi; solishtirib bo'lmaydiganlar alohida |
+| BL-092 | Narx solishtirish | Narx, ma'lum bo'lsa yetkazish, valyuta, kafolat va yangilangan vaqt ko'rsatiladi |
+| BL-093 | Saralash | "Jami narx" faqat hammasi ma'lum va solishtirsa bo'ladigan bo'lsa |
+| BL-094 | Xaridor noto'g'ri taklif haqida xabar berdi | Shop ko'rib chiqadi; jiddiy xato bo'lsa taklif yashiriladi |
+| BL-095 | Joylashuv | Aniq joy faqat rozilik bilan; aks holda shahar bo'yicha |
+| BL-096 | Masofa | To'g'ri chiziqmi yoki yo'l bo'yichami — aniq yoziladi; vaqt o'ylab topilmaydi |
+| BL-097 | Global AI tavsiya beradi | Qaysi ma'lumotga asoslanganini aytadi; dalil yo'q bo'lsa noaniqligini aytadi |
+| BL-098 | Global AI ma'lumot oladi | Faqat ochiq indeksdan; shoplarning ichki ma'lumotidan hech qachon |
+| BL-099 | Saralash va reklama | Reklama oddiy natijalarga ta'sir qilmaydi va aniq belgilanadi |
+| BL-100 | Xaridor shopga yo'naltiriladi | Xaridor roziligi bilan va qayerga yo'naltirilishini ko'rib |
+| BL-101 | Shopga xaridor ma'lumoti beriladi | Faqat kerakli ma'lumot, rozilikdan keyin |
+| BL-102 | Saqlangan qidiruv yoki ogohlantirish | Faqat xaridor yoqsa; bir bosishda bekor qilinadi |
+| BL-103 | Narx ogohlantirishi | Faqat yangi tekshirilgan narx bo'yicha va tez-tez emas |
+| BL-104 | Reklama o'rni | Aniq belgilanadi; "AI tavsiya qiladi" deb ko'rsatilmaydi |
+| BL-105 | Saralash sifati | Moslik, yangilik va ochiq mezonlar bo'yicha; shikoyat bo'lsa ko'rib chiqiladi |
+| BL-106 | SEO sahifalar | Faqat amaldagi takliflar uchun |
+| BL-107 | Takroriy sahifalar | Bitta asosiy manzil, takrorlar indeksga kirmaydi |
+| BL-108 | Global Telegram bot | Shop botlaridan alohida; ma'lumot aralashmaydi |
+
+---
+
+# Murakkab holatlar: bir nechta qoida birga ishlaydi
+
+Har biri sinov ssenariysi sifatida ham ishlatiladi (`10`).
+
+**BR-X01 — Oxirgi mahsulot uchun poyga.** Omborda 1 ta mahsulot. Ikki operator bir vaqtda ikki buyurtmani tasdiqlaydi. Faqat bittasi o'tadi, ikkinchisi "mahsulot qolmagan" xabarini oladi. (BL-019, 020, 023, 046, 047)
+
+**BR-X02 — Kech kelgan to'lov ⏸.** To'lov moduli qo'shilgandan keyin dolzarb: rezerv bekor qilingandan keyin to'lov keladi. To'lov yozib qo'yiladi, buyurtma avtomatik davom etmaydi, menejer qaror qiladi. (BL-021, 049, 051, 052)
+
+**BR-X03 — Narx o'zgardi.** AI 4,5 mln so'mlik taklif yubordi, keyin shop narxni 4,8 mln qildi. Yuborilgan taklif o'zgarmaydi. Buyurtma tasdiqlanayotganda tizim farqni ko'rsatadi va xaridordan qayta rozilik so'raladi. (BL-015, 016, 044, 047)
+
+**BR-X04 — Xabar takror keldi.** Telegram bitta xabarni ikki marta yubordi. Inbox'da bitta xabar, AI bitta javob beradi, xaridorga bitta xabarnoma. (BL-032, 035, 060)
+
+**BR-X05 — Operator va AI bir vaqtda.** Operator suhbatni oldi, AI esa javob tayyorlab turgan edi. Yuborishdan oldin tizim "hozir kim javob beradi?" deb tekshiradi va AI javobini tashlab yuboradi. (BL-034, 037)
+
+**BR-X06 — Boshqa shop ma'lumoti so'raldi.** A shop xodimi hisobot yordamchisidan B shopning savdosini so'raydi. Hech qanday raqam berilmaydi, urinish yozib qo'yiladi. (BL-002, 005, 008, 065, 098)
+
+**BR-X07 — Shop ommaviy taklifni qaytarib oldi (Stage 2).** Qidiruv indeksi hali yangilanmagan bo'lsa ham, taklif xaridorlarga darhol ko'rinmay qoladi. (BL-079, 080, 081, 085, 090)
+
+**BR-X08 — Noto'g'ri moslash (Stage 2).** "RTX 5060 8GB" ni "RTX 5060 Ti" bilan birlashtirish taqiqlanadi; shubha bo'lsa odam ko'rib chiqadi. (BL-076, 077, 078, 091)
+
+**BR-X09 — Soxta chek ⏸.** To'lov moduli qo'shilgandan keyin dolzarb: xaridor chek rasmini yuboradi, to'lov "kutilmoqda" holatida qoladi, moliya xodimi bankdan tekshiradi. Stage 1 da: AI "to'lov shop bilan kelishiladi" deb operatorga uzatadi. (BL-050, 051)
+
+**BR-X10 — Noto'g'ri "eng arzon" (Stage 3).** Bir shopda yetkazish narxi noma'lum, ikkinchisida 50 ming. AI "eng arzon" demaydi; mahsulot narxini va yetkazish noma'lumligini alohida ko'rsatadi. (BL-092, 093, 097)
+
+**BR-X11 — Shikastlangan mahsulot qaytdi.** Qaytgan mahsulot tekshirilmaguncha sotuvga chiqmaydi. (BL-057, 059, 019)
+
+**BR-X12 — POS va dashboard bir vaqtda (Stage 2).** Shopning kassa dasturi va dashboard bir mahsulot qoldig'ini bir vaqtda o'zgartirdi. Oxirgi yozuv g'olib bo'lmaydi: qaysi tizim asosiy ekanligiga qarab hal qilinadi yoki odam ko'radi. (BL-073, 075, 019)
+
+**BR-X13 — Online buyurtma va do'kondagi sotuv.** Omborda 1 ta RTX 4060. Online buyurtma tasdiq kutayotganda xodim shu mahsulotni do'konda "tez sotuv" bilan sotdi. Operator tasdiqlamoqchi bo'lganda tizim "mahsulot qolmagan" deydi; operator xaridorga muqobil taklif qiladi. (BL-047, 109, 111)
+
+**BR-X14 — AI "tasdiqlandi" demoqchi.** Xaridor "olaman" dedi, AI buyurtma qoralamasini yaratdi. AI faqat "buyurtmangiz qabul qilindi, operator bog'lanadi" deydi. "Tasdiqlandi" yoki "band qilindi" deyish taqiqlangan. (BL-038, 041, 110)
