@@ -1,77 +1,113 @@
-# 01 — ASOSIY BIZNES G‘OYA VA UCH BOSQICHLI YO‘L
+# 01 — Asosiy g'oya va uch bosqich
 
-**Versiya** v1.0 | **Sana** 2026-10-21 | **Status** Business baseline; real-life verification pending.
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). Haqiqiy shoplar bilan tekshirish kutilmoqda.
 
 ## Bir jumlada
 
-**AI Commerce OS & Network** — Instagram, Telegram va veb orqali sotadigan mustaqil do‘konlarga katalog/ombor, avtomatik mini-sayt, AI sotuvchi, CRM va order management beradigan, so‘ng ularning ruxsatli mahsulot takliflarini yagona global AI qidiruvda narx, lokatsiya va kafolat bo‘yicha solishtirishga imkon beradigan platforma.
+**AI Commerce OS & Network** — Instagram, Telegram va sayt orqali sotadigan mustaqil shoplarga katalog va ombor, tayyor sayt, AI sotuvchi, xaridorlar bazasi va buyurtmalarni boshqarishni beradigan, keyin esa ular rozilik bergan takliflarni bitta global AI qidiruvda narx, joylashuv va kafolat bo'yicha solishtirish imkonini beradigan platforma.
 
-## Uch asosiy biznes obyekti
+## Uchta asosiy tushuncha
 
-- **Merchant workspace** — mustaqil do‘kon tashkiloti, xodim, filial, privacy, buyurtmalar, stock, AI agent va o‘z domeni.
-- **Canonical Product** — bir xil brend+model+variant tavsifi; sotuvchi taklifiga egalik qilmaydi; texnik parametrlar versiyalanadi.
-- **Merchant Offer** — maʼlum sotuvchining SKU+filial+narx+condition+kafolat+mavjudlik taklifi; public bo‘lishi uchun explicit opt-in.
+- **Shop** — mustaqil do'kon: xodimlari, filiallari, buyurtmalari, ombori, AI'si va sayti bilan. Kodda `shop` (DEC-124).
+- **Umumiy mahsulot** — bir xil brend + model + variant tavsifi (masalan, "RTX 5060 8GB"). U hech bir shopga tegishli emas. Stage 2 dan.
+- **Shop taklifi** — aniq shopning shu mahsulot uchun narxi, filiali, holati (yangi yoki ishlatilgan), kafolati va qoldig'i. Umumiy qidiruvga faqat shop roziligi bilan chiqadi.
 
-## STAGE 1 — Merchant Sales OS
+---
 
-- **Kimga:** avval PC/gaming PC/elektronika do‘konlari; website yo‘q/borligi to‘siq emas.
-- **Asosiy muammo:** Direct/Telegramda qimmatli lead yo‘qoladi, narx va konfiguratsiya takror tushuntiriladi, stok/chat/buyurtma tarqoq.
-- **Mahsulot:** 24/7 AI sales, ruxsatli kanallar, katalog-import, mini-sayt, PC compatibility/quote, CRM, stock/rezerv, order/payment proof review, delivery/pickup, status notification, dashboard, UZ/RU/EN voice report.
-- **Kim pul to‘laydi:** Merchant subscription + ixtiyoriy setup/integration; buyer search/chat bepul.
-- **Module range:** `M01`–`M20`.
-- **MVP initial slice (baseline 2026-10-22, DEC-100):** Owner login → merchant+branch → katalog CSV → stock/price (UZS/USD) → storefront (savatcha → buyurtma so'rovi) + Telegram / Instagram / web chat → AI advisor (PC quote) → AI buyurtma qoralamasi → operator handoff → sotuvchi tasdig'i va rezerv → topshirish → notification → matnli hisobot. **To'lov va yetkazish tizimdan tashqarida** (do'kon o'zi); voice — golden set testidan keyin beta.
-- **Stage 1 done:** end-to-end pilot ishlaydi; critical order/stock/tenant leak false claim=0; onboarding va recurring fee sinovga tayyor; buyer marketplace hali mavjud emas.
+## Stage 1 — Shop uchun savdo tizimi
 
-## STAGE 2 — Merchant Network
+**Kimga:** avval PC, gaming PC va elektronika shoplari. Shopning sayti bormi-yo'qmi — farqi yo'q.
 
-- **Kimga:** o‘nlab/yuzlab merchantlar; POS/ERP ishlatuvchilar va ko‘p filialli savdogarlar.
-- **Mahsulot:** self-service provision, connectors, price/stock source priority, global canonical identity, public-offer opt-in, scalable tenant billing/quality, integration APIs.
-- **Kim pul to‘laydi:** Merchant SaaS, yuqori tarif/integration; global qidiruvga pul to‘lab yuqori rank sotib olinmaydi.
-- **Module range:** `M21`–`M30`, Stage 1 barcha mavjud funksiyalar bilan davom etadi.
-- **Stage 2 done:** merchant o‘zi ulanadi, 2+ merchant bir model taklifini xavfsiz normalizatsiya qiladi, opt-out/revoke indexdan ishonchli olinadi, validation va provenance ko‘rinadi. Public network hali yopiq beta bo‘lishi mumkin.
+**Qanday muammoni hal qiladi:**
+- Instagram Direct va Telegram'da xaridorlar javob kutib ketib qoladi.
+- Narx va PC yig'ma har safar qaytadan tushuntiriladi.
+- Ombor, suhbatlar va buyurtmalar turli joyda, bir-biriga bog'lanmagan.
 
-## STAGE 3 — Global AI Shopping
+**Nima beramiz:** kecha-kunduz ishlaydigan AI sotuvchi, Telegram/Instagram/sayt chati bitta inbox'da, fayldan katalog yuklash, tayyor sayt, PC moslik tekshiruvi va takliflar, xaridorlar bazasi, ombor va band qilish, buyurtmalar, xaridorga holat xabarlari, hisobotlar va hisobot yordamchisi (ovoz — keyinroq beta).
 
-- **Kimga:** O‘zbekiston xaridorlari va qidiruv orqali yangi mijoz istaydigan merchantlar.
-- **Mahsulot:** global web/Telegram search, same product cross-store offers, price + delivery + warranty + condition, map/branch/pickup, public-evidence AI Advisor, privacy-safe merchant referral, saved alerts, SEO.
-- **Kim pul to‘laydi:** boshlanishda merchant SaaS; keyinchalik toza belgilangan sponsored slots va ixtiyoriy verified referral monetizatsiyasi. Buyer qidirish uchun to‘lov qilmaydi.
-- **Module range:** `M31`–`M39`.
-- **Stage 3 done:** aksariyat ko‘riladigan mahsulotlarda 2+ dolzarb taqqoslanadigan offer; stale/wrong products nazorati, index revoke, xolis ranking, merchant attribution; real buyer foydasi maʼlumot bilan tekshiriladi.
+**Kim pul to'laydi:** shop — oylik obuna va kerak bo'lsa ulash xizmati uchun. Xaridor uchun bepul.
 
-## Hozir qila olmaymiz / keyingi ehtimoliy yo‘nalishlar
+**Modullar:** `M01`–`M20` (`02`).
 
-- O‘zimiz global fulfilment ombori, barcha merchant pullarining platforma orqali settlementi, buyer protection/dispute arbitraj tizimini Stage 1 da qurmaysiz.
-- Agro/fermerlar, B2B ulgurji order, transchegaraviy soliqlar, white-label marketplace, AI Marketing Studio va social sentiment alohida extension backlogida qoladi. Ularning domainlari keyingi biznes qoidalarni talab qiladi.
-- Har bir ijtimoiy tarmoqni noqonuniy scraping bilan avtomatlashtirish qabul qilinmaydi; adapter rasmiy integration capabilityga qarab enabled bo‘ladi.
+**Birinchi ishlaydigan versiya (DEC-100):**
 
-## Mijozlarga vaʼda qiladigan foyda va tekshiruv
-
-| Buyer/merchant | Vaʼda | Nimani o‘lchaymiz |
-|---|---|---|
-| Merchant | Suhbatga tez javob va operatorga tayyor lead | First response p50/p95, SLA miss, qualified leads |
-| Merchant | Narx/stok bir joyda | SKU freshness, false price, stock discrepancy |
-| Merchant | Websaytsiz online savdo | Site activation, quote requests, paid orders |
-| Merchant | Egaga auditli hisobot | Reconciliation, voice recognition accuracy |
-| Merchant network | Do‘konni tez ulash | Onboarding time, sync health, support minutes |
-| Shopper | Eng qulay to‘g‘ri taklifni solishtirish | Valid comparisons, wrong-price rate, buyer referral |
-
-## Uch bosqich orasidagi kontrakt
-
-```mermaid
-flowchart LR
-    A[Merchant data and private Sales OS] --> B[Approved public offer opt-in]
-    B --> C[Canonical product and verified offers]
-    C --> D[Buyer global search and AI advisor]
-    D --> E[Consented merchant referral]
-    E --> A
+```
+Ega kiradi ──▶ shop va filial yaratadi ──▶ katalogni fayldan yuklaydi ──▶ narx (so'm/dollar) va qoldiq
+   ──▶ sayt ochiladi + Telegram / Instagram / sayt chati ulanadi
+   ──▶ xaridor yozadi ──▶ AI maslahat beradi (PC taklifi) ──▶ xaridor "olaman" deydi
+   ──▶ AI buyurtma qoralamasini yaratadi va operatorni chaqiradi
+   ──▶ operator xaridor bilan gaplashadi va tasdiqlaydi [mahsulot band qilinadi]
+   ──▶ shop tayyorlaydi va topshiradi ──▶ xaridorga xabar ──▶ egaga hisobot
 ```
 
-**Biznes qatlam qarori:** Merchant mustaqil pul to‘lay oladigan mahsulot. Global platformaga kirishi merchant checkout/CRM uchun majburiy emas.
+**To'lov va yetkazish tizimdan tashqarida** — shop o'zi pul oladi va o'zi yetkazadi. Ovozli hisobot — o'zbekcha sinovdan o'tgach beta.
 
-## Biznes cheklovlar
+**Stage 1 tugadi deb qachon hisoblanadi:** haqiqiy shopda yuqoridagi yo'l to'liq ishlaydi; buyurtma va stokda xato, boshqa shop ma'lumoti ko'rinishi — nol; shopni ulash va oylik to'lov sinovga tayyor. Xaridorlar uchun umumiy bozor hali yo'q.
 
-1. Merchant birinchi qiymatni global traffic bo‘lmasa ham oladi.
-2. Katalog/POS noaniq bo‘lsa AI sotmaydi, quote operatorga o‘tadi.
-3. Uchala tilda AI agent arxitektura qo‘llaydi; mahalliy voice quality dalilsiz kafolatlanmaydi.
-4. Xaridor shaxsiy maʼlumoti va order merchant privacy doirasida; global qidiruvga o‘tmaydi.
-5. Product features to‘liq `02`, qoidalar `03`, statuslar `05`, UI `06`, maʼlumotlar `07`, testlar `10` da mavjud.
+---
+
+## Stage 2 — Shoplar tarmog'i
+
+**Kimga:** o'nlab va yuzlab shoplar, ayniqsa kassa yoki hisob dasturi ishlatadigan va ko'p filialli shoplar.
+
+**Nima beramiz:** shop o'zi ro'yxatdan o'tadi; kassa va hisob dasturlari bilan bog'lanish; narx va qoldiq qaysi manbadan olinishi sozlanadi; bir xil mahsulotlar umumiy katalogga birlashadi; shop xohlasa takliflarini ommaviy qiladi; tashqi tizimlar uchun API.
+
+**Kim pul to'laydi:** shop — obuna, yuqori tarif va integratsiyalar uchun. Global qidiruvda yuqori o'rinni pulga sotib bo'lmaydi.
+
+**Modullar:** `M21`–`M30`; Stage 1 ning hamma imkoniyatlari davom etadi.
+
+**Stage 2 tugadi deb qachon hisoblanadi:** shop o'zi ulanadi; ikki va undan ortiq shop bir xil modelni to'g'ri bitta umumiy mahsulotga bog'laydi; shop taklifini qaytarib olsa, u darhol ko'rinmaydi; ma'lumot qayerdan kelgani ko'rinadi. Umumiy tarmoq hali yopiq beta bo'lishi mumkin.
+
+---
+
+## Stage 3 — Global AI qidiruv
+
+**Kimga:** O'zbekistondagi xaridorlar va yangi mijoz izlayotgan shoplar.
+
+**Nima beramiz:** sayt va Telegram orqali global qidiruv; bir mahsulotni turli shoplarda narx, yetkazish, kafolat va holat bo'yicha solishtirish; xarita, filial, olib ketish; faqat ochiq ma'lumotga tayanadigan AI maslahatchi; xaridor roziligi bilan shopga yo'naltirish; narx tushganda xabar berish.
+
+**Kim pul to'laydi:** boshida — shop obunasi. Keyinroq — aniq "reklama" deb belgilangan o'rinlar va tasdiqlangan yo'naltirishlar uchun to'lov. Xaridor qidiruv uchun pul to'lamaydi.
+
+**Modullar:** `M31`–`M39`.
+
+**Stage 3 tugadi deb qachon hisoblanadi:** ko'p qidiriladigan mahsulotlarda kamida 2 ta dolzarb, solishtirsa bo'ladigan taklif bor; eskirgan yoki noto'g'ri takliflar nazorat qilinadi; tartiblash xolis; xaridorga haqiqiy foyda ma'lumotlar bilan tasdiqlangan.
+
+---
+
+## Hozir qilmaydigan narsalar
+
+- O'z omborimiz va yetkazish tizimimiz, barcha shoplar pulini platforma orqali o'tkazish, xaridorni himoya qilish va nizolarni hal qilish — Stage 1 da qurilmaydi.
+- Qishloq xo'jaligi, ulgurji savdo, xalqaro soliqlar, boshqa brend ostidagi bozor, AI marketing — alohida yo'nalishlar (`11` §4).
+- Ijtimoiy tarmoqlarni norasmiy usullar bilan avtomatlashtirish qabul qilinmaydi. Har kanal faqat rasmiy ruxsat bo'lsa yoqiladi.
+
+## Nimani va'da qilamiz va qanday tekshiramiz
+
+| Kim uchun | Va'da | Nimani o'lchaymiz |
+|---|---|---|
+| Shop | Xaridorga tez javob va operatorga tayyor lead | Birinchi javob vaqti, kechikkan javoblar, sifatli leadlar |
+| Shop | Narx va qoldiq bir joyda | Narx yangiligi, noto'g'ri narx holatlari, qoldiq farqlari |
+| Shop | Saytsiz ham online savdo | Ochilgan saytlar, taklif so'rovlari, buyurtmalar |
+| Shop | Egaga ishonchli hisobot | Raqamlar to'g'riligi, ovozni tanish aniqligi |
+| Shoplar tarmog'i | Shopni tez ulash | Ulash vaqti, sinxronlash holati, yordamga ketgan vaqt |
+| Xaridor | To'g'ri va qulay taklifni solishtirish | To'g'ri solishtirishlar, noto'g'ri narx ulushi, yo'naltirishlar |
+
+## Uch bosqich qanday bog'langan
+
+```
+Shopning o'z ma'lumotlari va savdo tizimi (Stage 1)
+   ──▶ shop rozilik bergan ommaviy takliflar (Stage 2)
+   ──▶ umumiy mahsulot va tekshirilgan takliflar (Stage 2)
+   ──▶ xaridorning global qidiruvi va AI maslahatchisi (Stage 3)
+   ──▶ xaridor roziligi bilan shopga yo'naltirish
+   ──▶ yana shopning savdo tizimiga (Stage 1)
+```
+
+**Asosiy tamoyil:** shop savdo tizimi uchun alohida pul to'laydi va undan foyda oladi. Global qidiruvga qo'shilish majburiy emas.
+
+## Cheklovlar
+
+1. Shop birinchi foydani global qidiruvda xaridorlar bo'lmasa ham oladi.
+2. Katalog yoki qoldiq noaniq bo'lsa, AI sotmaydi — taklif operatorga o'tadi.
+3. AI uchala tilda (o'zbek, rus, ingliz) ishlaydi, lekin ovozni tanish sifati sinovsiz kafolatlanmaydi.
+4. Xaridorning shaxsiy ma'lumoti va buyurtmalari shop ichida qoladi, global qidiruvga chiqmaydi.
+5. Batafsil: modullar — `02`, qoidalar — `03`, holatlar — `05`, sahifalar — `06`, sinovlar — `10`.

@@ -1,60 +1,68 @@
-# AI Commerce OS & Network — BUSINESS MASTER PACKAGE v1.0
+# AI Commerce OS & Network — biznes hujjatlari
 
-**Sana:** 2026-10-21  
-**Status:** `IMPLEMENTATION-ORIENTED BUSINESS SPEC / REVIEW REQUIRED`  
-**Loyiha:** Merchant sotuvini avtomatlashtirish → merchant tarmog‘i → xaridor global narx qidiruvi.  
-**Bosqichlar:** aniq **3**; agro, full marketplace settlement, xalqaro B2B = **future expansion**, core roadmap emas.
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi).
 
-## Nima tayyorlandi?
+## Loyiha nima haqida
 
-- **39 biznes modul**: 20 ta Stage 1, 10 ta Stage 2, 9 ta Stage 3; birlamchi funktsiyalar, actor, status, qoidalar, exception, UI, hamkor modul, metrikalar.
-- **111 raqamlangan biznes qoida** (`BL-001..BL-111`; BL-109…111 — 2026-10-22 baseline qo'shimchalari) va **18 ta state machine** (FSM-09, FSM-10 Stage 1 da `DEFERRED`).
-- **Founder baseline qarorlari:** `../decisions/DECISION_REGISTER.md` — hujjatlar shu qarorlarga moslangan (2026-10-22).
-- Rollar/ruxsatlar, business ER model, sotuv va AI user journey, UI navigation, notificationlar, xatolik/recovery, UAT checklist, faza release gate, biznes qarorlar.
-- Hujjatlar bir-biriga `Mxx`, `BL-xxx`, `FSM`, `UX`, `UAT` orqali bog‘lanadi.
+Instagram, Telegram va sayt orqali sotadigan mustaqil shoplar uchun platforma. Uch bosqichda quriladi:
+1. **Shop uchun savdo tizimi** — katalog, ombor, sayt, AI sotuvchi, inbox, buyurtmalar, hisobotlar.
+2. **Shoplar tarmog'i** — shoplar o'zi ulanadi, kassa dasturlari bilan bog'lanadi, bir xil mahsulotlar umumiy katalogga birlashadi.
+3. **Global AI qidiruv** — xaridor bir nechta shop takliflarini narx, joylashuv va kafolat bo'yicha solishtiradi.
 
-## Hujjatlar navigatsiyasi
+Qishloq xo'jaligi, platforma orqali to'lov, xalqaro savdo — bu uch bosqichga kirmaydi, keyingi yo'nalishlar (`11` §4).
 
-| Tartib | Fayl | Tayyor natija |
+## Hujjatlar ro'yxati
+
+| № | Hujjat | Nima haqida |
 |---|---|---|
-| 00 | `00_README_AND_SCOPE.md` | Ushbu boshlang‘ich fayl, scope, hujjat siyosati |
-| 01 | `01_BUSINESS_VISION_AND_3_PHASES.md` | Product mission, 3 bosqich, kim, qiymat, nima sotamiz |
-| 02 | `02_ALL_BUSINESS_MODULES.md` | **39 ta modulning detalli spetsifikatsiyasi** |
-| 03 | `03_BUSINESS_RULES_108.md` | **111 ta normativ biznes qoida** (fayl nomi tarixiy), edge-case bilan |
-| 04 | `04_ROLES_PERMISSIONS_AND_APPROVALS.md` | Tenant/branch scope, action matrix, sensitive approvals |
-| 05 | `05_STATE_MACHINES_AND_EXCEPTIONS.md` | **18 ta FSM**, valid transitions, cancellation/recovery |
-| 06 | `06_UI_SITEMAP_AND_USER_FLOWS.md` | Har modul uchun UI coverage, 3 phase wireflow, Mermaid |
-| 07 | `../engineering/34_DOMAIN_ENTITIES_AND_DATA_BOUNDARIES.md` | Mantiqiy entitylari, owner, public/private, invariants |
-| 08 | `08_AI_AND_CHANNEL_BUSINESS_CONTRACTS.md` | 3 agent, 3 til voice, merchant/global permissions, integrations |
-| 09 | `../engineering/35_MODULE_INTERACTIONS_AND_EVENTS.md` | Modul interaction, outbound notification, event & failure semantics |
-| 10 | `10_UAT_ACCEPTANCE_AND_RELEASES.md` | Har modul uchun acceptance + kritikal regression va phase gates |
-| 11 | `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md` | Default qilingan qarorlar, farazlar, kelajakdagi imkoniyatlar |
-| 12 | `../engineering/36_TRACEABILITY_INDEX.md` | Module → BL → FSM → UI → UAT ko‘rsatkichlari |
-| 13 | `13_MERCHANT_ONBOARDING_PLAYBOOK.md` | Pilot do'konni ulash bosqichlari va tekshiruv ro'yxati (DEC-122) |
-| 14 | `14_PILOT_AGREEMENT_AND_PRICING.md` | Pilot shartnomasi qoralamasi va narxlash gipotezalari (DEC-119, DRAFT) |
+| 00 | `00_README_AND_SCOPE.md` | Shu fayl: loyiha qisqacha, hujjatlar ro'yxati, asosiy qoidalar |
+| 01 | `01_BUSINESS_VISION_AND_3_PHASES.md` | G'oya, 3 bosqich: kimga, nima, kim pul to'laydi |
+| 02 | `02_ALL_BUSINESS_MODULES.md` | 39 ta modul: har biri nima qiladi, kim ishlatadi, qabul mezonlari |
+| 03 | `03_BUSINESS_RULES_108.md` | 111 ta biznes qoida (fayl nomidagi "108" tarixiy) |
+| 04 | `04_ROLES_PERMISSIONS_AND_APPROVALS.md` | Kim nima qila oladi, qaysi amallar tasdiq talab qiladi |
+| 05 | `05_STATE_MACHINES_AND_EXCEPTIONS.md` | Buyurtma, taklif, suhbat va boshqalarning holatlari — strelkalar bilan |
+| 06 | `06_UI_SITEMAP_AND_USER_FLOWS.md` | Sahifalar ro'yxati va foydalanuvchi qadamlari |
+| 08 | `08_AI_AND_CHANNEL_BUSINESS_CONTRACTS.md` | AI nima qila oladi va nima qila olmaydi, kanallar |
+| 10 | `10_UAT_ACCEPTANCE_AND_RELEASES.md` | Qabul sinovlari va ish qaysi bo'laklarda chiqariladi |
+| 11 | `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md` | Asosiy qarorlar, farazlar, xavflar |
+| 13 | `13_MERCHANT_ONBOARDING_PLAYBOOK.md` | Pilot shopni ulash qadamlari |
+| 14 | `14_PILOT_AGREEMENT_AND_PRICING.md` | Pilot shartnomasi qoralamasi va narx gipotezalari (qoralama) |
 
-## Hozirgi ishning yakunlash mezoni
+**Boshqa joydagi hujjatlar:**
+- Barcha qarorlar va ularning sabablari — `../decisions/DECISION_REGISTER.md`.
+- Atamalar lug'ati — `../GLOSSARY.md`.
+- Bozor va muammo tadqiqoti — `../discovery/A01_MARKET_PROBLEM_DISCOVERY.md`.
+- Dasturchilar uchun hujjatlar — `../engineering/`. Ilgari bu yerda bo'lgan `07` (ma'lumotlar tuzilmasi), `09` (modullar o'zaro aloqasi), `12` (bog'lanish indeksi) endi `engineering/34`, `35`, `36` da (DEC-125).
 
-Bu paket **biznes konsepsiya, modullar va ishlash mantig‘ini batafsil spetsifikatsiya qiladi**, ammo rasmiy real merchant ma’lumotlari, do‘kon shartnomalari va live provider API ruxsatlarini o‘rnini bosa olmaydi. `REVIEW REQUIRED` deb belgilangan talablar founder tomonidan tasdiqlanishi kerak. **Backend arxitektura implementatsiyasi, yakuniy ERD/SQL, OpenAPI, ADR va test kodi hali boshqa ish**; bu hujjatlar ularni qurish uchun biznes manba bo‘ladi.
+## Hujjatlar qanday bog'langan
 
-**Oldingi 4 bosqichli vision bilan farqi:** 4-bosqich sifatida ko‘rsatilgan global commerce/logistika/B2B/agro bu yerda `future extensions` ro‘yxatiga o‘tkazildi. U 1–3 bosqichdagi relizlarni og‘irlashtirmaydi.
+Har bir narsaning o'z raqami bor, hujjatlar bir-biriga shu raqamlar orqali havola qiladi:
+- `M01`…`M39` — modullar (`02`)
+- `BL-001`…`BL-111` — biznes qoidalar (`03`)
+- `FSM-01`… — holatlar ketma-ketligi (`05`)
+- `UAT-M01`…, `TC-001`… — sinovlar (`10`)
+- `DEC-001`… — qarorlar (registr)
 
-## Qatʼiy biznes invariants
+## Hech qachon buzilmaydigan qoidalar
 
-1. **Merchant o‘z katalogi, mijozlari va sotuv tarixining egasi**; public listing faqat explicit opt-in bilan.
-2. **Global catalog ≠ merchant inventory**: canonical product birlashadi, sotuvchining offer/stock/price o‘zgacha saqlanadi.
-3. **AI hech qachon o‘zi narx, stock, to‘lov yoki foyda raqamini ixtiro qilmaydi.** Tool va business rule yagona manba.
-4. **Chek rasmi paid degani emas.** Paid = tekshirilgan provider settlement yoki vakolatli reconciliation. Stage 1 da to'lov tizimdan tashqarida; "to'landi" — merchant qo'ygan, tekshirilmagan belgi (DEC-100a).
-5. **Rezerv ≠ fizik sotuv**; rezervning boshlanishi/tugashi, expired, payment-late yo‘li nazorat qilinadi.
-6. **Merchant bot ≠ global buyer bot**; private data hech qachon umumiy qidiruvga yashirin chiqmaydi.
-7. Xaridor uchun **jami narx** faqat barcha tarkibiy xarajatlar mavjud bo‘lsa hisoblanadi, aks holda «yetkazish narxi noma’lum».
-8. Operator/sotuvchi/AI bir vaqtda bir suhbatga qarama-qarshi javob yubormaydi.
-9. Har bir critical mutatsiya uchun actor, tenant, trace/correlation va audit talab qilinadi.
-10. Nomuvofiq mahsulot, eskirgan narx, expired payment, noto‘g‘ri role → **blocked + human review**, silent acceptance emas.
+1. **Shop o'z katalogi, xaridorlari va savdo tarixining egasi.** Umumiy qidiruvga faqat shop roziligi bilan chiqadi.
+2. **Umumiy katalog ≠ shop ombori.** Bir xil model umumiy katalogda bitta, lekin har shopning narxi, qoldig'i va taklifi alohida.
+3. **AI narx, qoldiq, to'lov yoki foyda raqamini o'zi o'ylab topmaydi.** Hammasi tizimdagi ma'lumotdan olinadi.
+4. **Chek rasmi — "to'landi" degani emas.** Stage 1 da to'lov tizimdan tashqarida; "to'landi" — shop qo'ygan, tekshirilmagan belgi (DEC-100a).
+5. **Band qilish ≠ sotish.** Band qilish qachon boshlanib, qachon tugashi nazorat qilinadi.
+6. **Shop AI'si ≠ xaridorning global AI'si.** Shopning ichki ma'lumoti hech qachon umumiy qidiruvga chiqmaydi.
+7. **Jami narx** faqat barcha xarajatlar (yetkazish ham) ma'lum bo'lsa ko'rsatiladi. Aks holda — "yetkazish narxi noma'lum".
+8. Operator va AI bir suhbatda bir vaqtda turli javob yubormaydi.
+9. Har bir muhim o'zgarishda kim, qaysi shopda, qachon qilgani yozib qo'yiladi.
+10. Mos kelmaydigan mahsulot, eskirgan narx, noto'g'ri rol — **amal to'xtatiladi va odamga yuboriladi**, jim o'tkazib yuborilmaydi.
 
 ## Ishlash tartibi
 
-1. `01` va `02` biznes xususiyatlari uchun asosiy material; `03` yagona qoida manbai.
-2. Har bir o‘zgarish uchun `Mxx`/`BL-xxx`ni ko‘rsatish; UI/FSM/UAT taʼsirini birga ko‘rib chiqish.
-3. Uch bosqichni bir vaqtda qurmaymiz; Stage 1 ichida mustaqil deploy qilinadigan vertical slicelar bo‘ladi.
-4. Keyingi engineering ish: domain context map → aggregate & invariants → ERD → OpenAPI/events → concurrency/outbox/observability → screen implementations → tests.
+1. Biznes xususiyatlari — `01` va `02`; qoidalar — faqat `03`.
+2. Biror narsa o'zgarsa, qaysi modul (`Mxx`) va qoida (`BL-xxx`) ekanini ko'rsating; sahifa, holat va sinovlarga ta'sirini birga ko'ring.
+3. Uch bosqich bir vaqtda qurilmaydi. Stage 1 bo'laklarga bo'lingan (`10` §1).
+4. Qaror o'zgarsa, registrda `CHANGED (sana): eski → yangi` deb yoziladi.
+
+## Bu hujjatlar nimani almashtirmaydi
+
+Bu hujjatlar biznes mantiqini tushuntiradi. Ular haqiqiy shoplar bilan tekshiruv, shartnomalar va Telegram/Meta ruxsatlari o'rnini bosmaydi. Texnik loyiha (ma'lumotlar bazasi, API, kod) — `engineering/` da.
