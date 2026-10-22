@@ -1,6 +1,6 @@
 # TECH-31 — Xabarnomalar va xabar shablonlari katalogi
 
-**Status:** Baseline (2026-10-22). M17, BL-060…062, FSM-12, `business/09` (trigger matritsasi), TECH-24 §5.6 (`message_templates`).
+**Status:** Baseline (2026-10-22). M17, BL-060…062, FSM-12, `engineering/35` (trigger matritsasi), TECH-24 §5.6 (`message_templates`).
 **Kim uchun:** backend (engagement context), founder (matnlarni tahrirlash), frontend (in-app bildirishnomalar).
 
 Matnlar — platforma default'lari. Merchant o'z ohangiga moslab override qilishi mumkin (o'zgaruvchilar saqlanishi shart). Rus va ingliz matnlari tarjimon tomonidan tekshiriladi.

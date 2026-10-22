@@ -1,11 +1,11 @@
 # AI COMMERCE OS & NETWORK — DDD DOMAIN ARCHITECTURE
 
-> **Doc ID:** TECH-03 / `03_DDD_DOMAIN_ARCHITECTURE.md`  
-> **Version:** v0.9 — architecture proposal for founder review  
-> **Date:** 2026-10-21  
-> **Scope:** Stage 1 Merchant Sales OS (implementation-oriented); Stage 2 Merchant Network; Stage 3 Global AI Shopping (extension boundaries)  
-> **Depends on:** `00_README_AND_SCOPE.md`, `01_BUSINESS_VISION_AND_3_PHASES.md`, `02_ALL_BUSINESS_MODULES.md` (`M01–M39`), `03_BUSINESS_RULES_108.md` (`BL-001…BL-111`), `04_ROLES_PERMISSIONS_AND_APPROVALS.md`, `05_STATE_MACHINES_AND_EXCEPTIONS.md`, `07_BUSINESS_ENTITIES_AND_DATA_BOUNDARIES.md`, `09_MODULE_INTERACTIONS_AND_NOTIFICATIONS.md`, `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md`.  
-> **Status:** This is NOT implemented code, finalized ERD, validated API/SLAs or approved technical ADR. It is the DDD foundation and the input to subsequent design documents.  
+> **Doc ID:** TECH-03 / `03_DDD_DOMAIN_ARCHITECTURE.md`
+> **Version:** v0.9 — architecture proposal for founder review
+> **Date:** 2026-10-21
+> **Scope:** Stage 1 Merchant Sales OS (implementation-oriented); Stage 2 Merchant Network; Stage 3 Global AI Shopping (extension boundaries)
+> **Depends on:** `00_README_AND_SCOPE.md`, `01_BUSINESS_VISION_AND_3_PHASES.md`, `02_ALL_BUSINESS_MODULES.md` (`M01–M39`), `03_BUSINESS_RULES_108.md` (`BL-001…BL-111`), `04_ROLES_PERMISSIONS_AND_APPROVALS.md`, `05_STATE_MACHINES_AND_EXCEPTIONS.md`, `../engineering/34_DOMAIN_ENTITIES_AND_DATA_BOUNDARIES.md`, `../engineering/35_MODULE_INTERACTIONS_AND_EVENTS.md`, `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md`.
+> **Status:** This is NOT implemented code, finalized ERD, validated API/SLAs or approved technical ADR. It is the DDD foundation and the input to subsequent design documents.
 > **Owner:** Founder. **Review:** Product, security, engineering (AI-assisted draft, founder approves).
 
 ---
@@ -20,53 +20,53 @@
 
 ### 0.1 Decision confidence
 
-| Decision | Status (2026-10-22) | Reference |
-|---|---|---|
-| DDD-style modular monolith | APPROVED baseline | ADR-001 |
-| Shared PostgreSQL, tenant-scoped records; RLS spike S0 | APPROVED baseline | ADR-002, ADR-026, TECH-23 |
-| Unified transaction boundary for order confirm + reserve | APPROVED, REQUIRED INVARIANT | ADR-021, TECH-07 |
-| Separate AI execution process / worker | APPROVED baseline | ADR-011, TECH-11 |
-| Outbox durable, at-least-once; PG leased jobs | APPROVED | ADR-005, DEC-003 |
-| Global canonical product separate from merchant SKU | BUSINESS BASELINE (Stage 2); Stage 1 — reference spec library | ADR-028 |
-| Two repos (`backend`, `frontend`), frontend — 2 Next.js app | APPROVED | ADR-009, ADR-010 |
-| Payment | Stage 1 da tizimdan tashqarida | DEC-100 |
+| Decision                                                         | Status (2026-10-22)                                            | Reference                 |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------- |
+| DDD-style modular monolith                                       | APPROVED baseline                                              | ADR-001                   |
+| Shared PostgreSQL, tenant-scoped records; RLS spike S0           | APPROVED baseline                                              | ADR-002, ADR-026, TECH-23 |
+| Unified transaction boundary for order confirm + reserve         | APPROVED, REQUIRED INVARIANT                                   | ADR-021, TECH-07          |
+| Separate AI execution process / worker                           | APPROVED baseline                                              | ADR-011, TECH-11          |
+| Outbox durable, at-least-once; PG leased jobs                    | APPROVED                                                       | ADR-005, DEC-003          |
+| Global canonical product separate from merchant SKU              | BUSINESS BASELINE (Stage 2); Stage 1 — reference spec library | ADR-028                   |
+| Two repos (`backend`, `frontend`), frontend — 2 Next.js app | APPROVED                                                       | ADR-009, ADR-010          |
+| Payment                                                          | Stage 1 da tizimdan tashqarida                                 | DEC-100                   |
 
 Barcha qarorlar va variantlar: `../decisions/DECISION_REGISTER.md`.
 
 ## 1. Three commercial stages and non-goals
 
-| Stage | System we actually ship | New core bounded contexts | Explicitly do NOT build yet |
-|---|---|---|---|
+| Stage       | System we actually ship                                                                                                                  | New core bounded contexts                                                                                                                                                           | Explicitly do NOT build yet                                                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | **1** | Merchant-specific selling: website, catalog/stock/price, messaging+AI, quotes/orders, payment state, delivery, dashboard/voice read-only | Merchant Identity, Merchant, Catalog, Pricing, Inventory, Storefront, Messaging, AI Sales, CRM+Quotes, Orders, Payments, Fulfillment, Notifications, Reporting, Platform Governance | Global price comparison, ad ranking, multimerchant checkout, full custom-trained LLM |
-| **2** | Self-serve merchant scale, partner integrations, canonical catalog, merchant opt-in public offers | Provisioning enhancements, Integration Hub, Canonical Catalog, Public Listings, Publication pipeline, Merchant Trust | Public mass-market promise before data-quality gates pass |
-| **3** | Public global product/merchant search, multi-offer price comparisons, geosearch, consumer AI advisor and referrals | Discovery, Shopper Identity/Alerts (conditional), Referral Attribution, Ads & Transparency (conditional) | Payment custody, universal buyer protection/returns, agro and full B2B wholesale |
+| **2** | Self-serve merchant scale, partner integrations, canonical catalog, merchant opt-in public offers                                        | Provisioning enhancements, Integration Hub, Canonical Catalog, Public Listings, Publication pipeline, Merchant Trust                                                                | Public mass-market promise before data-quality gates pass                            |
+| **3** | Public global product/merchant search, multi-offer price comparisons, geosearch, consumer AI advisor and referrals                       | Discovery, Shopper Identity/Alerts (conditional), Referral Attribution, Ads & Transparency (conditional)                                                                            | Payment custody, universal buyer protection/returns, agro and full B2B wholesale     |
 
 **Extensions beyond Stage 3:** farmers/agro, international payments, social-media AI marketing studio and platform-wide logistics are separate future product annexes; they do not silently extend stage 1 entities or deadlines.
 
 ## 2. Ubiquitous language: never mix these terms
 
-| Term | Definition | Ownership / key constraint |
-|---|---|---|
-| `Merchant` | A legally/business-distinct shop tenant | Merchant context; isolated by `merchant_id` |
-| `Principal` | An authenticated human/service actor | Access context; no tenant inferred solely from submitted body |
-| `Membership` | Principal's relationship to merchant, role/scope | Access context, server-validated |
-| `Branch` | A physical shop/fulfillment location | Merchant context, branch ownership always checked |
-| `MerchantProduct` | Merchant-specific product representation | Merchant Catalog; NOT a canonical market product |
-| `MerchantSKU` | Variant + condition and merchant identifier | Merchant Catalog; unique within merchant |
-| `CanonicalProduct` | Verified model/variant identity used for comparing products | Network Registry; stage 2; has no stock or sell price |
-| `MerchantOffer` / `PublicOffer` | Merchant-authorized, publishable description of selling a SKU | Public Listings; must support immediate takedown/read-time deny |
-| `PriceVersion` | Versioned source of a particular merchant SKU selling price | Pricing; historical quotes preserve snapshot |
-| `StockBalance` | Physical/reserved/allocated quantities for merchant-branch-SKU | Inventory; authoritative commerce quantity |
-| `Reservation` | Temporary claim on stock with TTL, state and origin | Inventory; one request cannot reserve twice |
-| `Lead` | Per-merchant opportunity, with consented requirements | CRM; never globalized by matching phone number silently |
-| `Quote` | Versioned immutable offered terms once approved/sent | CRM+Quotes; snapshot of SKU specs, price, currency, delivery and expiry |
-| `Order` | The merchant's committed purchase intent and its line snapshots | Orders; not the same as verified paid or delivered state |
-| `PaymentAttempt` | External or manual attempt to settle an order | Payments; proof upload != verified funds |
-| `Shipment` | Dispatch/pickup process and evidence | Fulfillment; not equivalent to Order |
-| `Conversation` | Merchant-scoped session for a channel account and counterpart | Messaging; human/AI speaking authority explicitly tracked |
-| `BusinessEvent` | State-transition fact, e.g. `order.created.v1` | Emitted by domain owner in same transaction as state mutation |
-| `OutboxMessage` | Durable intent to transmit a committed event/task | Shared infrastructure; at-least-once delivery |
-| `ReadModel` | Rebuildable read-optimized projection for dashboard/search | Not authoritative for checkout, money or stock |
+| Term                                | Definition                                                      | Ownership / key constraint                                              |
+| ----------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `Merchant`                        | A legally/business-distinct shop tenant                         | Merchant context; isolated by `merchant_id`                           |
+| `Principal`                       | An authenticated human/service actor                            | Access context; no tenant inferred solely from submitted body           |
+| `Membership`                      | Principal's relationship to merchant, role/scope                | Access context, server-validated                                        |
+| `Branch`                          | A physical shop/fulfillment location                            | Merchant context, branch ownership always checked                       |
+| `MerchantProduct`                 | Merchant-specific product representation                        | Merchant Catalog; NOT a canonical market product                        |
+| `MerchantSKU`                     | Variant + condition and merchant identifier                     | Merchant Catalog; unique within merchant                                |
+| `CanonicalProduct`                | Verified model/variant identity used for comparing products     | Network Registry; stage 2; has no stock or sell price                   |
+| `MerchantOffer` / `PublicOffer` | Merchant-authorized, publishable description of selling a SKU   | Public Listings; must support immediate takedown/read-time deny         |
+| `PriceVersion`                    | Versioned source of a particular merchant SKU selling price     | Pricing; historical quotes preserve snapshot                            |
+| `StockBalance`                    | Physical/reserved/allocated quantities for merchant-branch-SKU  | Inventory; authoritative commerce quantity                              |
+| `Reservation`                     | Temporary claim on stock with TTL, state and origin             | Inventory; one request cannot reserve twice                             |
+| `Lead`                            | Per-merchant opportunity, with consented requirements           | CRM; never globalized by matching phone number silently                 |
+| `Quote`                           | Versioned immutable offered terms once approved/sent            | CRM+Quotes; snapshot of SKU specs, price, currency, delivery and expiry |
+| `Order`                           | The merchant's committed purchase intent and its line snapshots | Orders; not the same as verified paid or delivered state                |
+| `PaymentAttempt`                  | External or manual attempt to settle an order                   | Payments; proof upload != verified funds                                |
+| `Shipment`                        | Dispatch/pickup process and evidence                            | Fulfillment; not equivalent to Order                                    |
+| `Conversation`                    | Merchant-scoped session for a channel account and counterpart   | Messaging; human/AI speaking authority explicitly tracked               |
+| `BusinessEvent`                   | State-transition fact, e.g. `order.created.v1`                | Emitted by domain owner in same transaction as state mutation           |
+| `OutboxMessage`                   | Durable intent to transmit a committed event/task               | Shared infrastructure; at-least-once delivery                           |
+| `ReadModel`                       | Rebuildable read-optimized projection for dashboard/search      | Not authoritative for checkout, money or stock                          |
 
 **Strict anti-corruption rule:** marketing language like “sale,” “income,” “stock” must be mapped to exact domain definitions (`paid_gross`, `net_paid_sales`, `refunded`, `reserved`, `sellable`). AI reports may only name approved metrics, not freehand SQL-derived guesses.
 
@@ -115,27 +115,27 @@ flowchart TB
 
 The table is **the authoritative proposed mapping for all M01–M39**. Stage 1 logical code packages are intentionally fewer than business capabilities. The precise boundaries will be recorded as ADRs and revisited only against measurable coupling problems.
 
-| Context / package | Business coverage | Domain ownership and responsibilities | Stage |
-|---|---|---|---|
-| **C01 Access & Tenant** `identity` | M01, M02, M21 (provisioning access), M26 (tenant lifecycle) | Principal/Membership, effective permissions, current tenant, invite, merchant lifecycle authorization | 1→2 |
-| **C02 Merchant Profile** `merchants` | M01, M03, M21 | Merchant identity/profile, branches, hours, locations, service zones and storefront defaults | 1→2 |
-| **C03 Merchant Catalog** `catalog` | M04 | MerchantProduct/SKU/variant/attributes/media/publishing, file import contracts | 1 |
-| **C04 Pricing** `pricing` | M05 | PriceVersion, currency, discounts, limits, price snapshots and effective-time checks | 1 |
-| **C05 Inventory** `inventory` | M06, M25 | Branch stock balances/ledger, reservations, allocation, release, receipts, branch transfer | 1→2 |
-| **C06 Storefront** `storefronts` | M07, M38 (public SEO content via adapter) | Site branding/routing/renderable catalog projection, merchant domain/subdomain, publication visibility | 1→3 |
-| **C07 PC Advisor** `pc_builder` | M08 | Component rule set, compatibility decisions, versioned assembly proposal; not monetary authority | 1 |
-| **C08 Channels & Inbox** `messaging` | M09, M10, M39 (global channel adapter later) | Provider accounts, webhook identities, conversations/messages, AI/human handoff and outbound send authority | 1→3 |
-| **C09 Merchant AI** `merchant_ai` | M11, M27 | Agent session, merchant-scoped knowledge/policy, tool orchestration and escalation | 1→2 |
-| **C10 CRM & Quotes** `sales` | M12 | Leads, customer linkage/consent, Quote revisions, approvals, immutable offer snapshot | 1 |
-| **C11 Orders** `orders` | M13 | Order, lines, confirmation, cancellation/exception, independent order status | 1 |
-| **C12 Payments** `payments` | M14 | PaymentAttempt, settlement verification ledger, refund case, provider transaction mapping | 1 |
-| **C13 Fulfillment & After-sales** `fulfillment` | M15, M16 | Shipment/pickup, courier proof, warranty/RMA and delivery exceptions | 1 |
-| **C14 Engagement** `engagement` | M17 | Task, notification templates, consent/recipient, outbound delivery and SLA escalations | 1 |
-| **C15 Reporting & Voice** `reporting` | M18 | Metrics definitions/read-models, scoped reporting queries, voice read-only command routing | 1 |
-| **C16 Platform Ops & Audit** `platform` | M19, M20, M26 | Subscription usage/billing policy, merchant AI quotas, system ops and append-only business audit | 1→2 |
-| **C17 Integration Hub** `integrations` | M22, M30 | External provider connections, API keys, sync jobs, per-field source priority, reconciliation | 2 |
-| **C18 Product Registry & Listings** `market_catalog` | M23, M24, M28, M29 | Canonical product ID, reversible matching, merchant publication consent, public offer, trust and search publication | 2 |
-| **C19 Public Discovery** `discovery` | M31, M32, M33, M34, M35, M36, M37, M38, M39 | Search/compare/geo, public shopping AI, referrals, saved alerts, transparency, SEO, global bot | 3 |
+| Context / package                                            | Business coverage                                           | Domain ownership and responsibilities                                                                               | Stage |
+| ------------------------------------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----- |
+| **C01 Access & Tenant** `identity`                   | M01, M02, M21 (provisioning access), M26 (tenant lifecycle) | Principal/Membership, effective permissions, current tenant, invite, merchant lifecycle authorization               | 1→2  |
+| **C02 Merchant Profile** `merchants`                 | M01, M03, M21                                               | Merchant identity/profile, branches, hours, locations, service zones and storefront defaults                        | 1→2  |
+| **C03 Merchant Catalog** `catalog`                   | M04                                                         | MerchantProduct/SKU/variant/attributes/media/publishing, file import contracts                                      | 1     |
+| **C04 Pricing** `pricing`                            | M05                                                         | PriceVersion, currency, discounts, limits, price snapshots and effective-time checks                                | 1     |
+| **C05 Inventory** `inventory`                        | M06, M25                                                    | Branch stock balances/ledger, reservations, allocation, release, receipts, branch transfer                          | 1→2  |
+| **C06 Storefront** `storefronts`                     | M07, M38 (public SEO content via adapter)                   | Site branding/routing/renderable catalog projection, merchant domain/subdomain, publication visibility              | 1→3  |
+| **C07 PC Advisor** `pc_builder`                      | M08                                                         | Component rule set, compatibility decisions, versioned assembly proposal; not monetary authority                    | 1     |
+| **C08 Channels & Inbox** `messaging`                 | M09, M10, M39 (global channel adapter later)                | Provider accounts, webhook identities, conversations/messages, AI/human handoff and outbound send authority         | 1→3  |
+| **C09 Merchant AI** `merchant_ai`                    | M11, M27                                                    | Agent session, merchant-scoped knowledge/policy, tool orchestration and escalation                                  | 1→2  |
+| **C10 CRM & Quotes** `sales`                         | M12                                                         | Leads, customer linkage/consent, Quote revisions, approvals, immutable offer snapshot                               | 1     |
+| **C11 Orders** `orders`                              | M13                                                         | Order, lines, confirmation, cancellation/exception, independent order status                                        | 1     |
+| **C12 Payments** `payments`                          | M14                                                         | PaymentAttempt, settlement verification ledger, refund case, provider transaction mapping                           | 1     |
+| **C13 Fulfillment & After-sales** `fulfillment`      | M15, M16                                                    | Shipment/pickup, courier proof, warranty/RMA and delivery exceptions                                                | 1     |
+| **C14 Engagement** `engagement`                      | M17                                                         | Task, notification templates, consent/recipient, outbound delivery and SLA escalations                              | 1     |
+| **C15 Reporting & Voice** `reporting`                | M18                                                         | Metrics definitions/read-models, scoped reporting queries, voice read-only command routing                          | 1     |
+| **C16 Platform Ops & Audit** `platform`              | M19, M20, M26                                               | Subscription usage/billing policy, merchant AI quotas, system ops and append-only business audit                    | 1→2  |
+| **C17 Integration Hub** `integrations`               | M22, M30                                                    | External provider connections, API keys, sync jobs, per-field source priority, reconciliation                       | 2     |
+| **C18 Product Registry & Listings** `market_catalog` | M23, M24, M28, M29                                          | Canonical product ID, reversible matching, merchant publication consent, public offer, trust and search publication | 2     |
+| **C19 Public Discovery** `discovery`                 | M31, M32, M33, M34, M35, M36, M37, M38, M39                 | Search/compare/geo, public shopping AI, referrals, saved alerts, transparency, SEO, global bot                      | 3     |
 
 **Important:** contexts C01–C19 represent **domain boundaries**, not independently deployed systems or necessarily 19 top-level folders on day one. For MVP, `platform`, `merchants`, `identity` and `fulfillment` may start with limited subpackages, while business rules remain owned. **M01 spans C01 + C02**: Access controls the identity/access lifecycle; Merchants owns profile. `M19/M26` also span tenant/platform subscriptions; multiple-context coverage is intentional *capability composition*, never dual ownership of one database table.
 
@@ -151,47 +151,47 @@ The table is **the authoritative proposed mapping for all M01–M39**. Stage 1 l
 
 ### 4.2 Map all business modules explicitly (coverage audit)
 
-| M-ID | Source business module | Owning/use-case context | Note |
-|---|---|---|---|
-| M01 | Merchant organization/onboarding | C01 + C02 | Membership/access vs profile split |
-| M02 | Staff/roles/branch permissions | C01 | C02 owns branch facts |
-| M03 | Branch/service region | C02 | Publication subset separately controlled |
-| M04 | Catalog/variants/SKU | C03 | Stage 2 mapping out, not in this context |
-| M05 | Price/currency/discount | C04 | Immutable price versions |
-| M06 | Inventory/receipts/reservation | C05 | Atomic stock guard |
-| M07 | Merchant branded web | C06 | Source is C03/C04/C05 publicized view |
-| M08 | PC configurator | C07 | Deterministic compatibility checks |
-| M09 | Channel connections | C08 | Provider credentials via secret-store refs |
-| M10 | Inbox/conversation/handoff | C08 | Exactly one effective speaker at a time |
-| M11 | Merchant AI sales | C09 | Tool calls subject to permission |
-| M12 | CRM/lead/quotes | C10 | Quote snapshots |
-| M13 | Orders | C11 | Checkout orchestrates sync reserve |
-| M14 | Payment/proof | C12 | Verified settlement only |
-| M15 | Delivery/pickup | C13 | Shipment own FSM |
-| M16 | Returns/warranty | C13 | Separate case aggregate |
-| M17 | Notifications/tasks | C14 | At-least-once with idempotent intentions |
-| M18 | Analytics/voice | C15 | Approved metric registry |
-| M19 | AI controls/merchant billing/platform ops | C16 + C09 | Limits/plan owned C16; agent policy C09 |
-| M20 | Activity/audit | C16 | Append-only audit writes from use cases |
-| M21 | Self-service merchant | C01 + C02 | Workflow composed by provisioning app |
-| M22 | POS/ERP/marketplace integration | C17 | Anti-corruption adapters |
-| M23 | Canonical product | C18 | Versioned identity + split/merge |
-| M24 | Merchant public offer/opt-in | C18 | Private by default |
-| M25 | Multi-branch stock/fulfillment | C05 + C13 | Separate stock vs shipment ownership |
-| M26 | Scale tenancy/subscriptions | C01 + C16 | Lifecycle/usage separation |
-| M27 | AI knowledge center | C09 | Policy is merchant-scoped |
-| M28 | Search publishing/data quality | C18 | Events + index projection |
-| M29 | Verification/trust | C18 | Public verified badges with expiry |
-| M30 | Partner API/dev access | C17 | Scoped API keys |
-| M31 | Global search/filter | C19 | Public read only |
-| M32 | Price comparison | C19 | Read pricing from public offers, not private prices |
-| M33 | Geosearch/maps | C19 | Public approved locations |
-| M34 | Global shopper AI | C19 | Separate trust and prompts from C09 |
-| M35 | Referral tracking | C19 + C10 | Consent-gated merchant lead handover |
-| M36 | Buyer profile/saved/alerts | C19 | Optional and separate global buyer account |
-| M37 | Organic/sponsored rank | C19 | Explicit ad labeling |
-| M38 | Content/SEO | C06 + C19 | Merchant vs global web properties |
-| M39 | Global Telegram/discovery API | C19 + C08 adapter | Public bot cannot use merchant private tools |
+| M-ID | Source business module                    | Owning/use-case context | Note                                                |
+| ---- | ----------------------------------------- | ----------------------- | --------------------------------------------------- |
+| M01  | Merchant organization/onboarding          | C01 + C02               | Membership/access vs profile split                  |
+| M02  | Staff/roles/branch permissions            | C01                     | C02 owns branch facts                               |
+| M03  | Branch/service region                     | C02                     | Publication subset separately controlled            |
+| M04  | Catalog/variants/SKU                      | C03                     | Stage 2 mapping out, not in this context            |
+| M05  | Price/currency/discount                   | C04                     | Immutable price versions                            |
+| M06  | Inventory/receipts/reservation            | C05                     | Atomic stock guard                                  |
+| M07  | Merchant branded web                      | C06                     | Source is C03/C04/C05 publicized view               |
+| M08  | PC configurator                           | C07                     | Deterministic compatibility checks                  |
+| M09  | Channel connections                       | C08                     | Provider credentials via secret-store refs          |
+| M10  | Inbox/conversation/handoff                | C08                     | Exactly one effective speaker at a time             |
+| M11  | Merchant AI sales                         | C09                     | Tool calls subject to permission                    |
+| M12  | CRM/lead/quotes                           | C10                     | Quote snapshots                                     |
+| M13  | Orders                                    | C11                     | Checkout orchestrates sync reserve                  |
+| M14  | Payment/proof                             | C12                     | Verified settlement only                            |
+| M15  | Delivery/pickup                           | C13                     | Shipment own FSM                                    |
+| M16  | Returns/warranty                          | C13                     | Separate case aggregate                             |
+| M17  | Notifications/tasks                       | C14                     | At-least-once with idempotent intentions            |
+| M18  | Analytics/voice                           | C15                     | Approved metric registry                            |
+| M19  | AI controls/merchant billing/platform ops | C16 + C09               | Limits/plan owned C16; agent policy C09             |
+| M20  | Activity/audit                            | C16                     | Append-only audit writes from use cases             |
+| M21  | Self-service merchant                     | C01 + C02               | Workflow composed by provisioning app               |
+| M22  | POS/ERP/marketplace integration           | C17                     | Anti-corruption adapters                            |
+| M23  | Canonical product                         | C18                     | Versioned identity + split/merge                    |
+| M24  | Merchant public offer/opt-in              | C18                     | Private by default                                  |
+| M25  | Multi-branch stock/fulfillment            | C05 + C13               | Separate stock vs shipment ownership                |
+| M26  | Scale tenancy/subscriptions               | C01 + C16               | Lifecycle/usage separation                          |
+| M27  | AI knowledge center                       | C09                     | Policy is merchant-scoped                           |
+| M28  | Search publishing/data quality            | C18                     | Events + index projection                           |
+| M29  | Verification/trust                        | C18                     | Public verified badges with expiry                  |
+| M30  | Partner API/dev access                    | C17                     | Scoped API keys                                     |
+| M31  | Global search/filter                      | C19                     | Public read only                                    |
+| M32  | Price comparison                          | C19                     | Read pricing from public offers, not private prices |
+| M33  | Geosearch/maps                            | C19                     | Public approved locations                           |
+| M34  | Global shopper AI                         | C19                     | Separate trust and prompts from C09                 |
+| M35  | Referral tracking                         | C19 + C10               | Consent-gated merchant lead handover                |
+| M36  | Buyer profile/saved/alerts                | C19                     | Optional and separate global buyer account          |
+| M37  | Organic/sponsored rank                    | C19                     | Explicit ad labeling                                |
+| M38  | Content/SEO                               | C06 + C19               | Merchant vs global web properties                   |
+| M39  | Global Telegram/discovery API             | C19 + C08 adapter       | Public bot cannot use merchant private tools        |
 
 **Coverage:** 39/39 business capabilities assigned; some span two owners only where workflows integrate separately owned aggregates.
 
@@ -226,21 +226,21 @@ flowchart LR
 
 ### 5.1 Context-to-context integration mode
 
-| From | To | Mode | Contract | Why |
-|---|---|---|---|---|
-| Messaging → Merchant AI | async after inbound event | `ProcessInboundMessage(conversation_ref,event_ref)` | LLM not inside webhook ACK |
-| Merchant AI → Catalog/Pricing/Inventory | synchronous **read ports** | `FindSku`, `GetActivePrice`, `GetAvailability` | No facts invented; freshness |
-| Merchant AI → CRM | authenticated command | `QualifyLead`, `ProposeQuote` | Controlled writes, tenant actor |
-| PC Builder → Catalog | read structured spec snapshot | `GetComponentSpecs` | Deterministic compatibility evidence |
-| CRM+Quotes → Pricing | sync read + snapshot | `ValidateQuotePrice` | Immutable proposed terms |
-| Orders → CRM+Quotes/Pricing/Inventory | **synchronous app orchestration / one UoW** | `ConfirmOrder` coordinated by application workflow | No oversell, snapshot atomicity |
-| Payments → Orders | sync state coordination at verified payment commit | `ApplyVerifiedPayment` | Duplicates/out-of-order handled |
-| Orders → Fulfillment | event once eligible | `order.fulfillment_eligible.v1` (PROPOSED) | Not all orders are ready on creation |
-| Orders/Payments → Engagement | event | `order.created.v1`, `payment.verified.v1` | Notification not coupled to checkout latency |
-| Transactions → Audit/Outbox | same DB transaction | `AuditEntry`, `OutboxEvent` | Reliable changes and trace |
-| Catalog/Pricing/Inventory → Registry (Stage 2) | event to projection | `sku.published`, `price.changed`, `stock.changed` | eventual consistency + freshness |
-| Registry → Discovery (Stage 3) | index/public read port | `FindOffers` | Global buyer must never query merchant private tables |
-| Public Discovery → CRM merchant (Stage 3) | consented referral command | `RegisterPublicReferral` | No global auto-merge of customers |
+| From                                            | To                                                 | Mode                                                    | Contract                                              | Why |
+| ----------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------- | --- |
+| Messaging → Merchant AI                        | async after inbound event                          | `ProcessInboundMessage(conversation_ref,event_ref)`   | LLM not inside webhook ACK                            |     |
+| Merchant AI → Catalog/Pricing/Inventory        | synchronous **read ports**                   | `FindSku`, `GetActivePrice`, `GetAvailability`    | No facts invented; freshness                          |     |
+| Merchant AI → CRM                              | authenticated command                              | `QualifyLead`, `ProposeQuote`                       | Controlled writes, tenant actor                       |     |
+| PC Builder → Catalog                           | read structured spec snapshot                      | `GetComponentSpecs`                                   | Deterministic compatibility evidence                  |     |
+| CRM+Quotes → Pricing                           | sync read + snapshot                               | `ValidateQuotePrice`                                  | Immutable proposed terms                              |     |
+| Orders → CRM+Quotes/Pricing/Inventory          | **synchronous app orchestration / one UoW**  | `ConfirmOrder` coordinated by application workflow    | No oversell, snapshot atomicity                       |     |
+| Payments → Orders                              | sync state coordination at verified payment commit | `ApplyVerifiedPayment`                                | Duplicates/out-of-order handled                       |     |
+| Orders → Fulfillment                           | event once eligible                                | `order.fulfillment_eligible.v1` (PROPOSED)            | Not all orders are ready on creation                  |     |
+| Orders/Payments → Engagement                   | event                                              | `order.created.v1`, `payment.verified.v1`           | Notification not coupled to checkout latency          |     |
+| Transactions → Audit/Outbox                    | same DB transaction                                | `AuditEntry`, `OutboxEvent`                         | Reliable changes and trace                            |     |
+| Catalog/Pricing/Inventory → Registry (Stage 2) | event to projection                                | `sku.published`, `price.changed`, `stock.changed` | eventual consistency + freshness                      |     |
+| Registry → Discovery (Stage 3)                 | index/public read port                             | `FindOffers`                                          | Global buyer must never query merchant private tables |     |
+| Public Discovery → CRM merchant (Stage 3)      | consented referral command                         | `RegisterPublicReferral`                              | No global auto-merge of customers                     |     |
 
 ### 5.2 Prohibit internal HTTP for synchronous modules
 
@@ -346,9 +346,9 @@ In Python, avoid relying on directories to enforce boundaries. A CI import-rule 
 
 ### 6.2 Domain vs application vs infrastructure example
 
-**Inventory domain:** `StockBalance.reserve(qty)` validates non-negative available qty, `Reservation.expire()` decides legal state; no SQL.  
-**Application:** `ReserveSku(command, actor, uow)` checks scope and idempotency, obtains lock, loads balance, invokes domain, stores rows, records outbox/audit, commits.  
-**Infrastructure:** SQLAlchemy repository uses `SELECT ... FOR UPDATE` / conditional `UPDATE` and unique constraints; failures mapped to typed errors.  
+**Inventory domain:** `StockBalance.reserve(qty)` validates non-negative available qty, `Reservation.expire()` decides legal state; no SQL.
+**Application:** `ReserveSku(command, actor, uow)` checks scope and idempotency, obtains lock, loads balance, invokes domain, stores rows, records outbox/audit, commits.
+**Infrastructure:** SQLAlchemy repository uses `SELECT ... FOR UPDATE` / conditional `UPDATE` and unique constraints; failures mapped to typed errors.
 **Presentation:** FastAPI route validates input, obtains trusted `actor` and invokes use case; no business logic in route.
 
 ### 6.3 Five rules for `public.py` facades
@@ -363,26 +363,26 @@ In Python, avoid relying on directories to enforce boundaries. A CI import-rule 
 
 ## 7. Aggregate ownership and invariants
 
-| Context | Aggregate root | Critical invariant | Transactions / notes |
-|---|---|---|---|
-| Identity | Membership | Membership must refer to valid merchant; no removal of last active owner | Lock/update on owner change, enforce via transactional guard |
-| Merchant | Merchant | Domain/subdomain uniqueness and legal account status; suspension blocks new sale | Ensure active existing obligations remain accessible |
-| Merchant | Branch | A branch belongs to exactly one merchant; active order branch cannot be archived blindly | Closing may need escalation |
-| Catalog | MerchantProduct/SKU | `(merchant_id,sku_code)` unique; publish requirements; archived SKU historic snapshot stays | Product and variant models have immutable IDs |
-| Pricing | PriceVersion / PriceBook | Numeric price and currency, valid effective period, no silent overwrite of old revision | `version` for CAS |
-| Inventory | StockBalance + Reservation | `on_hand >= 0`, `reserved + allocated <= on_hand` in supported policy, no duplicate reserve/release/consume | Database lock/atomic update, immutable ledger entry |
-| Messaging | Conversation | Exactly one active sending authority at a point in time; provider message dedup | AI vs human ownership fenced by `conversation_version`/lease token |
-| CRM | Lead | Tenant-scoped identity/consent; no cross-merchant merge | Minimal retained personal data |
-| Sales | Quote | Approved/sent quote revision immutable; TTL and versioned price/spec snapshots | New revision rather than edit sent quote |
-| Orders | Order | Legal status transitions, 1 confirmation idempotency, order lines snapshot | Confirm orchestrator sync with inventory |
-| Payments | PaymentAttempt / SettlementRecord | Verified once per provider transaction + merchant/order amount/currency | Manual proof alone not verified |
-| Fulfillment | Shipment | Delivered only with valid status/evidence; lost/return exception explicit | May be eventual from paid order |
-| Engagement | NotificationIntent / MerchantTask | Dedup per business cause/recipient/template and attempt | External delivery at-least-once best effort |
-| Reporting | MetricDefinition / ReportRequest | Allowed metric/filter set, tenant scoping, data-as-of disclosed | Read model rebuildable |
-| Platform | Subscription / UsageRecord / AuditEntry | Usage based on verifiable events; audit append-only and tenant-scoped | Quota decisions do not mutate merchant money |
-| Registry (2) | CanonicalProduct | Exact variant/spec identity; merge/split reversible and auditable | NO stock/prices inside product |
-| Listings (2) | PublicOffer | Explicit merchant opt-in + field allowlist + active status + version | Immediate deny on withdraw, index follows |
-| Discovery (3) | Referral / BuyerSavedItem | Tracking only with consent/policy; buyer identity independent from merchant CRM | Buyer may be anonymous |
+| Context       | Aggregate root                          | Critical invariant                                                                                              | Transactions / notes                                                 |
+| ------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Identity      | Membership                              | Membership must refer to valid merchant; no removal of last active owner                                        | Lock/update on owner change, enforce via transactional guard         |
+| Merchant      | Merchant                                | Domain/subdomain uniqueness and legal account status; suspension blocks new sale                                | Ensure active existing obligations remain accessible                 |
+| Merchant      | Branch                                  | A branch belongs to exactly one merchant; active order branch cannot be archived blindly                        | Closing may need escalation                                          |
+| Catalog       | MerchantProduct/SKU                     | `(merchant_id,sku_code)` unique; publish requirements; archived SKU historic snapshot stays                   | Product and variant models have immutable IDs                        |
+| Pricing       | PriceVersion / PriceBook                | Numeric price and currency, valid effective period, no silent overwrite of old revision                         | `version` for CAS                                                  |
+| Inventory     | StockBalance + Reservation              | `on_hand >= 0`, `reserved + allocated <= on_hand` in supported policy, no duplicate reserve/release/consume | Database lock/atomic update, immutable ledger entry                  |
+| Messaging     | Conversation                            | Exactly one active sending authority at a point in time; provider message dedup                                 | AI vs human ownership fenced by `conversation_version`/lease token |
+| CRM           | Lead                                    | Tenant-scoped identity/consent; no cross-merchant merge                                                         | Minimal retained personal data                                       |
+| Sales         | Quote                                   | Approved/sent quote revision immutable; TTL and versioned price/spec snapshots                                  | New revision rather than edit sent quote                             |
+| Orders        | Order                                   | Legal status transitions, 1 confirmation idempotency, order lines snapshot                                      | Confirm orchestrator sync with inventory                             |
+| Payments      | PaymentAttempt / SettlementRecord       | Verified once per provider transaction + merchant/order amount/currency                                         | Manual proof alone not verified                                      |
+| Fulfillment   | Shipment                                | Delivered only with valid status/evidence; lost/return exception explicit                                       | May be eventual from paid order                                      |
+| Engagement    | NotificationIntent / MerchantTask       | Dedup per business cause/recipient/template and attempt                                                         | External delivery at-least-once best effort                          |
+| Reporting     | MetricDefinition / ReportRequest        | Allowed metric/filter set, tenant scoping, data-as-of disclosed                                                 | Read model rebuildable                                               |
+| Platform      | Subscription / UsageRecord / AuditEntry | Usage based on verifiable events; audit append-only and tenant-scoped                                           | Quota decisions do not mutate merchant money                         |
+| Registry (2)  | CanonicalProduct                        | Exact variant/spec identity; merge/split reversible and auditable                                               | NO stock/prices inside product                                       |
+| Listings (2)  | PublicOffer                             | Explicit merchant opt-in + field allowlist + active status + version                                            | Immediate deny on withdraw, index follows                            |
+| Discovery (3) | Referral / BuyerSavedItem               | Tracking only with consent/policy; buyer identity independent from merchant CRM                                 | Buyer may be anonymous                                               |
 
 ### 7.1 Inventory modeling warning: stage-specific accounting
 
@@ -457,21 +457,21 @@ In stage 2, on withdrawal the listing owner's DB state becomes denied in same tr
 
 ## 9. Ports, adapters and why each is needed
 
-| Port / interface | Domain consumer | Adapter | Why it's isolated |
-|---|---|---|---|
-| `ProductSearchPort` | Merchant AI, quote builder | PostgreSQL FTS/trigram now; optional semantic later | Swap search strategy without touching agent logic |
-| `PricingReadPort` | AI, quotes, checkout | Active price version query | Prevent AI-generated price |
-| `InventoryAvailabilityPort` | AI, quotes, checkout | Inventory aggregate query/locks | Inventory remains source of truth |
-| `PCCompatibilityPort` | AI, quote build | Deterministic versioned rules engine | LLM must not approve unsafe configuration |
-| `LLMPort` | Merchant AI, public advisor | Hosted provider adapter | Fallback, eval, cost controls |
-| `SpeechToTextPort` / `TextToSpeechPort` | Reporting voice | Multilingual provider/local option | Voice quality/language portability |
-| `ChannelPort` | Messaging/Engagement | Telegram, official Meta, web chat | Provider rules, rate limits and failures isolated |
-| `PaymentProviderPort` | Payments | Merchant gateway/manual reconciliation | Settlement verification and signature trust |
-| `POSSyncPort` | Integration Hub (2) | BILLZ/ERP/marketplace approved APIs | Per-field source priority, no double accounting |
-| `GeocodingPort` / `MapPort` | Merchant/Discovery | Licensed mapping adapter | Geolocation and data retention constraints |
-| `MediaStoragePort` | Catalog/AI/receipts | S3-compatible storage | Access control, TTL/retention, secret keys |
-| `ReportQueryPort` | Voice Copilot | Predefined metric registry/read model | No arbitrary SQL from LLM |
-| `EventPublisherPort` | Outbox worker | Durable queue / direct sender | At-least-once, replay, observability |
+| Port / interface                            | Domain consumer             | Adapter                                             | Why it's isolated                                 |
+| ------------------------------------------- | --------------------------- | --------------------------------------------------- | ------------------------------------------------- |
+| `ProductSearchPort`                       | Merchant AI, quote builder  | PostgreSQL FTS/trigram now; optional semantic later | Swap search strategy without touching agent logic |
+| `PricingReadPort`                         | AI, quotes, checkout        | Active price version query                          | Prevent AI-generated price                        |
+| `InventoryAvailabilityPort`               | AI, quotes, checkout        | Inventory aggregate query/locks                     | Inventory remains source of truth                 |
+| `PCCompatibilityPort`                     | AI, quote build             | Deterministic versioned rules engine                | LLM must not approve unsafe configuration         |
+| `LLMPort`                                 | Merchant AI, public advisor | Hosted provider adapter                             | Fallback, eval, cost controls                     |
+| `SpeechToTextPort` / `TextToSpeechPort` | Reporting voice             | Multilingual provider/local option                  | Voice quality/language portability                |
+| `ChannelPort`                             | Messaging/Engagement        | Telegram, official Meta, web chat                   | Provider rules, rate limits and failures isolated |
+| `PaymentProviderPort`                     | Payments                    | Merchant gateway/manual reconciliation              | Settlement verification and signature trust       |
+| `POSSyncPort`                             | Integration Hub (2)         | BILLZ/ERP/marketplace approved APIs                 | Per-field source priority, no double accounting   |
+| `GeocodingPort` / `MapPort`             | Merchant/Discovery          | Licensed mapping adapter                            | Geolocation and data retention constraints        |
+| `MediaStoragePort`                        | Catalog/AI/receipts         | S3-compatible storage                               | Access control, TTL/retention, secret keys        |
+| `ReportQueryPort`                         | Voice Copilot               | Predefined metric registry/read model               | No arbitrary SQL from LLM                         |
+| `EventPublisherPort`                      | Outbox worker               | Durable queue / direct sender                       | At-least-once, replay, observability              |
 
 **Note:** a 'port' is an explicit testable contract. Do not create an interface for every one-line helper. Choose boundary-specific ports where provider instability, permission or consistency actually matter.
 
@@ -483,21 +483,21 @@ Yagona format `09_EVENTS_OUTBOX_AND_JOBS.md` da (`merchant_id`, `traceparent`, `
 
 ### 10.2 Event owner / consumer map
 
-| Event | Owner | Eventual consumers | Invariant / replay guard |
-|---|---|---|---|
-| `merchant.activated.v1` | Merchant | storefront, plan provisioning | No duplicate merchant setup |
-| `catalog.sku_published.v1` | Catalog | storefront, AI retrieval, public index later | Upsert by SKU+version |
-| `pricing.price_changed.v1` | Pricing | site/search/listings | Higher version wins; quote old snapshot untouched |
-| `inventory.stock_changed.v1` | Inventory | site/search, low-stock notification | Re-read balance, don't add delta twice |
-| `conversation.message_received.v1` | Messaging | AI, CRM task | Channel event ID dedup |
-| `conversation.handoff_requested.v1` | Messaging | Engagement | One open handoff per thread + epoch |
-| `quote.approved.v1` | Sales | Notifications/order eligibility | Approved revision immutable |
-| `order.created.v1` | Orders | Payment request, notifications | Order+reservation already atomically committed |
-| `order.cancelled.v1` | Orders | Stock release/payment review | Idempotent compensation |
-| `payment.verified.v1` | Payments | Orders/Fulfillment/Reporting | One verified provider ref |
-| `shipment.delivered.v1` | Fulfillment | Notifications/Reporting/Support | Proof and monotonic version |
-| `public_offer.withdrawn.v1` | Market Catalog (2) | Search/SEO cache invalidation | Read-time deny; index lag doesn't re-expose |
-| `canonical_product.match_changed.v1` | Market Catalog (2) | Matching/search index | Reversible reindex, no SKU rekey |
+| Event                                  | Owner              | Eventual consumers                           | Invariant / replay guard                          |
+| -------------------------------------- | ------------------ | -------------------------------------------- | ------------------------------------------------- |
+| `merchant.activated.v1`              | Merchant           | storefront, plan provisioning                | No duplicate merchant setup                       |
+| `catalog.sku_published.v1`           | Catalog            | storefront, AI retrieval, public index later | Upsert by SKU+version                             |
+| `pricing.price_changed.v1`           | Pricing            | site/search/listings                         | Higher version wins; quote old snapshot untouched |
+| `inventory.stock_changed.v1`         | Inventory          | site/search, low-stock notification          | Re-read balance, don't add delta twice            |
+| `conversation.message_received.v1`   | Messaging          | AI, CRM task                                 | Channel event ID dedup                            |
+| `conversation.handoff_requested.v1`  | Messaging          | Engagement                                   | One open handoff per thread + epoch               |
+| `quote.approved.v1`                  | Sales              | Notifications/order eligibility              | Approved revision immutable                       |
+| `order.created.v1`                   | Orders             | Payment request, notifications               | Order+reservation already atomically committed    |
+| `order.cancelled.v1`                 | Orders             | Stock release/payment review                 | Idempotent compensation                           |
+| `payment.verified.v1`                | Payments           | Orders/Fulfillment/Reporting                 | One verified provider ref                         |
+| `shipment.delivered.v1`              | Fulfillment        | Notifications/Reporting/Support              | Proof and monotonic version                       |
+| `public_offer.withdrawn.v1`          | Market Catalog (2) | Search/SEO cache invalidation                | Read-time deny; index lag doesn't re-expose       |
+| `canonical_product.match_changed.v1` | Market Catalog (2) | Matching/search index                        | Reversible reindex, no SKU rekey                  |
 
 ### 10.3 Durable event processing (design requirements)
 
@@ -571,15 +571,15 @@ Every slice is **end-to-end**: migrations + backend + frontend + test + audit/te
 
 Slice tarkibi va gate'lari — `20_TESTING_AND_RELEASE_PLAN.md` §4 va `../business/10` (DEC-005). Qisqacha:
 
-| Slice | Business modules | Functional chain |
-|---|---|---|
-| **S0 Poydevor** | M01,M02,M19,M20 | bootstrap, auth (ADR-023), membership/rollar, tenant context + RLS spike, audit, tracing/logs, outbox/jobs, CI |
-| **S1 Katalog & sayt** | M03,M04,M05,M06,M07 | branch → SKU → narx (UZS/USD) va stok → reference spec bog'lash → sayt, savatcha → buyurtma so'rovi; "tez sotuv" |
-| **S2 Inbox** | M09,M10,M17 | Telegram / Instagram / web → durable inbound → inbox → operator; handoff |
-| **S3 AI + PC** | M08,M11,M12 | AI (bake-off'dan keyin) → katalog → compatibility → quote (Manager) → AI buyurtma qoralamasi |
-| **S4 Buyurtma (to'lovsiz)** | M06,M13 | operator confirm + rezerv → processing → complete; cancel; paid-mark |
-| **S5 Operatsiya** | M16,M18,M19 | matnli hisobot, kafolat murojaati, AI limitlari, backup; voice beta |
-| **N1 / G1** | M21–M30 / M31–M39 | Stage 2 / Stage 3 |
+| Slice                             | Business modules    | Functional chain                                                                                                      |
+| --------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **S0 Poydevor**             | M01,M02,M19,M20     | bootstrap, auth (ADR-023), membership/rollar, tenant context + RLS spike, audit, tracing/logs, outbox/jobs, CI        |
+| **S1 Katalog & sayt**       | M03,M04,M05,M06,M07 | branch → SKU → narx (UZS/USD) va stok → reference spec bog'lash → sayt, savatcha → buyurtma so'rovi; "tez sotuv" |
+| **S2 Inbox**                | M09,M10,M17         | Telegram / Instagram / web → durable inbound → inbox → operator; handoff                                           |
+| **S3 AI + PC**              | M08,M11,M12         | AI (bake-off'dan keyin) → katalog → compatibility → quote (Manager) → AI buyurtma qoralamasi                      |
+| **S4 Buyurtma (to'lovsiz)** | M06,M13             | operator confirm + rezerv → processing → complete; cancel; paid-mark                                                |
+| **S5 Operatsiya**           | M16,M18,M19         | matnli hisobot, kafolat murojaati, AI limitlari, backup; voice beta                                                   |
+| **N1 / G1**                 | M21–M30 / M31–M39 | Stage 2 / Stage 3                                                                                                     |
 
 M14 (to'lov) va M15 (yetkazish) — `DEFERRED` (DEC-100, DEC-113). S0 security/observability and S2 durable messaging are non-negotiable for any real merchant data.
 
@@ -619,12 +619,14 @@ DDD-O01…O12 `../decisions/DECISION_REGISTER.md` ga ko'chirildi va baseline sif
 ## 18. Mandatory design review checklist (signoff gate)
 
 ### Domain boundaries and ownership
+
 - [ ] Every M01–M39 maps to context (done in draft); every **mutable aggregate** has one owner.
 - [ ] No ORM model imported from a different context; domain import lint runs.
 - [ ] Stage 1 implementation does not build stage 2/3 logic unnecessarily.
 - [ ] Tenant/public data boundary is explicit; no `merchant_id` trust from input.
 
 ### Transactions, async and events
+
 - [ ] Last-one-in-stock double reservation cannot happen under 50–100 simulated parallel checkout attempts.
 - [ ] Duplicate idempotency keys and webhook callbacks return existing result without duplicate side effects.
 - [ ] Event outbox and state change share a DB transaction; consumer dedup/replay safe.
@@ -633,12 +635,14 @@ DDD-O01…O12 `../decisions/DECISION_REGISTER.md` ga ko'chirildi va baseline sif
 - [ ] No LLM/network inside critical DB transaction.
 
 ### Product accuracy and operational trust
+
 - [ ] Quote is versioned and immutable; compatibility uncertainty escalates.
 - [ ] Voice/read-only reports only use approved metrics with timeframe/data-as-of.
 - [ ] Privacy-revoked public offer never served to shopper even if index lags.
 - [ ] Open `O-` decisions are tracked against slice gates; none silently defaulted.
 
 ### Cross-document compatibility
+
 - [ ] Every data owner becomes explicit FK/constraint in ERD, and API operation maps to owner.
 - [ ] Every mutation has defined allowed FSM transition, role, expected version and error contract.
 - [ ] Every async action has event owner, durable retry, DLQ, reconciliation and correlation ID.
@@ -650,4 +654,4 @@ DDD-O01…O12 `../decisions/DECISION_REGISTER.md` ga ko'chirildi va baseline sif
 
 ---
 
-**Reference business docs:** `../business/02_ALL_BUSINESS_MODULES.md`, `03_BUSINESS_RULES_108.md`, `04_ROLES_PERMISSIONS_AND_APPROVALS.md`, `05_STATE_MACHINES_AND_EXCEPTIONS.md`, `07_BUSINESS_ENTITIES_AND_DATA_BOUNDARIES.md`, `09_MODULE_INTERACTIONS_AND_NOTIFICATIONS.md`, `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md`.
+**Reference business docs:** `../business/02_ALL_BUSINESS_MODULES.md`, `03_BUSINESS_RULES_108.md`, `04_ROLES_PERMISSIONS_AND_APPROVALS.md`, `05_STATE_MACHINES_AND_EXCEPTIONS.md`, `../engineering/34_DOMAIN_ENTITIES_AND_DATA_BOUNDARIES.md`, `../engineering/35_MODULE_INTERACTIONS_AND_EVENTS.md`, `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md`.

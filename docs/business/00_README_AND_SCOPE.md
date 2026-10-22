@@ -24,12 +24,12 @@
 | 04 | `04_ROLES_PERMISSIONS_AND_APPROVALS.md` | Tenant/branch scope, action matrix, sensitive approvals |
 | 05 | `05_STATE_MACHINES_AND_EXCEPTIONS.md` | **18 ta FSM**, valid transitions, cancellation/recovery |
 | 06 | `06_UI_SITEMAP_AND_USER_FLOWS.md` | Har modul uchun UI coverage, 3 phase wireflow, Mermaid |
-| 07 | `07_BUSINESS_ENTITIES_AND_DATA_BOUNDARIES.md` | Mantiqiy entitylari, owner, public/private, invariants |
+| 07 | `../engineering/34_DOMAIN_ENTITIES_AND_DATA_BOUNDARIES.md` | Mantiqiy entitylari, owner, public/private, invariants |
 | 08 | `08_AI_AND_CHANNEL_BUSINESS_CONTRACTS.md` | 3 agent, 3 til voice, merchant/global permissions, integrations |
-| 09 | `09_MODULE_INTERACTIONS_AND_NOTIFICATIONS.md` | Modul interaction, outbound notification, event & failure semantics |
+| 09 | `../engineering/35_MODULE_INTERACTIONS_AND_EVENTS.md` | Modul interaction, outbound notification, event & failure semantics |
 | 10 | `10_UAT_ACCEPTANCE_AND_RELEASES.md` | Har modul uchun acceptance + kritikal regression va phase gates |
 | 11 | `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md` | Default qilingan qarorlar, farazlar, kelajakdagi imkoniyatlar |
-| 12 | `12_TRACEABILITY_INDEX.md` | Module → BL → FSM → UI → UAT ko‘rsatkichlari |
+| 12 | `../engineering/36_TRACEABILITY_INDEX.md` | Module → BL → FSM → UI → UAT ko‘rsatkichlari |
 | 13 | `13_MERCHANT_ONBOARDING_PLAYBOOK.md` | Pilot do'konni ulash bosqichlari va tekshiruv ro'yxati (DEC-122) |
 | 14 | `14_PILOT_AGREEMENT_AND_PRICING.md` | Pilot shartnomasi qoralamasi va narxlash gipotezalari (DEC-119, DRAFT) |
 

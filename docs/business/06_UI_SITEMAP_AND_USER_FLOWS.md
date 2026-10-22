@@ -66,51 +66,52 @@ Storefront: /s/{merchant_slug}/, /p/{merchant_slug}/{product_slug}, /cart (→ b
 
 ## Screen ownership crosswalk: every module must have UI
 
-| Module | User-visible pages/components | Primary business action | Exception and feedback |
-|---|---|---|---|
-| `M01` | Onboarding wizard, Merchant profile, Account status and review | Email/telefon verifikatsiyasi va egani aniqlash | takrorlangan tashkilot / error, retry, human help |
-| `M02` | Team list, Invite panel, Role/scope editor, Approval queue | Invite va accept | o‘zini oxirgi ownerlikdan o‘chirish / error, retry, human help |
-| `M03` | Branch list/map, Schedule editor, Service radius, Pickup rules | filial yaratish/archivlash | noto‘g‘ri geolokatsiya / error, retry, human help |
-| `M04` | Products table, Product editor, Import preview, Publish validation | mahsulot+variant/SKU | dublikat SKU / error, retry, human help |
-| `M05` | Pricing table, Change price dialog, History, Price approval | bazaviy narx va price-list | narx almashgan paytdagi eski quote / error, retry, human help |
-| `M06` | Stock list, SKU stock ledger, Adjustment approval, Reservation monitor, "Tez sotuv" tugmasi (desktop + mobil) | filial-SKU fizik qoldiq | ikki parallel rezerv / error, retry, human help |
-| `M07` | Storefront builder, Website preview, Public catalog, Product detail, Cart/request | subdomain va brand theme | subdomain conflict / error, retry, human help |
-| `M08` | PC Builder, Compatibility findings, Budget alternatives, Quote action | ready PC builds | unknown BIOS / error, retry, human help |
-| `M09` | Channel connect wizard, Permission status, Webhook health, Disconnect | Telegram bot / Business bog‘lash | provider ruxsat bermaydi / error, retry, human help |
-| `M10` | Unified inbox, Conversation detail, Human takeover, Assignments, Escalation queue | inbound normalization/dedup | takrorlangan xabar / error, retry, human help |
-| `M11` | AI agent config, Tool permissions, Test playground, Conversation explanation, Fallback | uz/ru/en niyat va tilni aniqlash | LLM hallucinated SKU / error, retry, human help |
-| `M12` | Lead pipeline, Lead detail, Quote builder, Quote preview, Approval | lead dedup va source attribution | operator forgot lead / error, retry, human help |
-| `M13` | Order list, Order detail (fulfillment method, manzil, kelishuv izohi, "to'landi" belgisi), Confirm/cancel dialog, Timeline, Order exceptions | AI/sayt DRAFT → operator tasdig'i → topshirish (UX-02) | parallel confirm / error, retry, human help |
-| `M14` — DEFERRED | Payments list, Review receipt, Payment detail, Reconciliation, Refund approval | pay link yoki merchant rekvizitlari | screenshot forged / error, retry, human help |
-| `M15` — DEFERRED | Fulfillment board, Shipment timeline, Courier view, Tracking page | pickup vs local delivery | noto‘g‘ri address / error, retry, human help |
-| `M16` | Support inbox, RMA case, Warranty detail, Resolution history | warranty terms snapshot | warranty ambiguous / error, retry, human help |
-| `M17` | Notification center, Template editor, Task queue, Delivery log | notification template va locale | takror notification / error, retry, human help |
-| `M18` | Overview dashboard, Report builder, Voice mic/transcript, Chart/export | KPI: orders/paid turnover/margin only if COGS exists | ASR currency mistake / error, retry, human help |
-| `M19` | Plan/usage, Settings, Billing, Support center, AI safe mode | AI enable/disable/policy | over-quota conversation / error, retry, human help |
-| `M20` | Audit search, Object activity timeline, Security event view | who/when/why/change trace | logga PII tushishi / error, retry, human help |
-| `M21` | Public signup, Provision checklist, Retry setup | public signup and anti-fraud | fraud signup / error, retry, human help |
-| `M22` | Integration catalog, Mapping wizard, Sync health, Conflict resolution | connector registry and credentials | API credentials revoked / error, retry, human help |
-| `M23` | Global product review, Merge diff, Provenance audit | brand/model/MPN/GTIN normalize | false merge / error, retry, human help |
-| `M24` | Public listings settings, Offer publish preview, Freshness report | per-SKU public opt-in/out | merchant revokes permission / error, retry, human help |
-| `M25` | Branch stock matrix, Transfer order, Transfer audit | branch stock splits | transfer and reservation collide / error, retry, human help |
-| `M26` | Billing console, Tenant fleet, Usage analytics | plan self-service changes | billing webhook replay / error, retry, human help |
-| `M27` | Knowledge hub, Agent sandbox, Policy release | FAQ/returns/warranty knowledge | policy contradicts merchant terms / error, retry, human help |
-| `M28` | Index health, Publish queue, Quality diagnostics | incremental index from public offers | lost event / error, retry, human help |
-| `M29` | Trust center, Verification queue, Appeals | merchant business verification | fake business document / error, retry, human help |
-| `M30` | Developer settings, API usage, Webhook tester | API key/service account with scopes | leaked key / error, retry, human help |
-| `M31` | Global home/search, Results, Filters, No results | query uz/ru/en/translit | query ambiguity / error, retry, human help |
-| `M32` | Compare table, Merchant offer card, Price history, Report issue | same variant normalization | comparison variant mismatch / error, retry, human help |
-| `M33` | Map + list, Nearby merchants, Pickup selector | city and neighborhood query | precise location denied / error, retry, human help |
-| `M34` | AI search chat, Evidence drawer, Compare recommendation, Feedback | intent and budget clarifying | LLM recommends private SKU / error, retry, human help |
-| `M35` | Merchant page, Contact CTA, Lead routing receipt | merchant profile and offers | merchant ignores referral / error, retry, human help |
-| `M36` | Saved items, Alert preferences, Account privacy | guest browsing | price changed but out of stock / error, retry, human help |
-| `M37` | Search placements, Sponsor disclosure, Ranking explanation | organic ranking relevance rules | seller pays to fake quality / error, retry, human help |
-| `M38` | Product landing, Merchant landing, SEO preview | canonical product public pages | thin duplicate pages / error, retry, human help |
-| `M39` | Global bot, Results cards, Merchant link | global query in Telegram | merchant AI leaks private data / error, retry, human help |
+| Module              | User-visible pages/components                                                                                                                | Primary business action                                  | Exception and feedback                                           |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| `M01`             | Onboarding wizard, Merchant profile, Account status and review                                                                               | Email/telefon verifikatsiyasi va egani aniqlash          | takrorlangan tashkilot / error, retry, human help                |
+| `M02`             | Team list, Invite panel, Role/scope editor, Approval queue                                                                                   | Invite va accept                                         | o‘zini oxirgi ownerlikdan o‘chirish / error, retry, human help |
+| `M03`             | Branch list/map, Schedule editor, Service radius, Pickup rules                                                                               | filial yaratish/archivlash                               | noto‘g‘ri geolokatsiya / error, retry, human help              |
+| `M04`             | Products table, Product editor, Import preview, Publish validation                                                                           | mahsulot+variant/SKU                                     | dublikat SKU / error, retry, human help                          |
+| `M05`             | Pricing table, Change price dialog, History, Price approval                                                                                  | bazaviy narx va price-list                               | narx almashgan paytdagi eski quote / error, retry, human help    |
+| `M06`             | Stock list, SKU stock ledger, Adjustment approval, Reservation monitor, "Tez sotuv" tugmasi (desktop + mobil)                                | filial-SKU fizik qoldiq                                  | ikki parallel rezerv / error, retry, human help                  |
+| `M07`             | Storefront builder, Website preview, Public catalog, Product detail, Cart/request                                                            | subdomain va brand theme                                 | subdomain conflict / error, retry, human help                    |
+| `M08`             | PC Builder, Compatibility findings, Budget alternatives, Quote action                                                                        | ready PC builds                                          | unknown BIOS / error, retry, human help                          |
+| `M09`             | Channel connect wizard, Permission status, Webhook health, Disconnect                                                                        | Telegram bot / Business bog‘lash                        | provider ruxsat bermaydi / error, retry, human help              |
+| `M10`             | Unified inbox, Conversation detail, Human takeover, Assignments, Escalation queue                                                            | inbound normalization/dedup                              | takrorlangan xabar / error, retry, human help                    |
+| `M11`             | AI agent config, Tool permissions, Test playground, Conversation explanation, Fallback                                                       | uz/ru/en niyat va tilni aniqlash                         | LLM hallucinated SKU / error, retry, human help                  |
+| `M12`             | Lead pipeline, Lead detail, Quote builder, Quote preview, Approval                                                                           | lead dedup va source attribution                         | operator forgot lead / error, retry, human help                  |
+| `M13`             | Order list, Order detail (fulfillment method, manzil, kelishuv izohi, "to'landi" belgisi), Confirm/cancel dialog, Timeline, Order exceptions | AI/sayt DRAFT → operator tasdig'i → topshirish (UX-02) | parallel confirm / error, retry, human help                      |
+| `M14` — DEFERRED | Payments list, Review receipt, Payment detail, Reconciliation, Refund approval                                                               | pay link yoki merchant rekvizitlari                      | screenshot forged / error, retry, human help                     |
+| `M15` — DEFERRED | Fulfillment board, Shipment timeline, Courier view, Tracking page                                                                            | pickup vs local delivery                                 | noto‘g‘ri address / error, retry, human help                   |
+| `M16`             | Support inbox, RMA case, Warranty detail, Resolution history                                                                                 | warranty terms snapshot                                  | warranty ambiguous / error, retry, human help                    |
+| `M17`             | Notification center, Template editor, Task queue, Delivery log                                                                               | notification template va locale                          | takror notification / error, retry, human help                   |
+| `M18`             | Overview dashboard, Report builder, Voice mic/transcript, Chart/export                                                                       | KPI: orders/paid turnover/margin only if COGS exists     | ASR currency mistake / error, retry, human help                  |
+| `M19`             | Plan/usage, Settings, Billing, Support center, AI safe mode                                                                                  | AI enable/disable/policy                                 | over-quota conversation / error, retry, human help               |
+| `M20`             | Audit search, Object activity timeline, Security event view                                                                                  | who/when/why/change trace                                | logga PII tushishi / error, retry, human help                    |
+| `M21`             | Public signup, Provision checklist, Retry setup                                                                                              | public signup and anti-fraud                             | fraud signup / error, retry, human help                          |
+| `M22`             | Integration catalog, Mapping wizard, Sync health, Conflict resolution                                                                        | connector registry and credentials                       | API credentials revoked / error, retry, human help               |
+| `M23`             | Global product review, Merge diff, Provenance audit                                                                                          | brand/model/MPN/GTIN normalize                           | false merge / error, retry, human help                           |
+| `M24`             | Public listings settings, Offer publish preview, Freshness report                                                                            | per-SKU public opt-in/out                                | merchant revokes permission / error, retry, human help           |
+| `M25`             | Branch stock matrix, Transfer order, Transfer audit                                                                                          | branch stock splits                                      | transfer and reservation collide / error, retry, human help      |
+| `M26`             | Billing console, Tenant fleet, Usage analytics                                                                                               | plan self-service changes                                | billing webhook replay / error, retry, human help                |
+| `M27`             | Knowledge hub, Agent sandbox, Policy release                                                                                                 | FAQ/returns/warranty knowledge                           | policy contradicts merchant terms / error, retry, human help     |
+| `M28`             | Index health, Publish queue, Quality diagnostics                                                                                             | incremental index from public offers                     | lost event / error, retry, human help                            |
+| `M29`             | Trust center, Verification queue, Appeals                                                                                                    | merchant business verification                           | fake business document / error, retry, human help                |
+| `M30`             | Developer settings, API usage, Webhook tester                                                                                                | API key/service account with scopes                      | leaked key / error, retry, human help                            |
+| `M31`             | Global home/search, Results, Filters, No results                                                                                             | query uz/ru/en/translit                                  | query ambiguity / error, retry, human help                       |
+| `M32`             | Compare table, Merchant offer card, Price history, Report issue                                                                              | same variant normalization                               | comparison variant mismatch / error, retry, human help           |
+| `M33`             | Map + list, Nearby merchants, Pickup selector                                                                                                | city and neighborhood query                              | precise location denied / error, retry, human help               |
+| `M34`             | AI search chat, Evidence drawer, Compare recommendation, Feedback                                                                            | intent and budget clarifying                             | LLM recommends private SKU / error, retry, human help            |
+| `M35`             | Merchant page, Contact CTA, Lead routing receipt                                                                                             | merchant profile and offers                              | merchant ignores referral / error, retry, human help             |
+| `M36`             | Saved items, Alert preferences, Account privacy                                                                                              | guest browsing                                           | price changed but out of stock / error, retry, human help        |
+| `M37`             | Search placements, Sponsor disclosure, Ranking explanation                                                                                   | organic ranking relevance rules                          | seller pays to fake quality / error, retry, human help           |
+| `M38`             | Product landing, Merchant landing, SEO preview                                                                                               | canonical product public pages                           | thin duplicate pages / error, retry, human help                  |
+| `M39`             | Global bot, Results cards, Merchant link                                                                                                     | global query in Telegram                                 | merchant AI leaks private data / error, retry, human help        |
 
 ## 7 asosiy end-to-end UX flow (business order)
 
 ### UX-01: Merchant onboard → mini sayt
+
 ```mermaid
 flowchart TD
  A[Owner signs up] --> B[Verify merchant]
@@ -156,19 +157,20 @@ flowchart TD
  O --> P[To'lovni do'kon o'zi oladi; ixtiyoriy 'to'landi' belgisi]
 ```
 
-| Qadam | Kim | Holat | DEC |
-|---|---|---|---|
-| Xabar keladi, AI maslahat beradi | AI | Conversation `AI_ACTIVE`, Lead `QUALIFIED` | — |
-| PC yig'ma uchun taklif | AI → Manager/Owner | Quote `DRAFT → APPROVED → SENT` | DEC-100e, 102, 103, 109 |
-| "Olaman" — buyurtma qoralamasi | AI yoki sayt | Order `DRAFT` (stok band emas) | DEC-100c, 115 |
-| Operator ulanadi | Sales | Conversation `HUMAN_ACTIVE`, Order `PENDING_CONFIRMATION` | DEC-100d, 100g |
-| Mahsulot borligi tasdiqlanadi | Sales (o'ziga biriktirilgan) / Manager | Order `CONFIRMED`, rezerv `ACTIVE` | DEC-105, 108 |
-| Tayyorlash / yo'lda | Sales / ombor | Order `PROCESSING`, rezerv `ALLOCATED` | DEC-113 |
-| Topshirildi | Sales / Manager | Order `COMPLETED`, stok kamayadi | DEC-105 |
-| Bekor qilish | Manager / Owner | Order `CANCELLED`, rezerv bo'shaydi | DEC-108 |
-| Kutib qolgan buyurtma | Tizim → Manager | 24 soat eslatma, 72 soat "bekor qilinsinmi?" | DEC-104 |
+| Qadam                            | Kim                                    | Holat                                                         | DEC                     |
+| -------------------------------- | -------------------------------------- | ------------------------------------------------------------- | ----------------------- |
+| Xabar keladi, AI maslahat beradi | AI                                     | Conversation `AI_ACTIVE`, Lead `QUALIFIED`                | —                      |
+| PC yig'ma uchun taklif           | AI → Manager/Owner                    | Quote `DRAFT → APPROVED → SENT`                           | DEC-100e, 102, 103, 109 |
+| "Olaman" — buyurtma qoralamasi  | AI yoki sayt                           | Order `DRAFT` (stok band emas)                              | DEC-100c, 115           |
+| Operator ulanadi                 | Sales                                  | Conversation `HUMAN_ACTIVE`, Order `PENDING_CONFIRMATION` | DEC-100d, 100g          |
+| Mahsulot borligi tasdiqlanadi    | Sales (o'ziga biriktirilgan) / Manager | Order `CONFIRMED`, rezerv `ACTIVE`                        | DEC-105, 108            |
+| Tayyorlash / yo'lda              | Sales / ombor                          | Order `PROCESSING`, rezerv `ALLOCATED`                    | DEC-113                 |
+| Topshirildi                      | Sales / Manager                        | Order `COMPLETED`, stok kamayadi                            | DEC-105                 |
+| Bekor qilish                     | Manager / Owner                        | Order `CANCELLED`, rezerv bo'shaydi                         | DEC-108                 |
+| Kutib qolgan buyurtma            | Tizim → Manager                       | 24 soat eslatma, 72 soat "bekor qilinsinmi?"                  | DEC-104                 |
 
 ### UX-03: Bitta qolgan mahsulot — parallel tasdiq va offline sotuv
+
 ```mermaid
 flowchart TD
  A[Omborda 1 dona] --> B[Operator A buyurtmani tasdiqlaydi]
@@ -184,9 +186,11 @@ flowchart TD
 ```
 
 ### UX-04: To'lov va yetkazish — `DEFERRED` (DEC-100, DEC-113)
+
 Stage 1 da to'lov tekshiruvi va yetkazish moduli yo'q. To'lov provayderi yoki yetkazish hamkori bilan shartnoma bo'lganda bu oqim qayta yoziladi (eski variant git tarixida, commit `58809a4`).
 
 ### UX-05: Voice owner report in UZ/RU/EN
+
 ```mermaid
 flowchart TD
  A[Owner presses mic] --> B[STT transcript]
@@ -203,6 +207,7 @@ flowchart TD
 ```
 
 ### UX-06: Merchant publishes offer to global network
+
 ```mermaid
 flowchart TD
  A[Merchant SKU] --> B[Manual public opt-in]
@@ -219,6 +224,7 @@ flowchart TD
 ```
 
 ### UX-07: Global buyer AI compare → local seller
+
 ```mermaid
 flowchart TD
  A[Buyer query: RTX 5060 near me] --> B[Public product search]
@@ -235,21 +241,22 @@ flowchart TD
 
 ## UI obligatory states checklist
 
-| UI state | Mandatory design |
-|---|---|
-| Loading | Skeleton/spinner and cancel where long job |
-| Empty | Actionable import/create/permission instructions |
-| Validation failure | Inline field errors, backend code mapped to clear user language |
-| Stale data | Last updated time and refresh/reconfirm control |
-| Conflict (409) | Show new entity version, «reload / review changes», no silent overwrite |
-| Offline/provider error | Retry when safe, contact operator, job status |
-| Permission denied | Access request option, no sensitive data flashed |
-| Duplicate submission | Same order/receipt, never second charge or reservation |
-| Async processing | Job reference, progress/state, resume after page reload |
-| Partial fulfilment | Item-level status, human support, explain next step |
-| Mobile | Touch-first inbox, product search, owner voice/report, courier actions |
+| UI state               | Mandatory design                                                          |
+| ---------------------- | ------------------------------------------------------------------------- |
+| Loading                | Skeleton/spinner and cancel where long job                                |
+| Empty                  | Actionable import/create/permission instructions                          |
+| Validation failure     | Inline field errors, backend code mapped to clear user language           |
+| Stale data             | Last updated time and refresh/reconfirm control                           |
+| Conflict (409)         | Show new entity version, «reload / review changes», no silent overwrite |
+| Offline/provider error | Retry when safe, contact operator, job status                             |
+| Permission denied      | Access request option, no sensitive data flashed                          |
+| Duplicate submission   | Same order/receipt, never second charge or reservation                    |
+| Async processing       | Job reference, progress/state, resume after page reload                   |
+| Partial fulfilment     | Item-level status, human support, explain next step                       |
+| Mobile                 | Touch-first inbox, product search, owner voice/report, courier actions    |
 
 ## ASCII wireframe — Merchant inbox
+
 ```text
 ┌──── AI Commerce Merchant OS ──────────────────────────────────────────────┐
 │ Overview  Catalog  Stock  Inbox  Quotes  Orders  Payments  Reports        │
@@ -263,6 +270,7 @@ flowchart TD
 ```
 
 ## ASCII wireframe — Merchant order
+
 ```text
 ┌──────── Order #ORD-... / tenant: merchant  ───────────────────────────────┐
 │ Status: CONFIRMED   Fulfillment: PICKUP   Paid mark: — (tekshirilmagan) │
@@ -274,6 +282,7 @@ flowchart TD
 ```
 
 ## ASCII wireframe — Global comparison
+
 ```text
 ┌──── Global AI Shopping ───── Search: RTX 5060 8GB ──────────────────────┐
 │ Product variant exact match / city / stock freshness                      │

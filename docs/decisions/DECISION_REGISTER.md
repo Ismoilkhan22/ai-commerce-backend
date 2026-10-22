@@ -36,7 +36,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 ### DEC-003 — Job queue / broker — `APPROVED (2026-10-21, founder): A`
 **Nima:** HTTP so'rovdan tashqaridagi ishlar (Telegram javobi, AI javobi, eslatmalar, import, notification) qanday saqlanadi va qayta uriniladi.
-**Qayerda:** `engineering/05` ADR-005, `engineering/04` §2 (4-izoh, "TBD" edi), `engineering/09`, `engineering/11`, `business/09`.
+**Qayerda:** `engineering/05` ADR-005, `engineering/04` §2 (4-izoh, "TBD" edi), `engineering/09`, `engineering/11`, `engineering/35`.
 **Ta'sir:** `shared/infra/outbox`, `shared/infra/jobs`, `workers/`; infra'da RabbitMQ yo'q.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -186,7 +186,7 @@ Aniq kataklar `DEC-108` (buyurtmani kim tasdiqlaydi) va `DEC-109` da hal qilinad
 
 ### DEC-016 — LLM provayderga yuboriladigan ma'lumot siyosati — `APPROVED (2026-10-21, founder): A`
 **Nima:** AI javobi uchun tashqi provayderga qanday ma'lumot ketadi.
-**Qayerda:** `engineering/10` Privacy, `engineering/15` §7, `engineering/23` 8-qatlam, `business/07`.
+**Qayerda:** `engineering/10` Privacy, `engineering/15` §7, `engineering/23` 8-qatlam, `engineering/34`.
 **Ta'sir:** AI worker'da PII redaction qadami; provayder tanlovi (DEC-009) faqat zero-retention / no-training shartini beradiganlar bilan.
 
 | Variant | Mazmuni | Afzallik | Kamchilik |
@@ -203,7 +203,7 @@ Hujjatlarda bitta narsa turli nom bilan yozilgan; quyidagi standartlar barcha hu
 
 | ID | Konvensiya ⭐ | Hozirgi ziddiyat |
 |---|---|---|
-| K-01 | Tenant identifikatori hamma joyda `merchant_id` (`tenant_id` emas) | DDD/event: `tenant_id`; TECH-06/09: `merchant_id` |
+| K-01 | Tenant identifikatori hamma joyda `shop_id` — `CHANGED (2026-10-22): merchant_id → shop_id` (DEC-124) | DDD/event: `tenant_id`; TECH-06/09: `merchant_id` |
 | K-02 | Enum qiymatlari API va DB'da `UPPER_SNAKE` (`PENDING_CONFIRMATION`) | FSM lowercase, DDL/API uppercase |
 | K-03 | Status nomlari manbai — `business/05` FSM'lar. Order, Payment, Shipment statuslari alohida: API `order.status` faqat FSM-08 qiymatini qaytaradi, to'lov holati `payment.status` da | TECH-08 `AWAITING_PAYMENT`, DDD `pending_payment` |
 | K-04 | Stock maydonlari: `on_hand`, `reserved`, `allocated`; `available = on_hand − reserved − allocated` | DDL `physical_qty` |
@@ -488,6 +488,22 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | C | Faqat telefon/email | Tez | Soxta do'kon xavfi |
 
 ---
+
+### DEC-124 — Tenant (do'kon) nomi — `APPROVED (2026-10-22, founder): shop`
+**Nima:** platformadan foydalanuvchi do'kon hujjatlarda va kodda qanday ataladi. "Merchant" founder uchun tushunarsiz edi.
+**Ta'sir:** K-01 o'zgaradi: `merchant_id` → `shop_id`. Biznes hujjatlari qayta yozilayotganda "shop" (izohda "do'kon") ishlatiladi; engineering hujjatlari va kod — engineering bosqichida (bismuth v2 standartlari bilan) birga yangilanadi. Boshqa nomlar (masalan, xodim rollari) kerak bo'lsa alohida savollar bilan hal qilinadi.
+
+| Variant | Afzallik | Kamchilik |
+|---|---|---|
+| `shop` ✅ | Eng oddiy, "do'kon" ma'nosini to'g'ridan-to'g'ri beradi | — |
+| `store` | Keng tarqalgan | `storefront`, `storage` bilan chalkashadi |
+| `seller` | Sotuvchi ma'nosi | `SALES` xodim roli bilan chalkashadi |
+| `business` | Kelajakda boshqa sohalarga mos | Juda keng ma'noli |
+
+### DEC-125 — Hujjatlar tuzilmasi va uslubi — `APPROVED (2026-10-22, founder)`
+- `business/` da faqat odam o'qiydigan hujjatlar qoladi; dasturchilar uchun yozilgan `07` (entity'lar), `09` (event'lar), `12` (bog'lanish indeksi) `engineering/34`, `35`, `36` ga ko'chirildi.
+- Biznes hujjatlari oddiy o'zbek tilida, boshqa odamlar ham tushunadigan qilib qayta yoziladi; holatlar strelka ketma-ketligi bilan tushuntiriladi.
+- Engineering hujjatlari `bismuth_platform_v2/docs/v2` standartlariga moslab qayta ko'rib chiqiladi (biznes hujjatlaridan keyin).
 
 ## 4. Eski ID'lar xaritasi
 

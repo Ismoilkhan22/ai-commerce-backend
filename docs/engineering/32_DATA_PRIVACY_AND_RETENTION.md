@@ -1,7 +1,7 @@
 # TECH-32 — Shaxsiy ma'lumotlar, saqlash muddatlari, rozilik va o'chirish
 
 **Status:** `DRAFT — HUQUQSHUNOS XULOSASI KERAK`. Bu hujjat yuridik maslahat emas. U texnik dizaynni va huquqshunosga beriladigan savollarni bir joyga yig'adi. Saqlash muddatlari — **takliflar**, huquqshunos tasdiqlaguncha real merchant ma'lumoti production'ga yuklanmaydi (DEC-013).
-**Bog'liq:** DEC-013 (UZ hosting), DEC-016 (LLM'ga PII yo'q), DEC-117 (audio), DEC-118 (AI o'qitish), `engineering/10` Privacy, `business/07` (ma'lumot egaligi), TECH-26 §7 (redaction).
+**Bog'liq:** DEC-013 (UZ hosting), DEC-016 (LLM'ga PII yo'q), DEC-117 (audio), DEC-118 (AI o'qitish), `engineering/10` Privacy, `engineering/34` (ma'lumot egaligi), TECH-26 §7 (redaction).
 
 ---
 
