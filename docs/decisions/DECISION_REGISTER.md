@@ -10,7 +10,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 ---
 
-## 1. Arxitektura qarorlari (DEC-001…016)
+## 1. Arxitektura qarorlari (DEC-001…016, DEC-126)
 
 ### DEC-001 — Deployment va tenant modeli — `APPROVED (2026-10-21, founder): C`
 **Nima:** barcha do'konlar bitta tizimdami yoki har biriga alohida o'rnatishmi.
@@ -34,7 +34,11 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 | B ✅ | S0: app-layer + composite FK; RLS spike; o'tsa, sezgir jadvallarga (orders, conversations, messages, leads, stock) S0 oxirida | Ikki qavat himoya, pool bilan avval sinab ko'riladi | S0 ga 1–2 kun qo'shiladi |
 | C | Darhol barcha jadvallarga | Maksimal | Sinovsiz; S0 sekinlashadi |
 
-### DEC-003 — Job queue / broker — `APPROVED (2026-10-21, founder): A`
+### DEC-003 — Job queue / broker — `CHANGED (2026-10-22, founder): A → D` (bismuth v2 standarti)
+**Yangi qaror (D):** outbox PostgreSQL'da qoladi (asosiy manba). Outbox worker vazifani **arq** (Redis) navbatiga qo'yadi, task worker'lar bajaradi. Rejali ishlar — **APScheduler + PostgreSQL advisory lock** (bir nechta worker bo'lsa ham bitta ish bir marta). Qoida: vazifa faqat outbox orqali navbatga tushadi — server o'chsa ham yo'qolmaydi; Redis AOF bilan ishlaydi. Batafsil: `engineering/ADR/ADR-033`, `engineering/06-background-jobs.md`.
+**Nega o'zgardi:** retry, kechiktirish, timeout tayyor kutubxonada bor — o'zimiz yozmaymiz; bismuth_platform_v2 bilan bir xil; Redis baribir bor (kesh, rate limit). Narxi: Redis majburiy servis bo'ladi.
+
+**Eski matn (tarix uchun):**
 **Nima:** HTTP so'rovdan tashqaridagi ishlar (Telegram javobi, AI javobi, eslatmalar, import, notification) qanday saqlanadi va qayta uriniladi.
 **Qayerda:** `engineering/05` ADR-005, `engineering/04` §2 (4-izoh, "TBD" edi), `engineering/09`, `engineering/11`, `engineering/35`.
 **Ta'sir:** `shared/infra/outbox`, `shared/infra/jobs`, `workers/`; infra'da RabbitMQ yo'q.
@@ -44,10 +48,17 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 | A ✅ | PostgreSQL outbox + PG leased jobs (`FOR UPDATE SKIP LOCKED`) | Qo'shimcha server yo'q; vazifa biznes ma'lumoti bilan atomik; backup bitta joyda | Lease/retry/DLQ'ni o'zimiz yozamiz (yoki tayyor PG-queue kutubxonasi baholanadi); katta yuklamada DB'ga og'irlik |
 | B | Celery + RabbitMQ | Yetuk ekotizim, monitoring UI | Qo'shimcha server; Celery async FastAPI'ga yomon mos |
 | C | Redis queue (arq / Taskiq) | Yengil, async | Redis ma'lumot yo'qotishi mumkin (ADR-006 ga zid) |
+| D ✅ (2026-10-22) | PG outbox + arq (Redis) + APScheduler/advisory lock; navbatga faqat outbox orqali | Tayyor kutubxona; bismuth bilan bir xil; outbox tufayli yo'qolmaydi | Redis majburiy; ADR-006 o'zgaradi (Redis endi navbatni ham ushlaydi, lekin manba — outbox) |
 
 **Qayta ko'rish sharti:** queue lag SLO buzilsa yoki throughput yetmasa, B ga o'tiladi; event schema va outbox o'zgarmaydi.
 
-### DEC-004 — Backend repo skeleti — `APPROVED (2026-10-21, founder): A`
+### DEC-004 — Backend repo skeleti — `CHANGED (2026-10-22, founder): A → C` (bismuth v2 standarti)
+**Yangi qaror (C):** `app/shared` → `app/platform` → `app/domains` uch qatlami (bismuth v2). `shared` hech kimni import qilmaydi; `platform` `domains` ni import qilmaydi; domenlar bir-birini import qilmaydi (CI'da import-linter). Har domen: `api/`, `services/`, `repository/`, `models/`, `state_machine.py`, `events.py`, `permissions.py`, `subscribers.py`, `tests/`; har domenga o'z PostgreSQL schemasi. Batafsil: `engineering/02-folder-skeleton.md`, `engineering/ADR/ADR-031`, `ADR-035`.
+- `platform/`: `auth`, `shops` (shop, filiallar), `staff` (xodimlar, rollar, ruxsatlar), `audit`, `notifications`, `storage`, `llm` (provayder adapteri, redaction, AI limitlari), `use` (holat o'tishlari jurnali + idempotency).
+- `domains/` (Stage 1): `catalog`, `commerce`, `messaging`, `sales_ai`, `storefront`, `support`, `reporting`. Keyin: `payments`, `fulfillment` (DEFERRED), `network` (Stage 2), `marketplace` (Stage 3).
+**Nega o'zgardi:** ikki loyihada bitta uslub; qoidalar CI'da avtomatik tekshiriladi.
+
+**Eski matn (tarix uchun):**
 **Nima:** backend kodi qaysi papkalarda turadi, import qoidalari qanday.
 **Qayerda:** `engineering/03` §6 (A), `engineering/04` §2.2 (A), `engineering/22` §1 (B) — 22 A ga moslab tuzatiladi.
 **Ta'sir:** barcha backend kodi, CI import-linter qoidalari, AI-assisted PR shabloni.
@@ -56,6 +67,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 |---|---|---|---|
 | A ✅ | `src/commerce_os/` + `modules/<context>/{domain,application,infrastructure,presentation}` + `workflows/` + `workers/` + `api/v1/` + `bootstrap/` | Python src-layout standarti; kontekstlararo use case'lar uchun `workflows/`; ikki hujjat mos | Papkalar chuqurroq; `transport/` va `presentation/` chegarasi aniq yozilishi kerak |
 | B | `app/contexts/...` + `entrypoints/{api,worker,scheduler}` | Entry point'lar aniq | Kontekstlararo jarayon uchun joy yo'q; src-layout emas |
+| C ✅ (2026-10-22) | Bismuth v2: `app/{shared,platform,domains}` + `workers/` | Sinalgan uslub, CI tekshiruvi, schema per domain | DEC-004 A dagi hujjatlar qayta yoziladi |
 
 Kontekst nomlari: `identity`, `merchants`, `catalog`, `pricing`, `inventory`, `storefronts`, `pc_builder`, `messaging`, `merchant_ai`, `sales`, `orders`, `payments` (Stage 1 da yo'q, DEC-100), `fulfillment`, `engagement`, `reporting`, `platform`. S0 da faqat `identity`, `merchants`, `platform` yaratiladi.
 
@@ -136,7 +148,7 @@ R → S: R1→S0, R2→S1, R3→S2+S3, R4→S3+S4, R5→S4+S5 (to'lov qismi chiq
 | B ✅ | Platforma yuritadigan reference hardware spec library (CPU, MB, GPU, PSU, case, cooler, RAM — eng ko'p sotiladigan bir necha yuz model, manba va versiya bilan); merchant SKU unga bog'lanadi; bog'lanmasa `REVIEW_REQUIRED` | Merchantga ish deyarli yo'q; ishonchli; Stage 2 canonical katalogiga tabiiy o'tish | Kutubxonani yuritish kerak (DEC-120) |
 | C | To'liq global katalog Stage 1 da | To'liq | Stage 1 juda kattalashadi |
 
-### DEC-012 — Observability stack — `APPROVED (2026-10-22, founder): B`
+### DEC-012 — Observability stack — `APPROVED (2026-10-22, founder): B` — 2026-10-22 bismuth v2 bilan solishtirilib qayta tasdiqlandi: kod qoidalari (structlog, metrika nomlari) bismuth'dan olinadi, ma'lumot Grafana Cloud + Sentry'ga
 **Nima:** xatolar, sekinlashish, queue holati va AI xarajati qayerda ko'rinadi va ogohlantirish qayerdan keladi.
 **Qayerda:** `engineering/05` ADR-017 (OpenTelemetry), `engineering/12` (span, metrika, alert), `engineering/04` §10 — vosita tanlanmagan edi.
 **Ta'sir:** S0 — OpenTelemetry SDK + JSON loglar (`trace_id`, `request_id`), eksport Grafana Cloud'ga (trace, metrika, log), xatolar Sentry'ga; `engineering/12` redaction qoidalari majburiy (PII telemetriyaga yozilmaydi); `infra/` da self-hosted monitoring yo'q.
@@ -197,6 +209,16 @@ Aniq kataklar `DEC-108` (buyurtmani kim tasdiqlaydi) va `DEC-109` da hal qilinad
 
 ---
 
+### DEC-126 — Domenlar o'zaro aloqasi — `APPROVED (2026-10-22, founder): A`
+**Nima:** domenlar bir-biri bilan qanday gaplashadi va buyurtma tasdiqlanganda mahsulot qanday atomik band qilinadi (TC-002, TC-027).
+**Qayerda:** `engineering/01-architecture-overview.md`, `engineering/05-events-and-outbox.md`, `engineering/ADR/ADR-032`. ADR-021 (`workflows/`) bekor qilinadi.
+
+| Variant | Mazmuni | Afzallik | Kamchilik |
+|---|---|---|---|
+| A ✅ | Ombor, band qilish, buyurtma, tez sotuv, lead va PC taklif — bitta `commerce` domeni; tasdiqlash + band qilish domen ichida, bitta tranzaksiyada. Domenlar orasida yozish faqat event orqali, o'qish — faqat Query Port | Bismuth qoidalari to'liq; ikki marta sotish xavfi yo'q | `commerce` kattaroq; AI qoralamasi event orqali biroz kechikib paydo bo'ladi |
+| B | Ombor va buyurtma alohida, `workflows/` istisnosi bilan | Domenlar kichik | Bismuth 4-qoidasiga istisno, istisnolar ko'payishi mumkin |
+| C | Faqat event (saga) | To'liq mustaqillik | "Tasdiqlandi" dan keyin "mahsulot yo'q" — TC-002/027 buziladi |
+
 ## 2. Konvensiyalar — K-01…K-10 — `APPROVED (2026-10-21, founder): hammasi ⭐ bo'yicha`
 
 Hujjatlarda bitta narsa turli nom bilan yozilgan; quyidagi standartlar barcha hujjat va kodda majburiy. Ta'sir: DB ustunlari, enum'lar, API, event'lar, AI tool'lar — hujjatlarni birlashtirish bosqichida (5-bo'lim, 2-band) kiritiladi.
@@ -210,9 +232,9 @@ Hujjatlarda bitta narsa turli nom bilan yozilgan; quyidagi standartlar barcha hu
 | K-05 | Reservation FSM: `ACTIVE → ALLOCATED → CONSUMED`, `ACTIVE → RELEASED`, `ACTIVE → EXPIRED` (FSM-07 va DDL birlashtiriladi) | FSM-07 `EXPIRED` yo'q, DDL `ALLOCATED` yo'q |
 | K-06 | Header: `Idempotency-Key` (IETF draft), `X-Request-ID`, `traceparent` | `X-Idempotency-Key` va `Idempotency-Key` aralash |
 | K-07 | Error envelope: `{"error":{"code","message","details","trace_id"}}`; yagona error kod katalogi (TECH-08 asos + `INTERNAL_ERROR` 500, `VALIDATION_FAILED` 422/400, `PRICE_CHANGED`, `FEATURE_NOT_AVAILABLE`) | DDD `OUT_OF_STOCK`, TECH-08 `INSUFFICIENT_AVAILABLE_STOCK` |
-| K-08 | Event envelope (TECH-09 asos + DDD qo'shimchalari): `event_id, event_type, schema_version, merchant_id, aggregate_type, aggregate_id, aggregate_version, occurred_at, actor, traceparent, correlation_id, causation_id, payload` | 3 xil variant |
+| K-08 | Event envelope (TECH-09 asos + DDD qo'shimchalari): `event_id, event_type, schema_version, shop_id, aggregate_type, aggregate_id, aggregate_version, occurred_at, actor, traceparent, correlation_id, causation_id, payload`. `event_type` nomi — `<domain>.<entity>.<action>` o'tgan zamonda (`commerce.order.confirmed`), bismuth v2 (2026-10-22) | 3 xil variant |
 | K-09 | PC compatibility natijasi: `PASS` / `REVIEW_REQUIRED` / `BLOCK` (hamma joyda) | M08/UAT: `compatible / incompatible` |
-| K-10 | AI tool nomlari `context.verb` formatida (TECH-15 asos) + yetishmayotganlar qo'shiladi: `pricing.get_price_stock`, `quotes.request_approval`, `orders.lookup_status`, `orders.create_draft` (DEC-100c) | business/08 va TECH-15 nomlari farqli |
+| K-10 | AI tool nomlari `domain.verb` formatida (TECH-15 asos; 2026-10-22 dan domen nomlari DEC-004 C bo'yicha): `catalog.search`, `catalog.get_price_stock`, `commerce.request_quote_approval`, `commerce.lookup_order_status`, `commerce.create_order_draft` (DEC-100c; event orqali, DEC-126) | business/08 va TECH-15 nomlari farqli |
 
 ---
 
