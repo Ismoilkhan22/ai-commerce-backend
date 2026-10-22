@@ -1,357 +1,350 @@
-# A01 — Market Problem Discovery: PC va elektronika do‘konlari
+# A01 — Bozor va muammo tadqiqoti: PC va elektronika shoplari
 
-> **Loyiha:** AI Commerce OS & Network  
-> **Hujjat ID:** `A01` · **Versiya:** `v0.1` · **Sana:** 2026-10-20  
-> **Status:** `DRAFT` — tadqiqot rejasi, bozor natijalari hali tasdiqlanmagan  
-> **Qaror egasi:** loyiha asoschisi  
-> **Oldingi hujjatlar:** `../business/00_README_AND_SCOPE.md`, `../business/01_BUSINESS_VISION_AND_3_PHASES.md`  
-> **Keyingi hujjatlarga kirish:** `business/03` biznes qoidalar, `business/02` modullar, `business/10` reliz scope, `engineering/03` DDD, `engineering/15` AI agent. Hali yozilmagan: biznes model / unit economics va pilot shartnomasi (`../decisions/DECISION_REGISTER.md`).
+**Versiya:** v2 (2026-10-22, oddiy tilda qayta yozildi). **Holat:** qoralama — bu tadqiqot rejasi, natijalar hali yo'q.
+**Kim qaror qiladi:** loyiha asoschisi.
+**Bog'liq hujjatlar:** `../business/01` (g'oya), `../business/02` (modullar), `../business/13` (shopni ulash), `../business/14` (pilot kelishuvi va narxlar).
 
-## 0. Hujjatning vazifasi
+## 0. Bu hujjat nima uchun
 
-Biz avval umumiy marketplace qurmaymiz. Dastlab **PC yig‘adigan va elektronika sotadigan do‘konlarda haqiqiy, pul talab qiladigan muammo**ni topamiz. Keyin shunday do‘kon uchun mustaqil ishlaydigan **Merchant Sales OS** yaratamiz: katalog, narx, stok, o‘z sayti, AI sotuvchi, lead, quote, buyurtma, operatorga uzatish va analitika. Kengayganda esa do‘kon ruxsati bilan ommaviy mahsulot takliflarini umumiy qidiruvga ulaymiz.
+Biz birdaniga umumiy bozor (marketplace) qurmaymiz. Avval **PC yig'adigan va elektronika sotadigan shoplarda haqiqiy, pulga ta'sir qiladigan muammo**ni topamiz. Keyin shunday shop uchun savdo tizimini quramiz: katalog, narx, ombor, sayt, AI sotuvchi, leadlar, takliflar, buyurtmalar, operatorga uzatish va hisobotlar.
 
-> **MUHIM:** Quyidagi muammolar, raqamlar va sotuv g‘oyalari hozircha **gipoteza**. Hali birorta merchant intervyusi bu hujjatga kiritilgani yo‘q. Taxminni fakt sifatida ishlatmaymiz.
+> **Muhim:** quyidagi muammolar, raqamlar va g'oyalar hozircha **faraz**. Hali birorta shop bilan suhbat bu hujjatga kiritilmagan. Farazni fakt sifatida ishlatmaymiz.
 
-### Javob topishimiz kerak bo‘lgan 5 savol
+### Javob topishimiz kerak bo'lgan 5 savol
 
-1. Do‘konda qaysi muammo tez-tez uchraydi va haqiqatan pul yoki ish vaqtini yo‘qotadi?
-2. Boshlanish uchun kuchli taklif qaysi: `24/7 AI chat`, `PC quote/compatibility`, `katalog/ombor`, yoki ularning kichik kombinatsiyasimi?
-3. Kamida 3 ta do‘kon ishonchli katalog va narx ma’lumotlarini berib, pilotda qatnashishga tayyormi?
-4. Sotuvchi sinovdan keyin obuna to‘lashi uchun qanday o‘lchanadigan natija ko‘rishi kerak?
-5. Rasmiy Telegram/Instagram/payment integratsiyalarining qaysilari aynan pilot do‘konlar uchun mumkin?
+1. Shopda qaysi muammo tez-tez uchraydi va haqiqatan pul yoki vaqt yo'qotadi?
+2. Boshlash uchun eng kuchli taklif qaysi: kecha-kunduz AI chat, PC taklifi va moslik tekshiruvi, katalog va ombor — yoki ularning kichik birikmasi?
+3. Kamida 3 ta shop ishonchli katalog va narxlarini berib, pilotda qatnashishga tayyormi?
+4. Sinovdan keyin shop oylik to'lashi uchun qanday o'lchanadigan natija ko'rishi kerak?
+5. Pilot shoplar uchun Telegram, Instagram va boshqa rasmiy integratsiyalardan qaysilari amalda mumkin?
 
-## 1. Ish doirasi
+## 1. Nimani tekshiramiz
 
-| Mavzu | Tekshiramiz | Birinchi pilotda va’da qilmaymiz |
+| Mavzu | Tekshiramiz | Birinchi pilotda va'da qilmaymiz |
 |---|---|---|
-| Savdogar | PC yig‘ish, GPU/CPU/RAM/SSD, elektronika; filial va xodimlari | Barcha toifalarni birdan qamrash |
-| Kanallar | Telegram, Instagram, web-chat, telefon, mavjud sayt | Har qanday platformani ruxsatsiz avtomatlashtirish |
-| Katalog | SKU, variant, narx, ombor, yetkazib beruvchi, import, yangilanish | Tekshirilmagan ma’lumotni “aniq” deb aytish |
-| AI | Savol-javob, ehtiyojni aniqlash, PC tavsiya, quote draft, handoff | Narx/to‘lov/stockni o‘zboshimchalik bilan tasdiqlash |
-| Savdo | Lead → quote → order → payment tekshirish → yetkazish holati | O‘zimizning kuryer parki, global checkout |
-| Merchant UI | Katalog, inbox, buyurtma, statistikalar, avtomatik sayt | To‘liq ERP o‘rnini birinchi kundan bosish |
-| Kelajakdagi network | Merchant public offer berishga tayyormi? | Global narx solishtirishni 1-bosqichda ishga tushirish |
+| Shop | PC yig'ish, videokarta, protsessor, xotira, disk, elektronika; filiallar va xodimlar | Hamma turdagi shoplarni birdan qamrash |
+| Kanallar | Telegram, Instagram, saytdagi chat, telefon, mavjud sayt | Istalgan platformani ruxsatsiz avtomatlashtirish |
+| Katalog | Mahsulotlar, variantlar, narx, ombor, yetkazib beruvchi, fayldan yuklash | Tekshirilmagan ma'lumotni "aniq" deb aytish |
+| AI | Savollarga javob, ehtiyojni aniqlash, PC tavsiya, taklif qoralamasi, operatorga uzatish | Narx, to'lov yoki qoldiqni o'zicha tasdiqlash |
+| Savdo | Lead → taklif → buyurtma → topshirish | O'z kuryerlarimiz, platforma orqali to'lov |
+| Shop paneli | Katalog, inbox, buyurtmalar, hisobotlar, tayyor sayt | Birinchi kundan to'liq hisob dasturi o'rnini bosish |
+| Kelajakdagi tarmoq | Shop o'z takliflarini ommaviy qilishga tayyormi? | Narxlarni solishtirishni 1-bosqichda ishga tushirish |
 
-### Uch bosqich bilan bog‘liqligi (BD-01)
+### Uch bosqich bilan bog'liqligi (BD-01)
 
-- **Stage 1 — Merchant Sales OS:** birinchi daromad keltiradigan do‘konning individual tizimi.
-- **Stage 2 — Merchant Network:** self-service onboarding, integratsiyalar, standartlashgan katalog, public offer opt-in.
-- **Stage 3 — Global AI Shopping:** turli do‘konlarning ommaviy narx, kafolat, lokatsiya va qoldiqlarini taqqoslash.
-- Kengaygan checkout/logistika, B2B va agro — **future extension**, core roadmap emas (`business/11` §D).
+- **Stage 1 — shop uchun savdo tizimi:** birinchi daromad keltiradigan, bitta shop uchun tizim.
+- **Stage 2 — shoplar tarmog'i:** shop o'zi ulanadi, integratsiyalar, umumiy katalog, ommaviy takliflar (rozilik bilan).
+- **Stage 3 — global AI qidiruv:** turli shoplarning narx, kafolat, joylashuv va qoldiqlarini solishtirish.
+- Platforma orqali to'lov va logistika, ulgurji savdo, qishloq xo'jaligi — **uch bosqichga kirmaydi** (`business/11` §4).
 
-**A01 asosan Stage 1ni tekshiradi.** Stage 2/3 bo‘yicha faqat kelajakdagi moslashuvga ta’sir qiladigan savollarni beramiz.
+**A01 asosan Stage 1 ni tekshiradi.** Stage 2 va 3 bo'yicha faqat kelajakka ta'sir qiladigan savollarni beramiz.
 
-## 2. Kimlar bilan gaplashamiz?
+## 2. Kimlar bilan gaplashamiz
 
-| Rol | Uning bajaradigan ishi | Tekshiriladigan muammo | Mumkin bo‘lgan qiymat |
+| Kim | Nima ish qiladi | Qaysi muammosini tekshiramiz | Biz nima bera olamiz |
 |---|---|---|---|
-| Do‘kon egasi / qaror qiluvchi | Rentabellik, xodimlar, savdo nazorati | Yo‘qotilgan mijoz, noaniq statistika, samarasiz ish | Ko‘proq tasdiqlangan buyurtma, tejalgan vaqt |
-| Sotuv menejeri | Xabarlarga javob, ehtiyojni aniqlash, follow-up | Takroriy savollar, kech javob, unutilgan lead | AI yordamchi, inbox va eslatma |
-| PC yig‘uvchi mutaxassis | Komponent mosligi, konfiguratsiya | Har bir PC taklifini qo‘lda yig‘ish | PC Builder + qoidalar engine |
-| Ombor xodimi | Qoldiq va narxni aktual saqlash | Excel/POS/supplier nomuvofiqligi | Katalog va ombor integratsiyasi |
-| Xaridor | Narx va mos konfiguratsiya topish | Instagram→Telegram→menejerga o‘tish | Tez va tekshirilgan taklif |
+| Shop egasi | Foyda, xodimlar, savdo nazorati | Yo'qotilgan mijoz, noaniq statistika, samarasiz ish | Ko'proq tasdiqlangan buyurtma, tejalgan vaqt |
+| Sotuv menejeri yoki operator | Xabarlarga javob, ehtiyojni aniqlash, qayta bog'lanish | Takroriy savollar, kech javob, unutilgan xaridor | AI yordamchi, inbox, eslatmalar |
+| PC yig'uvchi usta | Qismlar mosligi, yig'ma tuzish | Har PC taklifini qo'lda yig'ish | PC yig'ish va moslik tekshiruvi |
+| Omborchi | Qoldiq va narxni dolzarb saqlash | Excel, kassa dasturi va yetkazib beruvchi ma'lumotlari mos kelmasligi | Katalog va ombor bir joyda |
+| Xaridor | Narx va mos yig'mani topish | Instagram → Telegram → menejer o'rtasida sarson bo'lish | Tez va tekshirilgan taklif |
 
-**Birinchi ICP — gipoteza:** ko‘p maslahat talab qiladigan PC do‘koni, faol inbound xabarlar, eksport qilinadigan katalog/narxlar, taklifni tasdiqlovchi menejer va pilot natijasini o‘lchashga tayyor rahbar.
+**Birinchi ideal mijoz (faraz):** ko'p maslahat talab qiladigan PC shop; xaridorlardan ko'p xabar keladi; katalog va narxlarni faylga chiqara oladi; takliflarni tasdiqlaydigan menejeri bor; egasi pilot natijasini o'lchashga tayyor.
 
-> Obunachilar soni yoki Instagramning chiroyli yuritilishi o‘zi yetarli qualification mezoni emas.
+> Obunachilar soni yoki Instagram sahifasining chiroyliligi yetarli mezon emas.
 
-## 3. Gipotezalar reyestri
+## 3. Farazlar ro'yxati
 
-| ID | Taxmin | Qanday dalil yig‘amiz? | Nima inkor qiladi? | Ehtimoliy yechim |
+| ID | Faraz | Qanday dalil yig'amiz | Nima rad etadi | Mumkin bo'lgan yechim |
 |---|---|---|---|---|
-| HYP-001 | Xabarlarga kech javob sabab lead yo‘qoladi | So‘nggi 7–14 kunlik xabarlar, javob vaqti, real misollar | Hammasiga tez javob va kam hajm | AI first response + handoff |
-| HYP-002 | Custom PC narxli taklifi ko‘p vaqt oladi | Real quote yasashni kuzatish, vaqtni o‘lchash | Takliflar allaqachon tez | PC quote builder |
-| HYP-003 | Narx va qoldiq turli tizimlarda tarqoq | Excel/POS/supplier/chat xaritasi, mos kelmagan qiymatlar | Yaxshi ishlovchi bitta source of truth | Data ingest/sync |
-| HYP-004 | Leadlar kuzatuvsiz qoladi | Javobsiz/unutib yuborilgan chatlar va jarayon | Ishlaydigan CRM/follow-up mavjud | Lead pipeline + reminders |
-| HYP-005 | Ish vaqtidan tashqari talab mavjud | Tungi va dam olish kungi mazmunli so‘rovlar | Mazmunli so‘rov juda kam | 24/7 AI faqat qiymat bo‘lsa |
-| HYP-006 | Saytsiz do‘konga tayyor storefront kerak | Saytning mavjudligi, ulashish/katalog muammosi | Mavjud sayt ehtiyojni qoplaydi | Generated storefront |
-| HYP-007 | Voice Business Copilot uchun to‘lashadi | Egasi so‘raydigan KPIlar, foydalanish ehtimoli | Ovozni kerakli deb bilishmaydi | Premium/later, MVP blocker emas |
-| HYP-008 | Do‘kon kelajakda public offer chiqaradi | Rozilik, qaysi maydonlar public, raqobatchi xavotiri | Narx taqqoslashga qarshi | Faqat opt-in publishing |
-| HYP-009 | Aniqlik “aqlli” chatbotdan muhimroq | Xato narx/stok va qayta qo‘ng‘iroq holatlari | Muhim dalil yo‘q (baribir noto‘g‘ri ma’lumot bermaymiz) | Deterministic tools + approval |
-| HYP-010 | Do‘kon to‘lashga tayyor | Qaror qiluvchi bilan aniq pullik davom sharti | “Zo‘r g‘oya” deyish, ammo commitment yo‘q | Tarif va scope qayta ko‘rish |
+| HYP-001 | Kech javob tufayli xaridorlar yo'qoladi | Oxirgi 7–14 kunlik xabarlar, javob vaqti, real misollar | Hammaga tez javob beriladi va xabarlar kam | AI birinchi javob + operatorga uzatish |
+| HYP-002 | PC yig'ma uchun narxli taklif tayyorlash ko'p vaqt oladi | Taklif tuzishni kuzatish va vaqtini o'lchash | Takliflar allaqachon tez tayyorlanadi | PC taklif tuzish vositasi |
+| HYP-003 | Narx va qoldiq turli joylarda tarqoq | Excel, kassa, yetkazib beruvchi, chat xaritasi; mos kelmagan qiymatlar | Yaxshi ishlaydigan yagona manba bor | Katalogni yuklash va sinxronlash |
+| HYP-004 | Xaridorlar kuzatuvsiz qolib ketadi | Javobsiz yoki unutilgan suhbatlar | Ishlaydigan qayta bog'lanish tizimi bor | Leadlar ro'yxati + eslatmalar |
+| HYP-005 | Ish vaqtidan tashqari ham talab bor | Kechasi va dam olish kunlari kelgan jiddiy so'rovlar | Bunday so'rovlar juda kam | Kecha-kunduz AI — faqat foydasi bo'lsa |
+| HYP-006 | Saytsiz shopga tayyor sayt kerak | Sayt bormi, katalogni ulashishda muammo bormi | Mavjud sayt yetarli | Avtomatik sayt |
+| HYP-007 | Ovozli hisobot uchun pul to'lashadi | Ega qaysi raqamlarni so'raydi, ovozni ishlatarmidi | Ovoz kerak emas deyishadi | Keyinroq, qo'shimcha xizmat sifatida |
+| HYP-008 | Shop kelajakda takliflarini ommaviy qiladi | Rozilik, qaysi ma'lumotlar ochiq bo'lishi mumkin, raqobatchidan xavotir | Narx solishtirishga qarshi | Faqat rozilik bilan chiqarish |
+| HYP-009 | Aniqlik "aqlli" chatbotdan muhimroq | Noto'g'ri narx yoki qoldiq tufayli muammolar | Dalil yo'q (baribir noto'g'ri ma'lumot bermaymiz) | Aniq qoidalar + odam tasdig'i |
+| HYP-010 | Shop pul to'lashga tayyor | Qaror qiluvchi bilan pullik davom etish sharti | "Zo'r g'oya" deyishadi, lekin majburiyat olishmaydi | Tarif va doirani qayta ko'rish |
 
-Har gipoteza statusi: `UNTESTED`, `SUPPORTED`, `MIXED`, `REFUTED`. O‘zgartirish faqat `EVD-###` dalil bilan. Qarama-qarshi misollarni ham saqlaymiz.
+Har faraz holati: **tekshirilmagan**, **tasdiqlandi**, **aralash**, **rad etildi**. Holat faqat dalil (`EVD-###`) bilan o'zgaradi. Qarama-qarshi misollar ham saqlanadi.
 
 ## 4. Tadqiqot rejasi
 
-### 4.1. Tanlash
+### 4.1 Kimni tanlaymiz
 
-Boshlang‘ich **maqsad**: 15–20 do‘konga murojaat qilish, 8–12 ta mazmunli suhbat olish, shundan 3–5 ta pilot nomzod. Bular reja, erishilgan natija emas.
+**Maqsad:** 15–20 ta shopga murojaat qilish, 8–12 ta jiddiy suhbat o'tkazish, ulardan 3–5 ta pilot nomzod. Bu reja, natija emas.
 
-Turli savdogarlardan namuna olish kerak:
+Turli shoplar bo'lishi kerak:
+- PC yig'uvchilar va faqat qism sotuvchilar;
+- asosan Instagram'da, asosan Telegram'da va asosan saytda sotuvchilar;
+- kichik jamoali va bir nechta sotuvchi yoki filiali borlar;
+- Excel bilan va kassa yoki hisob dasturi bilan ishlaydiganlar;
+- tayyor PC va buyurtma asosida yig'ishni aralashtiradiganlar.
 
-- PC yig‘uvchilar va faqat komponent sotuvchilar;
-- Instagram-first, Telegram-first va web-first savdogarlar;
-- kichik jamoa va bir nechta sotuvchisi/filiali bor do‘konlar;
-- Excel bilan va POS/ERP bilan ishlaydiganlar;
-- tayyor PC va buyurtma asosida yig‘ishni aralashtiradiganlar.
+### 4.2 Suhbat qoidalari
 
-### 4.2. Intervyu qoidalari
+1. "Bizning AI sizga kerakmi?" deb so'rashdan oldin hozir qanday ishlashini bilib olamiz.
+2. Oxirgi **haqiqiy** holatlarni so'raymiz, "kelajakda nima qilardingiz" degan taxminlarga tayanmaymiz.
+3. Vaqt va hajmni iloji bo'lsa o'zimiz kuzatamiz; ko'rmagan raqamni "taxmin" deb belgilaymiz.
+4. Chat namunalarini faqat ruxsat bilan olamiz; telefon, manzil, ism, karta, chek kabi shaxsiy ma'lumotlarni yashiramiz. Ruxsatsiz xom ma'lumotni tashqi AI xizmatiga yubormaymiz.
+5. Rasman tasdiqlanmagan Instagram yoki to'lov imkoniyatlarini va'da qilmaymiz.
+6. Har suhbat oxirida bitta aniq keyingi qadamni kelishamiz: fayl namunasi, demo sanasi, pilot uchun mas'ul odam yoki rad javobi.
 
-1. “Bizning AI sizga kerakmi?”dan oldin mavjud ish jarayonini aniqlaymiz.
-2. Oxirgi **real** holatlarni so‘raymiz, taxminiy kelajakdagi javoblarga tayanmaymiz.
-3. Vaqt/hajmni imkon bo‘lsa kuzatamiz; ko‘rilmagan sonni “estimate” deb belgilaymiz.
-4. Chat namunalarini faqat ruxsat bilan olamiz; telefon, manzil, F.I.Sh., karta, chek va boshqa shaxsiy ma’lumotlarni yashiramiz. Ruxsatsiz xom ma’lumotni uchinchi tomon AIga yubormaymiz.
-5. Merchantga rasman tasdiqlanmagan Instagram yoki to‘lov imkoniyatlarini va’da qilmaymiz.
-6. Har uchrashuv oxirida bitta amaliy keyingi qadamni olamiz: eksport namuna, demo sanasi, pilot sponsor yoki rad javobi.
+### 4.3 30 daqiqalik suhbat tartibi
 
-### 4.3. 30 daqiqalik uchrashuv
-
-| Vaqt | Vazifa |
+| Vaqt | Nima haqida |
 |---|---|
-| 0–5 min | Do‘kon formati, filial, jamoa, sotuv kanallari |
-| 5–15 min | Oxirgi haqiqiy savdo va yo‘qolgan/kechikkan leadni kuzatish |
-| 15–22 min | Katalog, quote, ombor, narx, payment workflow |
-| 22–27 min | Ish vaqti/pulga ta’siri, mavjud vositalar, to‘lov motivi |
-| 27–30 min | Demo/pilotga tayyorgarlik, ma’lumot olish shartlari |
+| 0–5 daqiqa | Shop qanday ishlaydi: filiallar, jamoa, sotuv kanallari |
+| 5–15 daqiqa | Oxirgi haqiqiy savdo va yo'qotilgan yoki kechikkan xaridor |
+| 15–22 daqiqa | Katalog, taklif tuzish, ombor, narx, to'lov |
+| 22–27 daqiqa | Vaqt va pulga ta'siri, hozirgi dasturlar, nimaga pul to'lashga tayyor |
+| 27–30 daqiqa | Demo yoki pilotga tayyorlik, ma'lumot berish shartlari |
 
-## 5. Do‘konlarga beriladigan asosiy 22 savol
+## 5. Shoplarga beriladigan 22 ta savol
 
 **Savdo va xabarlar**
+1. Asosiy mahsulotlaringiz qaysilar? Buyurtma asosida PC yig'ish qancha qismini tashkil qiladi?
+2. Kuniga yoki haftasiga nechta **haqiqiy savdo so'rovi** keladi va qayerdan?
+3. Oxirgi xaridor yozganidan buyurtmagacha qanday qadamlar bo'lganini ko'rsata olasizmi?
+4. Qaysi savollar ko'p takrorlanadi? Javob berishning qaysi qismi eng ko'p vaqt oladi?
+5. Ish vaqtidan tashqari yozganlarga nima bo'ladi?
 
-1. Asosiy mahsulotlaringiz qaysilar? Custom PC yig‘ish ulushi qancha?
-2. Bir kun/haftada nechta **haqiqiy savdo so‘rovi** keladi va qayerdan?
-3. Oxirgi xaridor yozganidan buyurtma kelguncha qanday qadamlar bo‘lganini ko‘rsata olasizmi?
-4. Ko‘p takrorlanadigan savollar qaysi? Javob berishning qaysi qismi eng ko‘p vaqt oladi?
-5. Ish vaqtidan tashqari yozganlarga nima bo‘ladi?
+**PC yig'ish, narx, yetkazib beruvchi**
+6. Xaridor byudjetini aytgandan keyin taklif tayyorlash necha daqiqa oladi? Oxirgi uchta misolni ko'rsata olasizmi?
+7. Protsessor, ona plata, xotira, quvvat bloki, korpus va BIOS mosligini kim tekshiradi?
+8. Narxlar qayerda saqlanadi, qanchalik tez-tez o'zgaradi, dollar kursi ishlatiladimi?
+9. Sizda yo'q qismni yetkazib beruvchidan yoki boshqa filialdan olib kelasizmi? Haqiqiy qoldiq qayerdan ma'lum bo'ladi?
+10. Xaridorga berilgan narxli taklif qancha muddat amal qiladi va uni kim yakuniy tasdiqlaydi?
 
-**PC yig‘ish, narx, supplier**
-
-6. Mijoz budjet aytgandan keyin taklif tayyorlash necha daqiqa oladi? Oxirgi uch misolni ko‘rsata olasizmi?
-7. CPU socket, RAM, motherboard, PSU, case va BIOS mosligini kim tekshiradi?
-8. Narxlar qayerda saqlanadi, qanchada o‘zgaradi, valyuta kursi bormi?
-9. Sizda yo‘q komponentni supplier yoki boshqa filialdan olib kelasizmi? Haqiqiy qoldiq qayerdan ma’lum bo‘ladi?
-10. Xaridorga berilgan narxli taklif qancha muddat amal qiladi va kim yakuniy tasdiqlaydi?
-
-**CRM, ombor, buyurtma**
-
-11. Xabarga kim javob beradi, chat boshqa menejerga qanday beriladi?
-12. Oxirgi marta mijoz unutib qoldirilganda nima bo‘lgan? Muammo qanday aniqlangan?
-13. Stokning asosiy manbai Excel, POS, supplier chat yoki boshqami?
-14. Bitta qolgan tovarga ikki mijoz buyurtma qilsa nima qilasiz? Rezerv bormi?
+**Xaridorlar, ombor, buyurtmalar**
+11. Xabarlarga kim javob beradi? Suhbat boshqa menejerga qanday o'tkaziladi?
+12. Oxirgi marta xaridor unutilib qolganda nima bo'lgan? Buni qanday bilib qoldingiz?
+13. Qoldiqning asosiy manbai nima: Excel, kassa dasturi, yetkazib beruvchi chati yoki boshqa?
+14. Oxirgi bitta mahsulotga ikki xaridor buyurtma bersa nima qilasiz? Band qilib qo'yasizmi?
 15. Buyurtma, bekor qilish, qaytarish, kafolat, yetkazish holatlarini qayerda yuritasiz?
-16. Mijoz to‘laganini qanday tasdiqlaysiz? Check rasmi yetarlimi yoki haqiqiy tushum tekshiriladimi?
+16. Xaridor to'laganini qanday tasdiqlaysiz? Chek rasmi yetarlimi yoki pul tushganini tekshirasizmi?
 
-**Qaror va iqtisodiy qiymat**
+**Qaror va pul**
+17. Qaysi dasturlardan voz kechishni istamaysiz? Ulardan ma'lumotni faylga chiqarsa yoki ulansa bo'ladimi?
+18. Sotuvchi kuniga takroriy savollarga taxminan qancha vaqt sarflaydi? Buni o'lchash mumkinmi?
+19. Har kuni bilishni xohlaydigan 3 ta raqamingiz qaysi? Ovoz bilan so'rash qulaymi yoki yozma hisobotmi?
+20. Faqat bitta jarayonni tezlashtira olsak, qaysi birini tanlardingiz? Nega?
+21. Yangi xizmatni sotib olishga kim qaror qiladi? 30 kunlik pilotdan keyin pul to'lashingiz uchun nima bo'lishi kerak?
+22. Kelajakda mahsulotlaringiz boshqa shoplar bilan narx solishtirishda ko'rinishiga rozimisiz? Qaysi ma'lumotlar ochiq bo'lishi mumkin?
 
-17. Qaysi dasturlarni almashtirishni istamaysiz? Ularda API yoki eksport bormi?
-18. Sotuvchi bir kunda takroriy savollarga taxminan qancha vaqt sarflaydi? Buni o‘lchash mumkinmi?
-19. Har kuni bilishni xohlagan 3 ta biznes metrikangiz qaysilar? Ovozni ishlatish qulaymi yoki yozma hisobotmi?
-20. Agar faqat bitta jarayonni tezlashtira olsak, qaysisini tanlardingiz? Nima uchun?
-21. Yangi xizmatni sotib olishga kim qaror qiladi? 30 kunlik cheklangan pilot va undan keyin to‘lovga nima sabab bo‘ladi?
-22. Kelajakda mahsulotingizni boshqa do‘konlar bilan narx solishtirishda ko‘rsatishga rozimisiz? Qaysi maydonlar public bo‘lishi mumkin?
+**Qo'shimcha savollar:** "Oxirgi marta qachon bo'lgan?", "Ekranda ko'rsata olasizmi?", "Qancha vaqt ketdi?", "Kim tasdiqladi?", "Nima noto'g'ri ketdi?"
 
-**Yordamchi savollar:** “Oxirgi marta qachon?”, “Ekranda ko‘rsata olasizmi?”, “Qancha vaqt oldi?”, “Kim tasdiqladi?”, “Nima xato ketdi?”
+## 6. Kuzatiladigan savdo jarayoni
 
-## 6. Kuzatiladigan haqiqiy savdo jarayoni
+Har shopda quyidagi yo'lni kuzatamiz va qayerda uzilishini belgilaymiz:
 
-```mermaid
-flowchart TD
-  A[Inbound savdo xabari] --> B{Ko'rildi va egasi tayinlandimi?}
-  B -->|Yo'q| X[Javobsiz / kechikkan lead]
-  B -->|Ha| C[Budjet va ehtiyoj aniqlash]
-  C --> D{Narx va stok ishonchlimi?}
-  D -->|Yo'q| E[Menejer / supplier tekshiruvi]
-  D -->|Ha| F[Quote tayyorlash]
-  E --> F
-  F --> G{Xaridor qabul qildimi?}
-  G -->|Yo'q| H[Sabab / follow-up]
-  G -->|Ha| I[Rezerv / payment tekshiruvi]
-  I --> J[Order tasdiqlandi]
-  J --> K[Olib ketish yoki delivery]
-  K --> L[Yetkazildi / return / feedback]
+```
+Xaridor yozdi ──▶ Kimdir ko'rdi va javobgar belgilandimi?
+                     ├─ Yo'q ──▶ Javobsiz yoki kechikkan xaridor
+                     └─ Ha ──▶ Byudjet va ehtiyoj aniqlanadi
+                               ──▶ Narx va qoldiq ishonchlimi?
+                                     ├─ Yo'q ──▶ Menejer yoki yetkazib beruvchi tekshiradi ──┐
+                                     └─ Ha ─────────────────────────────────────────────────┴──▶ Taklif tayyorlanadi
+                                                                                                    ──▶ Xaridor rozimi?
+                                                                                                          ├─ Yo'q ──▶ Sababi, qayta bog'lanish
+                                                                                                          └─ Ha ──▶ Band qilish, to'lov
+                                                                                                                    ──▶ Buyurtma tasdiqlandi
+                                                                                                                    ──▶ Olib ketish yoki yetkazish
+                                                                                                                    ──▶ Berildi / qaytarildi / fikr
 ```
 
-Har do‘konda: xabar kanali, qancha handoff, quote vaqti, qo‘lda nusxalash, narx manbai, rezerv, to‘lov tasdiqlash va yakuniy statusga e’tibor beramiz.
+Har shopda e'tibor beramiz: xabar qaysi kanaldan keldi, necha marta boshqa odamga o'tdi, taklif qancha vaqtda tayyorlandi, nima qo'lda ko'chirildi, narx qayerdan olindi, mahsulot band qilindimi, to'lov qanday tasdiqlandi, oxirgi holat nima bo'ldi.
 
-### Dalillarni qanday saqlaymiz?
+### Dalillarni qanday yozib boramiz
 
-| Maydon | Qiymat formati |
+| Maydon | Nima yoziladi |
 |---|---|
 | `evidence_id` | `EVD-001` |
-| `merchant_code` | `M-001`; roziliksiz real do‘kon nomini oshkor qilmaymiz |
-| `date`, `role` | Sana/vaqt zonasi, owner/sales/stock |
-| `source_type` | interview / observation / sanitized chat / allowed export |
-| `finding` | Aynan nima kuzatildi, sharh emas |
+| `shop_code` | `S-001`; roziliksiz haqiqiy shop nomini ochiqlamaymiz |
+| `date`, `role` | Sana; kim bilan gaplashildi (ega, operator, omborchi) |
+| `source_type` | Suhbat / kuzatuv / shaxsiy ma'lumoti yashirilgan chat / ruxsat bilan olingan fayl |
+| `finding` | Aynan nima ko'rildi — izoh emas, fakt |
 | `related_hypothesis` | `HYP-001` va h.k. |
-| `confidence` | Low / Medium / High + asos |
+| `confidence` | Past / o'rta / yuqori va nega |
 | `counter_evidence` | Qarama-qarshi misol |
-| `privacy_and_consent` | Rozilik, redaction, retention |
-| `next_validation` | Keyingi qanday dalil kerak |
+| `privacy_and_consent` | Rozilik, nima yashirildi, qancha saqlanadi |
+| `next_validation` | Keyin qanday dalil kerak |
 
-Dalil kuchi: kuzatilgan real ish/eksport — kuchli; yaqin o‘tmishdagi batafsil misol — o‘rta; umumiy fikr — zaif.
+**Dalil kuchi:** kuzatilgan haqiqiy ish yoki fayl — kuchli; yaqinda bo'lgan batafsil misol — o'rta; umumiy fikr — zaif.
 
-## 7. Asosiy KPIlar va baseline
+## 7. Asosiy ko'rsatkichlar
 
-| ID | KPI | O‘lchash usuli | Muhim farq |
+Pilotdan oldin va pilot davomida shu ko'rsatkichlarni o'lchaymiz:
+
+| ID | Ko'rsatkich | Qanday o'lchanadi | E'tibor bering |
 |---|---|---|---|
-| KPI-001 | `inbound_inquiries` | Takror va spamdan tozalangan mazmunli savdo suhbatlari | Xabarlar soni emas, alohida so‘rov |
-| KPI-002 | `first_response_time_p50/p90` | Birinchi mazmunli javobga qadar vaqt | Avtomatik “salom” yetarli emas |
-| KPI-003 | `qualified_lead_rate` | Aniqlangan budjet/maqsad/kontaktga ega lead ulushi | Mezoni oldindan kelishiladi |
-| KPI-004 | `quote_preparation_time` | Ma’lumot yetarli bo‘lgandan yuborilguncha | Tayyor PC vs custom alohida |
-| KPI-005 | `quote_to_order` | Tasdiqlangan order / quote | Vaqt bo‘yicha cohort bilan |
-| KPI-006 | `verified_paid_orders` | Tasdiqlangan to‘lov/real orderlar | AIga noto‘g‘ri attribution qilmaslik |
-| KPI-007 | `wrong_price_stock_claims` | Noto‘g‘ri narx/qoldiq incidentlari | Zero critical target |
-| KPI-008 | `staff_time_spent` | Ish vaqti namunasi | Self-report xato bo‘lishi mumkin |
-| KPI-009 | `merchant_contribution` | Qo‘shimcha savdodan hissa foyda, xarajatlarni ayirib | Foyda taxminini o‘ylab topmaslik |
-| KPI-010 | `ai_cost_per_conversation` | LLM + STT/TTS + infra + kanallar | Obunaga nisbatan hisoblash |
-| KPI-011 | `human_handoff_rate` | Operatorga o‘tgan chatlar / AI chatlar | Juda past ham xavfli |
-| KPI-012 | `catalog_data_freshness` | Tekshirilgan narx va qoldiq ulushi | Supplier stoki alohida baholanadi |
+| KPI-001 | Savdo so'rovlari soni | Takror va spamsiz, jiddiy so'rovlar | Xabarlar soni emas, alohida so'rovlar |
+| KPI-002 | Birinchi javob vaqti (o'rtacha va eng sekin 10%) | Birinchi mazmunli javobgacha vaqt | Avtomatik "salom" hisoblanmaydi |
+| KPI-003 | Sifatli lead ulushi | Byudjeti, maqsadi va kontakti aniq leadlar | Mezon oldindan kelishiladi |
+| KPI-004 | Taklif tayyorlash vaqti | Ma'lumot yetarli bo'lgandan yuborilgunga qadar | Tayyor PC va buyurtma yig'ma alohida |
+| KPI-005 | Taklifdan buyurtmaga o'tish | Tasdiqlangan buyurtmalar / takliflar | Vaqt bo'yicha guruhlab |
+| KPI-006 | Haqiqiy buyurtmalar | Topshirilgan buyurtmalar | Hammasini AI'ga yozib qo'ymaslik |
+| KPI-007 | Noto'g'ri narx yoki qoldiq holatlari | Xaridorga noto'g'ri ma'lumot berilgan holatlar | Maqsad — nol |
+| KPI-008 | Xodim vaqti | Ish vaqti namunasi | O'zi aytgan raqam noaniq bo'lishi mumkin |
+| KPI-009 | Shopga qo'shimcha foyda | Qo'shimcha savdodan foyda, xarajatlarni ayirib | Foydani o'ylab topmaslik |
+| KPI-010 | Bitta AI suhbat narxi | AI + ovoz + server + kanallar xarajati | Oylik to'lov bilan solishtiriladi |
+| KPI-011 | Operatorga uzatish ulushi | Operatorga o'tgan suhbatlar / AI suhbatlari | Juda past bo'lishi ham xavfli |
+| KPI-012 | Katalog yangiligi | Tekshirilgan narx va qoldiq ulushi | Yetkazib beruvchi qoldig'i alohida |
 
-Imkon bo‘lsa pilotdan **7–14 kun oldin baseline**, pilotda esa **2–4 hafta** o‘lchov olamiz. Boshqa reklama kampaniyalari bilan farqlarni hisobga olmasdan “AI savdoni oshirdi” demaymiz.
+Iloji bo'lsa pilotdan **7–14 kun oldin** boshlang'ich o'lchov, pilot davomida **2–4 hafta** o'lchov olamiz. Boshqa reklama kampaniyalari ta'sirini hisobga olmasdan "AI savdoni oshirdi" demaymiz.
 
-### Merchant kuzatuv jadvali (hali to‘ldirilmagan)
+### Shoplar jadvali (hali to'ldirilmagan)
 
-| Merchant | So‘rov/kun | Quote vaqti | Katalog manbai | Qaror qiluvchi | Pilot | Dalil | Status |
+| Shop | So'rov/kun | Taklif vaqti | Katalog manbai | Qaror qiluvchi | Pilot | Dalil | Holat |
 |---|---|---|---|---|---|---|---|
-| M-001 | TBD | TBD | TBD | TBD | TBD | TBD | Pending |
-| M-002 | TBD | TBD | TBD | TBD | TBD | TBD | Pending |
-| M-003 | TBD | TBD | TBD | TBD | TBD | TBD | Pending |
+| S-001 | — | — | — | — | — | — | Kutilmoqda |
+| S-002 | — | — | — | — | — | — | Kutilmoqda |
+| S-003 | — | — | — | — | — | — | Kutilmoqda |
 
-## 8. Pilot do‘konni saralash (100 ballik boshlang‘ich model)
+## 8. Pilot shopni saralash (100 ballik)
 
-| Mezoni | Ball | Qanday tekshiriladi |
+| Mezon | Ball | Qanday tekshiriladi |
 |---|---:|---|
-| Takrorlanadigan muhim savdo so‘rovi | 20 | Kuzatilgan yoki hujjatli hajm |
-| Ishonchli katalog/narx/stock olish imkoniyati | 25 | Eksport namunasi yoki namoyish |
-| Egasi/menejerning vaqt va qaror vakolati | 20 | Pilot sponsor, haftalik feedback |
-| Haqiqiy qimmat muammo va KPI | 20 | Dalil, baseline |
-| Rasmiy integratsiya va privacy imkoniyati | 15 | Channel eligibility, consent |
+| Muntazam keladigan savdo so'rovlari | 20 | Kuzatilgan yoki hujjatlangan hajm |
+| Ishonchli katalog, narx va qoldiqni olish imkoniyati | 25 | Fayl namunasi yoki ko'rsatib berish |
+| Ega yoki menejerning vaqti va qaror qilish huquqi | 20 | Pilot uchun mas'ul odam, haftalik fikr |
+| Haqiqiy, qimmatga tushadigan muammo va o'lchanadigan ko'rsatkich | 20 | Dalil, boshlang'ich o'lchov |
+| Rasmiy integratsiya va shaxsiy ma'lumot bo'yicha imkoniyat | 15 | Kanallar mosligi, rozilik |
 | **Jami** | **100** | |
 
-- **80–100:** kuchli nomzod (red flag bo‘lmasa).
-- **60–79:** cheklangan scope bilan sinash mumkin.
-- **0–59:** discovery davom etsin; majburiy ulashga urinmaymiz.
+- **80–100:** kuchli nomzod (jiddiy muammo bo'lmasa).
+- **60–79:** cheklangan doirada sinash mumkin.
+- **0–59:** suhbatlar davom etadi; majburlab ulamaymiz.
 
-**Stop holatlari:** ma’lumotga qonuniy kirish yo‘q; haqiqiy narx manbai yo‘q; ruxsatsiz scraping talab qiladi; chek rasmini tekshirmay payment tasdiqlashni so‘raydi; natijani umuman o‘lchashga rozi emas.
+**To'xtash holatlari:** ma'lumotga qonuniy kirish yo'q; haqiqiy narx manbai yo'q; norasmiy usullar (scraping) talab qilinadi; chek rasmini tekshirmasdan to'lovni tasdiqlashni so'rashadi; natijani o'lchashga umuman rozi emas.
 
-## 9. Sinov taklifi va pilot ssenariylari
+## 9. Sinov taklifi va demo ssenariylari
 
-### Taklif matni (gipoteza)
+### Shopga aytiladigan taklif (faraz)
 
-> “Do‘koningiz mahsulotlarini yagona katalogga ulab, Telegram/web va rasmiy ruxsatli kanallarda AI bilan savdo so‘rovlariga javob beramiz. Xaridorning budjeti va talabiga mos PC narxli taklifini tayyorlaymiz, tasdiq kerak bo‘lsa menejeringizga yuboramiz. Suhbatlar va buyurtmalar dashboardda saqlanadi; natijani raqam bilan ko‘rasiz.”
+> "Mahsulotlaringizni yagona katalogga ulaymiz va Telegram, Instagram hamda saytingizdagi chatda AI bilan xaridorlarga javob beramiz. Xaridorning byudjeti va ehtiyojiga mos PC narxli taklifini tayyorlaymiz va tasdiqlash uchun menejeringizga yuboramiz. Xaridor 'olaman' desa, buyurtma qoralamasi tayyorlanadi va operatoringiz bog'lanadi. Hamma suhbat va buyurtmalar bir joyda; natijani raqamlarda ko'rasiz."
 
-**Nimani va’da qilmaymiz:** 100% avtomatik sotuv, xatosiz AI, har qanday Instagram akkauntiga darhol ulanish yoki kafolatlangan daromad.
+**Va'da qilmaymiz:** 100% avtomatik sotuv, xatosiz AI, istalgan Instagram akkauntiga darhol ulanish yoki kafolatlangan daromad.
 
 ### Pilot chegaralari
 
-- Maqsad — 3–5 ta real do‘kon; cheksiz bepul xizmat emas.
-- 30 kunlik cheklangan pilot **taklif**; haqiqiy narx va majburiyatlar biznes model va pilot shartnomasi hujjatlarida belgilanadi (hali yozilmagan).
-- 1–2 kanal va ishonchli katalog subseti bilan boshlash mumkin.
-- AI quote **draft** tayyorlaydi; tekshirilmagan narx/stock/moslikni tasdiqlamaydi.
-- Inson istalgan payt suhbatni olishi mumkin; AI send funksiyasida kill switch bo‘ladi.
-- Merchant shaxsiy ma’lumotlari o‘zining biznes doirasida qoladi; global public offer uchun alohida opt-in.
-- Muvaffaqiyat: javob vaqti, quote vaqti, qualified lead, operator vaqti, haqiqiy order, AI xarajati, accuracy.
+- Maqsad — 3–5 ta haqiqiy shop; cheksiz bepul xizmat emas.
+- 30 kunlik bepul pilot, keyin pullik (DEC-119). Shartlar — `business/14`.
+- 1–2 kanal va katalogning ishonchli qismi bilan boshlash mumkin.
+- AI faqat taklif va buyurtma **qoralamasi**ni tayyorlaydi; tekshirilmagan narx, qoldiq yoki moslikni tasdiqlamaydi.
+- Odam istalgan payt suhbatni ola oladi; AI'ni bir tugma bilan o'chirish mumkin.
+- To'lov va yetkazish tizimdan tashqarida — shop o'zi qiladi (DEC-100).
+- Shop ma'lumotlari shop ichida qoladi; umumiy qidiruvga faqat alohida rozilik bilan.
+- Muvaffaqiyat: javob vaqti, taklif vaqti, sifatli leadlar, operator vaqti, haqiqiy buyurtmalar, AI xarajati, aniqlik.
 
-### Beshta demo-scenario
+### Beshta demo ssenariy
 
-1. **Katalog:** Excel/CSV import → validatsiya → tasdiq → merchant saytida mahsulot sahifasi.
-2. **AI PC maslahat:** “10 mln so‘mgacha Premiere + CS2” → ehtiyoj → bazadagi SKU → compatibility → quote draft → manager approval.
-3. **Lead:** esdan chiqayotgan chat → assigned operator → follow-up → yakuniy natija.
-4. **Buyurtma:** tasdiqlash → vaqtinchalik stock rezerv → payment verification → notification; duplicate callback ikki marta qoldiq kamaytirmaydi.
-5. **Voice preview:** egasi o‘zbek/rus/ingliz tilida bir KPI so‘raydi → ruxsatli agregat → sana va source bilan javob; yozish amali yo‘q.
+1. **Katalog:** Excel faylni yuklash → xatolarni tekshirish → tasdiqlash → mahsulot shop saytida ko'rinadi.
+2. **AI PC maslahat:** "10 mln so'mgacha Premiere va CS2 uchun" → ehtiyojni aniqlash → katalogdagi mahsulotlar → moslik tekshiruvi → taklif qoralamasi → menejer tasdig'i.
+3. **Lead:** unutilayotgan suhbat → operatorga biriktirish → eslatma → natija.
+4. **Buyurtma:** xaridor "olaman" → AI qoralama yaratadi → operator tasdiqlaydi va mahsulot band qilinadi → xaridorga xabar; bir xil so'rov ikki marta kelsa qoldiq ikki marta kamaymaydi.
+5. **Ovozli hisobot (namoyish):** ega o'zbek, rus yoki ingliz tilida bitta raqamni so'raydi → tizim ruxsat etilgan umumiy raqamni sana va manbasi bilan aytadi; ovoz orqali hech narsa o'zgartirilmaydi.
 
-Demo raqamlar **mock** yoki merchant ruxsat bergan real ma’lumotlar deb alohida ko‘rsatiladi.
+Demoda ishlatilgan raqamlar **namuna** yoki shop ruxsat bergan haqiqiy ma'lumot ekani aniq ko'rsatiladi.
 
-## 10. Erta aniqlanishi kerak bo‘lgan xavflar
+## 10. Erta aniqlanishi kerak bo'lgan xavflar
 
-| ID | Savol / xavf | Boshlang‘ich himoya yo‘li | Batafsil hujjat |
+| ID | Savol yoki xavf | Boshlang'ich himoya | Batafsil |
 |---|---|---|---|
-| RISK-001 | Rasmiy Instagram messaging ulanishi mumkinmi? | Telegram/web fallback, capability matrix | engineering/13 |
-| RISK-002 | Narx juda tez o‘zgaradimi? | Freshness, quote snapshot, approval | business/03, engineering/06–07 |
-| RISK-003 | Oxirgi dona 2 kanalda sotilib ketadimi? | DB atomic rezerv, idempotency | engineering/07, engineering/09 |
-| RISK-004 | AI GPU/CPU yoki narxni o‘ylab topadimi? | Typed tools, rule engine, human review | business/08, engineering/15–17 |
-| RISK-005 | Merchant maxfiy ma’lumoti globalda chiqib ketadimi? | Tenant isolation, explicit public offer | engineering/10, engineering/14, engineering/23 |
-| RISK-006 | Fake screenshot bilan payment tasdiqlanadimi? | Bankdagi haqiqiy tushum / provider callback | business/03, engineering/13 |
-| RISK-007 | Chat/audio/shaxsiy data huquqiy qayta ishlanadimi? | Notice/consent, minimization, retention | engineering/10, engineering/17 |
-| RISK-008 | Job crash / duplicate webhook nima qiladi? | Outbox, retry, DLQ, reconciliation | engineering/09, engineering/19 |
-| RISK-009 | Merchant katalogni yangilamasa nima bo‘ladi? | Data freshness, assisted onboarding | business/02, engineering/06 |
-| RISK-010 | Voice orqali moliyaviy maxfiy ma’lumot chiqadimi? | Role-scoped report, no silent write | business/08, engineering/16 |
+| RISK-001 | Instagram'ga rasmiy ulanish mumkinmi? | Telegram va sayt bilan boshlash; kanallar imkoniyatlari jadvali | `engineering/30` |
+| RISK-002 | Narx juda tez o'zgaradimi? | Narx yangiligi nazorati, taklifda narx qotiriladi, tasdiq | `business/03` |
+| RISK-003 | Oxirgi mahsulot ikki kanalda sotilib ketadimi? | Bir vaqtdagi tasdiqlarda faqat bittasi o'tadi; takroriy so'rov himoyasi | `business/05`, `business/10` (TC-002, TC-027) |
+| RISK-004 | AI qism yoki narxni o'ylab topadimi? | AI faqat tizimdagi ma'lumotdan foydalanadi; aniq qoidalar; odam tekshiruvi | `business/08`, `engineering/26` |
+| RISK-005 | Shopning maxfiy ma'lumoti boshqalarga chiqib ketadimi? | Shoplar to'liq ajratilgan; ommaviy taklif faqat rozilik bilan | `engineering/23` |
+| RISK-006 | Soxta chek bilan to'lov tasdiqlanadimi? | Stage 1 da to'lov tizimdan tashqarida; keyin — faqat haqiqiy tushum bilan | `business/03`, DEC-100 |
+| RISK-007 | Chat, audio va shaxsiy ma'lumotlar qonuniy ishlanadimi? | Xabardor qilish va rozilik, kam ma'lumot yig'ish, saqlash muddati | `engineering/32` |
+| RISK-008 | Tizim to'xtab qolsa yoki xabar takror kelsa nima bo'ladi? | Xabarlar yo'qolmaydi, qayta yuboriladi, takrorlanmaydi | `business/10` (TC-010, TC-022) |
+| RISK-009 | Shop katalogni yangilamasa nima bo'ladi? | Eskirgan narx nazorati, ulashda yordam | `business/02`, `business/13` |
+| RISK-010 | Ovoz orqali maxfiy moliyaviy ma'lumot chiqib ketadimi? | Har kim faqat o'z ruxsatidagi raqamni oladi, ovoz bilan o'zgartirish yo'q | `business/08` |
 
-Bu hujjat xavfni qayd etadi, barcha implementatsiya qarorini **ADR** hujjatlarida hal qilamiz.
+Bu hujjat xavflarni qayd qiladi; texnik yechimlar `engineering/` hujjatlarida va qarorlar registrida.
 
-## 11. Qaror daraxti
+## 11. Suhbatlardan keyin qanday qaror qilamiz
 
-```mermaid
-flowchart TD
-  A[Intervyu + dalillar] --> B{Takrorlanadigan qimmat muammo bormi?}
-  B -->|Yo'q| C[ICP yoki muammoni qayta tanlash]
-  B -->|Ha| D{Ishonchli katalog/narx bormi?}
-  D -->|Yo'q| E[Avval lead capture + handoff]
-  D -->|Ha| F{PC quote eng og'riqli jarayonmi?}
-  F -->|Ha| G[AI PC Quote + Builder]
-  F -->|Yo'q| H[AI inbound + follow-up]
-  E --> I{Pilot sponsor va KPI bormi?}
-  G --> I
-  H --> I
-  I -->|Yo'q| J[Discovery davom etadi]
-  I -->|Ha| K[Cheklangan demo + pilot]
-  K --> L[Stage 1 MVP scope taklifi]
+```
+Suhbatlar va dalillar ──▶ Muntazam, qimmatga tushadigan muammo bormi?
+   ├─ Yo'q ──▶ Boshqa mijoz turi yoki boshqa muammoni tanlash
+   └─ Ha ──▶ Ishonchli katalog va narx bormi?
+              ├─ Yo'q ──▶ Avval leadlarni yig'ish va operatorga uzatishdan boshlash ──┐
+              └─ Ha ──▶ Eng og'ir jarayon — PC taklifimi?                              │
+                         ├─ Ha ──▶ AI PC taklifi + moslik tekshiruvi ──────────────────┤
+                         └─ Yo'q ──▶ AI javob + qayta bog'lanish ──────────────────────┤
+                                                                                         ▼
+                                                  Pilot uchun mas'ul odam va ko'rsatkichlar bormi?
+                                                     ├─ Yo'q ──▶ Suhbatlar davom etadi
+                                                     └─ Ha ──▶ Cheklangan demo va pilot ──▶ Stage 1 doirasi
 ```
 
-**GO (taklif):** kamida 3 merchant muammoga dalil beradi, ruxsatli katalog namunasi mavjud, pilotni tasdiqlovchi shaxs va KPI baseline aniq, integratsiya xavfsiz bo‘lishi mumkin.
+**Boshlaymiz:** kamida 3 ta shop muammoni dalil bilan tasdiqlaydi, ruxsat bilan olingan katalog namunasi bor, pilot uchun mas'ul odam va boshlang'ich o'lchov aniq, integratsiya xavfsiz qilinishi mumkin.
 
-**REVISE:** muammo bor, ammo narx/qoldiq ma’lumoti ishonchsiz — AI checkout emas, lead capture va manager handoffdan boshlash.
+**O'zgartiramiz:** muammo bor, lekin narx va qoldiq ma'lumoti ishonchsiz — AI orqali buyurtma emas, leadlarni yig'ish va menejerga uzatishdan boshlaymiz.
 
-**NO-GO (feature):** noqonuniy scraping, shubhali to‘lovni avtomatik tasdiqlash, tenantlararo ma’lumot uzatilishi yoki asoslanmagan aniq narx va’da qilish talab etilsa.
+**Qilmaymiz:** norasmiy usullar (scraping), shubhali to'lovni avtomatik tasdiqlash, shoplar o'rtasida ma'lumot uzatish yoki asossiz aniq narx va'da qilish talab qilinsa.
 
-## 12. Har bir uchrashuvdan keyingi qayd shabloni
+## 12. Har suhbatdan keyin to'ldiriladigan shablon
 
 ```yaml
-merchant_code: M-001
-interview_date: null
-respondent_role: null
-segment: null
-branches_count: null
-channels: []
-observed_recent_workflow: null
-main_pains: []
-quantitative_baseline: {}
-price_stock_source: null
-channel_readiness: null
-public_offer_opt_in_interest: null
-pilot_decision_maker: null
-pilot_next_step: null
-evidence_ids: []
-privacy_consent: null
-hypothesis_updates: []
-open_questions: []
+shop_code: S-001
+interview_date: null        # suhbat sanasi
+respondent_role: null       # kim bilan gaplashildi
+segment: null               # shop turi
+branches_count: null        # filiallar soni
+channels: []                # sotuv kanallari
+observed_recent_workflow: null  # kuzatilgan oxirgi savdo jarayoni
+main_pains: []              # asosiy muammolar
+quantitative_baseline: {}   # boshlang'ich raqamlar
+price_stock_source: null    # narx va qoldiq manbai
+channel_readiness: null     # kanallar ulanishga tayyormi
+public_offer_opt_in_interest: null  # ommaviy taklifga qiziqish
+pilot_decision_maker: null  # pilot bo'yicha qaror qiluvchi
+pilot_next_step: null       # keyingi qadam
+evidence_ids: []            # dalillar
+privacy_consent: null       # rozilik
+hypothesis_updates: []      # farazlar bo'yicha o'zgarishlar
+open_questions: []          # ochiq savollar
 ```
 
-Maxfiy mijoz ma’lumotlari, credentials yoki asl chek rasmlarini bu faylga qo‘ymaymiz.
+Bu faylga xaridorlarning shaxsiy ma'lumotlari, parollar yoki asl chek rasmlari qo'yilmaydi.
 
-## 13. `DRAFT`dan `APPROVED`ga o‘tish shartlari
+## 13. Hujjat qachon "tasdiqlangan" bo'ladi
 
-- [ ] Yetarli son va turdagi haqiqiy do‘kon intervyulari o‘tkazilgan.
-- [ ] Har muhim xulosaga `EVD-###` dalil biriktirilgan.
-- [ ] Qarama-qarshi misollar ham ko‘rsatilgan.
-- [ ] Eng kuchli 3 muammo chastota × qiymat × to‘lashga tayyorlik bo‘yicha saralangan.
-- [ ] Kamida 3 do‘kon uchun KPI baseline o‘lchash usuli aniqlangan.
-- [ ] Katalog, narx, kanal va pilot vakolati tekshirilgan.
-- [ ] Stage 1 hero feature va “birinchi kundan qilmaymiz” ro‘yxati taklif qilingan.
-- [ ] Pilotga huquqiy/texnik bloklovchi xavf qolmagan yoki aniq cheklangan.
-- [ ] Asoschi A01ga `APPROVED` qarorini bergan.
+- [ ] Yetarli son va turdagi shoplar bilan haqiqiy suhbatlar o'tkazilgan.
+- [ ] Har muhim xulosaga dalil (`EVD-###`) biriktirilgan.
+- [ ] Qarama-qarshi misollar ham ko'rsatilgan.
+- [ ] Eng kuchli 3 ta muammo qanchalik tez-tez uchrashi, qanchaga tushishi va pul to'lashga tayyorlik bo'yicha saralangan.
+- [ ] Kamida 3 ta shop uchun boshlang'ich o'lchov usuli aniqlangan.
+- [ ] Katalog, narx, kanallar va pilot bo'yicha qaror qiluvchi tekshirilgan.
+- [ ] Stage 1 ning asosiy imkoniyati va "birinchi kundan qilmaymiz" ro'yxati taklif qilingan.
+- [ ] Pilotga huquqiy yoki texnik to'siq qolmagan yoki aniq cheklangan.
+- [ ] Asoschi A01 ni tasdiqlagan.
 
-### Keyingi hujjatlarga uzatiladigan ma’lumot
+### Natijalar qaysi hujjatlarga o'tadi
 
-| Hujjat | A01dan kerak bo‘lgan natija |
+| Hujjat | A01 dan nima kerak |
 |---|---|
-| Biznes model / unit economics (yozilmagan) | Muammo iqtisodiy qiymati, xabar hajmi, narxga sezgirlik, AI xarajat taxmini |
-| `business/10` — Release slices | G‘olib wedge, P0/P1, chiqarib tashlanadigan imkoniyatlar |
-| Pilot shartnomasi (yozilmagan) | Merchant majburiyatlari, data access, KPI baseline |
-| `business/03` — Business rules | Real narx, rezerv, quote, payment va delivery qoidalari |
-| `business/02` — All business modules | Tasdiqlangan user job va acceptance talablari |
-| `engineering/15–17` — AI, voice, dataset | Real savol namunalari, operatorga uzatish holatlari, AI eval ma’lumotlari |
+| `business/14` — pilot kelishuvi va narxlar | Muammoning pul qiymati, xabarlar hajmi, narxga sezgirlik, AI xarajati taxmini |
+| `business/10` — bosqichlar | Eng kuchli boshlang'ich imkoniyat, ustuvorliklar, chiqarib tashlanadiganlar |
+| `business/13` — shopni ulash | Shop majburiyatlari, ma'lumot olish yo'li, boshlang'ich o'lchov |
+| `business/03` — qoidalar | Haqiqiy narx, band qilish, taklif, to'lov va yetkazish qoidalari |
+| `business/02` — modullar | Tasdiqlangan foydalanuvchi vazifalari va qabul talablari |
+| `business/08`, `engineering/26` — AI | Haqiqiy savol namunalari, operatorga uzatish holatlari, AI sinovlari uchun misollar |
 
-## 14. Hozircha ochiq qoladigan qarorlar
+## 14. Hozircha ochiq qolgan savollar
 
-1. “Hero feature” — AI chatmi, PC quote’mi, lead trackingmi yoki kombinatsiyami?
-2. Qaysi rasmiy platforma kanallarini pilotda amalda ulaymiz?
-3. Do‘kon katalogi qanchalik toza va price/stock yangilanishi qanday?
-4. Quote narxi necha daqiqa/soat amal qiladi?
-5. To‘lovchi merchantning hissa foydasi SaaS + AI xarajatini oqlaydimi?
-6. Kelajakdagi public price comparisonga savdogar qanday qaraydi?
-7. Voice Copilot alohida pullik funksiya bo‘ladimi yoki keyinroq qo‘shiladimi?
+Ko'p savollarga 2026-10-22 da boshlang'ich javob berildi (registr: DEC-100…123). Suhbatlar ularni tasdiqlashi yoki o'zgartirishi kerak:
+1. Asosiy imkoniyat qaysi — AI chat, PC taklifi, lead kuzatuvi yoki birikmasi?
+2. Pilotda qaysi rasmiy kanallar amalda ulanadi? (Boshlang'ich javob: Telegram + Instagram + sayt chati, DEC-116.)
+3. Shop katalogi qanchalik toza va narx/qoldiq qanday yangilanadi?
+4. Taklif narxi qancha vaqt amal qiladi? (Boshlang'ich javob: 24 soat.)
+5. Shop oladigan qo'shimcha foyda oylik to'lov va AI xarajatini oqlaydimi?
+6. Shoplar kelajakdagi ommaviy narx solishtirishga qanday qaraydi?
+7. Ovozli hisobot alohida pullik bo'ladimi yoki keyinroq qo'shiladimi?
 
-**Keyingi amaliy qadam:** dastlab 5 do‘kon bilan suhbat, dalil to‘plash, HYP statuslarini yangilash. Shundan keyin A01ni tasdiqlab, biznes model / unit economics va pilot shartnomasi hujjatlarini dalil asosida yozamiz. **Hozir production kod yozilmaydi.**
+**Keyingi amaliy qadam:** avval 5 ta shop bilan suhbat, dalillar yig'ish, farazlar holatini yangilash. Shundan keyin A01 tasdiqlanadi, `14` dagi narxlar dalil asosida to'ldiriladi.
