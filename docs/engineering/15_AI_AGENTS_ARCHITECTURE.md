@@ -1,6 +1,6 @@
 # TECH-15 — AI agent architecture and tool authorization
 
-**Status:** Baseline Stage 1 (2026-10-22: DEC-009, DEC-016, DEC-100c, K-10, TECH-23); Stage 3 separated. **Agent = merchant profili + prompt versiyasi + RAG scope + tool ruxsatlari + har job uchun yangi ActorContext** — alohida model yoki process emas (TECH-23 §4). **AI is advisory+language orchestration, never authoritative for inventory, pricing, payments or PC hardware compatibility.** **References:** TECH-03/07/10, BL business rules, ADR-011/012.
+**Status:** Baseline Stage 1 (2026-10-22: DEC-009, DEC-016, DEC-100c, K-10, TECH-23); Stage 3 separated. **Batafsil kontraktlar:** tool sxemalari, prompt, xotira, PII redaction, javob tekshiruvi — `26_AI_TOOL_CONTRACTS.md`. **Agent = merchant profili + prompt versiyasi + RAG scope + tool ruxsatlari + har job uchun yangi ActorContext** — alohida model yoki process emas (TECH-23 §4). **AI is advisory+language orchestration, never authoritative for inventory, pricing, payments or PC hardware compatibility.** **References:** TECH-03/07/10, BL business rules, ADR-011/012.
 
 ## 1. Agent identities and trust boundaries
 | Agent | User | Data access | Allowed actions | Never do |

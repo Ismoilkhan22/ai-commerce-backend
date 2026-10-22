@@ -6,7 +6,7 @@ Bu fayl hujjatlarda tarqalgan barcha ochiq savollarning **yagona ro'yxati**. Har
 
 **Muhim (founder, 2026-10-22):** `APPROVED` qarorlar — **ishchi baseline**. Ular bo'yicha hujjatlar va kod ishlab chiqiladi, lekin pilot, intervyu yoki texnik spike natijasiga qarab o'zgartirilishi mumkin. O'zgartirish tartibi: registrda yangi variant va sabab yoziladi (`CHANGED (sana): eski → yangi`), so'ng 4-bo'limdagi ta'sirlangan hujjatlar yangilanadi.
 
-**Hujjatlarga kiritish holati:** ✅ 2026-10-22 — barcha `APPROVED` qarorlar `business/` va `engineering/` hujjatlariga kiritildi. Qolgan ish: 5-bo'lim, 4-band (yangi hujjatlar).
+**Hujjatlarga kiritish holati:** ✅ 2026-10-22 — barcha `APPROVED` qarorlar `business/` va `engineering/` hujjatlariga kiritildi. Yangi hujjatlar (24, 25, 26) ham yozildi. Keyingi ish: S0 skeleti.
 
 ---
 
@@ -522,4 +522,4 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 1. Har bir `APPROVED` qaror ta'sir qiladigan hujjatlarga kiritiladi (ADR, FSM, rollar, API, DB).
 2. K-01…K-10 konvensiyalari bo'yicha barcha hujjatlarda nomlar birlashtiriladi.
 3. Eski `O-xx`/`D-xx` jadvallari o'rniga shu registrga havola qo'yiladi.
-4. Yangi hujjatlar yoziladi: `API_CONVENTIONS_ERRORS_I18N`, `PC_COMPATIBILITY_ENGINE`, `AI_TOOL_CONTRACTS`.
+4. ✅ Yangi hujjatlar yozildi (2026-10-22): `engineering/24_API_CONVENTIONS_ERRORS_I18N.md`, `engineering/25_PC_COMPATIBILITY_ENGINE.md`, `engineering/26_AI_TOOL_CONTRACTS.md`.

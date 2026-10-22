@@ -67,7 +67,7 @@
   }
 }
 ```
-**Error envelope (K-07):** `{"error":{"code","message","details","trace_id"}}` — barcha surface va barcha xatolar uchun (FastAPI validation va 404/405 ham shu formatga o'giriladi). To'liq konvensiya va i18n — `API_CONVENTIONS_ERRORS_I18N.md` (yoziladi).
+**Error envelope (K-07):** `{"error":{"code","message","details","trace_id"}}` — barcha surface va barcha xatolar uchun (FastAPI validation va 404/405 ham shu formatga o'giriladi). To'liq konvensiya, `details` tuzilmalari va i18n — `24_API_CONVENTIONS_ERRORS_I18N.md` (kodlar katalogining asosiy manbai o'sha yerda).
 
 | Code | HTTP | Qachon |
 |---|---|---|
@@ -87,6 +87,10 @@
 | `RATE_LIMITED` | 429 | `Retry-After` bilan |
 | `FEATURE_NOT_AVAILABLE` | 501 | `DEFERRED` modul yoki o'chirilgan feature flag |
 | `PROVIDER_UNAVAILABLE` | 503 | LLM/Telegram/Meta ishlamayapti |
+| `METHOD_NOT_ALLOWED` | 405 | yo'l bor, metod yo'q |
+| `PAYLOAD_TOO_LARGE` | 413 | fayl/audio limiti |
+| `UNSUPPORTED_MEDIA_TYPE` | 415 | ruxsat etilmagan fayl turi |
+| `SERVICE_UNAVAILABLE` | 503 | DB pool to'lgan / maintenance, `Retry-After` |
 | `INTERNAL_ERROR` | 500 | kutilmagan xato; `trace_id` bilan, ichki tafsilot oshkor qilinmaydi |
 
 Client never infers business state from HTTP code alone; `code` — barqaror, frontend uni tarjima kalitiga map qiladi.

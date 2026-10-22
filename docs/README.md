@@ -1,15 +1,15 @@
 # AI Commerce OS & Network — hujjatlar indeksi
 
-**Holat:** v1.0 draft (2026-10-21). Biznes va engineering dizayni yozilgan, kod hali yo'q. Ochiq qarorlar `decisions/` papkasida.
+**Holat:** v1.0 baseline (2026-10-22). Biznes va engineering dizayni founder qarorlariga moslangan, kod hali yo'q. Qarorlar `decisions/` papkasida.
 
 ## Papkalar va haqiqat manbai
 
 | Papka | Nima bor | Kim uchun |
 |---|---|---|
-| [`business/`](business/00_README_AND_SCOPE.md) | 3 bosqich, 39 modul (`M01–M39`), 108 qoida (`BL-001…108`), 18 FSM, rollar, UI, UAT | Founder, PM, hamma |
+| [`business/`](business/00_README_AND_SCOPE.md) | 3 bosqich, 39 modul (`M01–M39`), 111 qoida (`BL-001…111`), 18 FSM, rollar, UI, UAT | Founder, PM, hamma |
 | [`discovery/`](discovery/A01_MARKET_PROBLEM_DISCOVERY.md) | Bozor muammosi, intervyu rejasi, gipotezalar (`HYP-xxx`) | Founder, sotuv |
-| [`engineering/`](engineering/00_ENGINEERING_README.md) | `TECH-03…23`: DDD, C4, ADR, DB, API, events, security, AI, voice, infra, test, roadmap | Backend, frontend, AI |
-| [`decisions/`](decisions/DECISION_REGISTER.md) | Ochiq qarorlar registri: har biri uchun 2–3 variant va tavsiya | Founder tasdiqlaydi |
+| [`engineering/`](engineering/00_ENGINEERING_README.md) | `TECH-03…26`: DDD, C4, ADR, DB, API, events, security, AI, voice, infra, test, roadmap; konvensiyalar va i18n (24), PC compatibility (25), AI tool kontraktlari (26) | Backend, frontend, AI |
+| [`decisions/`](decisions/DECISION_REGISTER.md) | Qarorlar registri: har qaror uchun variantlar, afzallik/kamchilik, tanlov va sana (baseline — o'zgartirish mumkin) | Founder |
 
 **Qoidalar:**
 

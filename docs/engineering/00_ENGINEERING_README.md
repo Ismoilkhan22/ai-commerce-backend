@@ -30,6 +30,9 @@ Agro/B2B, custody and marketing studio are **outside current 3-stage scope** pen
 - `21_FINAL_ARCHITECTURE_REVIEW.md` — TECH-21 — Final architecture cross-review, discrepancies and founder sign-off
 - `22_DEVELOPMENT_TASKS_AND_REPO_STRUCTURE.md` — TECH-22 — Development implementation roadmap, repo skeleton, task breakdown
 - `23_TENANT_ISOLATION_AND_DEPLOYMENT_MODES.md` — TECH-23 — Tenant isolation, merchant AI agent izolyatsiyasi, shared/dedicated deployment (PROPOSED, `DEC-001/002`)
+- `24_API_CONVENTIONS_ERRORS_I18N.md` — TECH-24 — Javob formatlari, xato kodlari va exception ierarxiyasi, global handler'lar, i18n (tillar, tarjima joyi, ICU, shablonlar)
+- `25_PC_COMPATIBILITY_ENGINE.md` — TECH-25 — Reference spec kutubxonasi, atributlar sxemasi, SKU bog'lash, qoidalar katalogi `pc-2026-10-v1`, yig'ma tavsiyasi
+- `26_AI_TOOL_CONTRACTS.md` — TECH-26 — AI Sales Agent: tool sxemalari, broker qoidalari, prompt qatlamlari, xotira, PII redaction, javob tekshiruvi, handoff
 - Ochiq qarorlar: `../decisions/DECISION_REGISTER.md`
 
 - `../business/` — canonical 13 business specifications M01–M39 / BL-001–BL-111 / FSM / UI / UAT.

@@ -14,13 +14,13 @@ Every merchant-owned record has `merchant_id`, `created_at timestamptz`, and usu
 | Inventory C05 | stock_balances, stock_ledger, stock_reservations, stock_receipts | inventory | `on_hand - reserved - allocated >= 0`; ledger reasons incl. `SALE`, `OFFLINE_SALE` (DEC-123), `ADJUSTMENT`, `RECEIPT`, `RETURNED_QUARANTINE` |
 | Storefront C06 | storefront_settings, pages, published_sku_snapshots | storefront | only approved public merchant listing |
 | PC C07 | reference_hardware_specs (platform, merchant_id yo'q), sku_spec_links, pc_rulesets, pc_builds, pc_build_items, compatibility_results | pc builder | critical rule `BLOCK` prevents quote; bog'lanmagan SKU → `REVIEW_REQUIRED` (DEC-011) |
-| Messaging C08 | channel_accounts, provider_events, conversations, messages, handoff_tasks | messaging | unique provider event + speaker lease |
-| AI C09 | agent_profiles, prompt_versions, tool_call_logs, ai_usage | ai | no direct money/stock write |
+| Messaging C08 | channel_accounts, provider_events, conversations, messages, handoff_tasks, conversation_summaries, conversation_pii_refs (shifrlangan, TECH-26 §7) | messaging | unique provider event + speaker lease |
+| AI C09 | agent_profiles, prompt_versions, ai_tool_executions (TECH-26 §12), ai_usage | ai | no direct money/stock write |
 | CRM C10 | leads, quotes, quote_revisions, quote_lines | crm | sent revision immutable |
 | Orders C11 | orders (`status`, `fulfillment_method`, `delivery_address`, `paid_mark_*`, `assigned_user_id`), order_lines (price + FX snapshot, warranty snapshot), order_notes, order_status_history | orders | committed snapshots; unique order token; FSM-08 statuses |
 | Payments C12 — `DEFERRED` (DEC-100) | payment_intents, payment_attempts, payment_evidence, verified_transactions | payments | proof != verification; Stage 1 da migratsiya yo'q |
 | Fulfillment C13 | support_cases (S5, DEC-114); shipments/pickup_requests — `DEFERRED` (DEC-113) | fulfill | qaytgan mahsulot tekshiruvgacha sotuvga chiqmaydi |
-| Engagement C14 | notification_intents, notifications, templates | notifications | idempotent intent |
+| Engagement C14 | notification_intents, notifications, message_templates (TECH-24 §5.6) | notifications | idempotent intent |
 | Reporting C15 | metric_definitions, daily_aggregates, report_jobs | reporting | approved definitions, source watermarks |
 | Platform C16 | subscriptions, usage_ledgers, audit_entries, outbox_messages, jobs, consumer_receipts, idempotency_keys, merchant_policies | platform/infra | append-only audit, durable delivery; policy: quote TTL, discount limits, reminder hours (DEC-102…110) |
 | Integrations C17 | connections, external_id_maps, sync_runs, sync_conflicts | integration | source precedence |
