@@ -25,7 +25,7 @@ Qishloq xo'jaligi, platforma orqali to'lov, xalqaro savdo — bu uch bosqichga k
 | 08 | `08_AI_AND_CHANNEL_BUSINESS_CONTRACTS.md` | AI nima qila oladi va nima qila olmaydi, kanallar |
 | 10 | `10_UAT_ACCEPTANCE_AND_RELEASES.md` | Qabul sinovlari va ish qaysi bo'laklarda chiqariladi |
 | 11 | `11_BUSINESS_DECISIONS_ASSUMPTIONS_AND_RISKS.md` | Asosiy qarorlar, farazlar, xavflar |
-| 13 | `13_MERCHANT_ONBOARDING_PLAYBOOK.md` | Pilot shopni ulash qadamlari |
+| 13 | `13_SHOP_ONBOARDING_PLAYBOOK.md` | Pilot shopni ulash qadamlari |
 | 14 | `14_PILOT_AGREEMENT_AND_PRICING.md` | Pilot shartnomasi qoralamasi va narx gipotezalari (qoralama) |
 
 **Boshqa joydagi hujjatlar:**
