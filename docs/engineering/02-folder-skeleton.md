@@ -261,6 +261,8 @@ modules =
 ```
 `app.dependencies` va `app.workers` qatlamlardan tashqarida (composition root).
 
+**Amalda (S0-01):** `layers` kontrakti `pyproject.toml` dagi `[tool.importlinter]` da. Domenlar mustaqilligi va composition root qoidalari esa `tests/architecture/boundaries.py` (AST tekshiruvi) bilan tekshiriladi — domenlar ro'yxatini qo'lda yuritish shart emas, yangi domen avtomatik qamrab olinadi. Yuqoridagi `domains-independent` kontrakti — xuddi shu qoidaning import-linter ko'rinishi; ikkalasi bir xil narsani tekshiradi.
+
 ---
 
 ## 4. Yangi domen qo'shish (minimal)

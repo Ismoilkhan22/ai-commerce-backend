@@ -1,0 +1,106 @@
+[project]
+name = "ai-commerce-backend"
+version = "0.0.1"
+description = "AI Commerce OS — shop sales OS backend (modular monolith)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "redis>=5.2",
+    "arq>=0.26",
+    "apscheduler>=3.10,<4",
+    "structlog>=24.4",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.120",
+    "import-linter>=2.1",
+    "testcontainers[postgres,redis]>=4.8",
+    "pre-commit>=4.0",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# --- ruff --------------------------------------------------------------------
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["app", "tests"]
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",      # pycodestyle, pyflakes
+    "I",                # isort
+    "UP",               # pyupgrade
+    "B",                # bugbear
+    "ASYNC",            # blocking calls inside async code
+    "S",                # bandit (security)
+    "T20",              # print() is forbidden — use structlog
+    "TID",              # banned imports
+    "RUF",
+]
+ignore = ["S101"]       # assert is fine in tests (see per-file below for app/)
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"requests".msg = "Use httpx.AsyncClient (03-module-requirements §2.4)."
+"time.sleep".msg = "Use asyncio.sleep (03-module-requirements §2.4)."
+
+# --- mypy --------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["app"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["arq.*", "apscheduler.*", "testcontainers.*"]
+ignore_missing_imports = true
+
+# --- pytest ------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+markers = [
+    "architecture: layer and domain boundary checks",
+    "integration: needs PostgreSQL/Redis (testcontainers)",
+    "isolation: TC-ISO shop A/B checks",
+    "concurrency: race condition checks (TC-002, TC-027, TC-030)",
+]
+
+# --- import-linter (02-folder-skeleton §3, ADR-031) -----------------------------
+[tool.importlinter]
+root_package = "app"
+
+[[tool.importlinter.contracts]]
+name = "shared -> platform -> domains"
+type = "layers"
+layers = [
+    "app.domains",
+    "app.platform",
+    "app.shared",
+]
+ignore_imports = []
