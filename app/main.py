@@ -6,23 +6,31 @@ Biznes logika yo'q. Bu modul composition root — domenlarni import qila oladi.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import pkgutil
 import re
 from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+from redis.asyncio import Redis
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
 from app.platform.audit.services.audit_service import AuditService
+from app.platform.auth.passwords import PasswordHasher
+from app.platform.auth.services.auth_service import AuthService
+from app.platform.staff.permissions import PermissionRegistry
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
 from app.shared.db.session import Database
 from app.shared.errors.handlers import register_exception_handlers
 from app.shared.i18n.middleware import I18nMiddleware
 from app.shared.observability.health import router as health_router
+from app.shared.ratelimit import MemoryRateLimiter, RedisRateLimiter
 from app.shared.tracing.middleware import RequestContextMiddleware
 from app.shared.types.manifest import SURFACE_PREFIXES, DomainManifest, Surface
 
@@ -36,6 +44,18 @@ class RouteConflictError(RuntimeError):
     """Ikki modul bir xil yo'l + metodni e'lon qildi (TC-API-07)."""
 
 
+MANIFEST_MODULES = ("manifest", "domain_manifest")
+
+
+def _manifest_module(package: str) -> Any:
+    """Manifest alohida faylda (`manifest.py` / `domain_manifest.py`) — paket __init__ bo'sh qoladi,
+    shunda modullar orasida aylanma import bo'lmaydi."""
+    for name in MANIFEST_MODULES:
+        if importlib.util.find_spec(f"{package}.{name}") is not None:
+            return importlib.import_module(f"{package}.{name}")
+    return importlib.import_module(package)
+
+
 def discover_manifests() -> list[DomainManifest]:
     manifests: list[DomainManifest] = []
     for package_name, attribute in MANIFEST_SOURCES:
@@ -43,7 +63,7 @@ def discover_manifests() -> list[DomainManifest]:
         for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda m: m.name):
             if not info.ispkg:
                 continue
-            module = importlib.import_module(f"{package_name}.{info.name}")
+            module = _manifest_module(f"{package_name}.{info.name}")
             manifest = getattr(module, attribute, None)
             if isinstance(manifest, DomainManifest):
                 manifests.append(manifest)
@@ -92,11 +112,20 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         database = Database(settings.database_config())
         app.state.db = database
-        app.state.readiness_checks = {"postgres": database.ping}  # S0-06: redis
+        app.state.readiness_checks = {"postgres": database.ping}
+        redis: Redis | None = None
+        if settings.rate_limit_backend == "redis":
+            redis = Redis.from_url(settings.redis_url)
+            app.state.rate_limiter = RedisRateLimiter(redis)
+            app.state.readiness_checks["redis"] = redis.ping
+        else:
+            app.state.rate_limiter = MemoryRateLimiter()
         try:
             yield
         finally:
             await database.dispose()
+            if redis is not None:
+                await redis.aclose()
 
     app = FastAPI(
         title="AI Commerce OS API",
@@ -109,12 +138,41 @@ def create_app(
     app.include_router(health_router)
     manifests = discover_manifests() if manifests is None else manifests
     mount_manifests(app, manifests)
-    app.state.use = UseService(RulesRegistry.from_manifests(manifests), AuditService())
+    _wire_platform_services(app, settings, manifests)
 
     # Starlette middleware'larni teskari tartibda o'raydi: oxirgi qo'shilgan — eng tashqi.
     app.add_middleware(I18nMiddleware, default_locale=settings.default_locale)
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,  # refresh cookie
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "If-Match",
+            "X-Request-ID",
+            "traceparent",
+        ],
+        expose_headers=["ETag", "X-Request-ID", "Retry-After"],
+    )
     return app
+
+
+def _wire_platform_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainManifest]) -> None:
+    """Platform servislari bir marta yaratiladi (stateless) va app.state'da turadi."""
+    auth_config = settings.auth_config()
+    audit = AuditService()
+    use = UseService(RulesRegistry.from_manifests(manifests), audit)
+    hasher = PasswordHasher(
+        auth_config.argon2_time_cost, auth_config.argon2_memory_kib, auth_config.argon2_parallelism
+    )
+    app.state.auth_config = auth_config
+    app.state.permissions = PermissionRegistry.from_manifests(manifests)
+    app.state.use = use
+    app.state.auth_service = AuthService(auth_config, hasher, audit, use)
 
 
 app = create_app()

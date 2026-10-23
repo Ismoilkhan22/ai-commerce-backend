@@ -4,7 +4,18 @@ import pytest
 
 from app.config.settings import Settings
 
+# Testlarda Argon2 tez ishlashi uchun past parametrlar; rate limit — xotirada
+FAST_TEST_SETTINGS = {
+    "app_env": "test",
+    "log_level": "WARNING",
+    "default_locale": "uz",
+    "rate_limit_backend": "memory",
+    "argon2_time_cost": 1,
+    "argon2_memory_kib": 1024,
+    "cookie_secure": False,
+}
+
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(app_env="test", log_level="WARNING", default_locale="uz")
+    return Settings(**FAST_TEST_SETTINGS)  # type: ignore[arg-type]

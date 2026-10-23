@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
+from app.platform.auth.config import AuthConfig
 from app.shared.db.session import DatabaseConfig
 from app.shared.i18n.locale import Locale
 
@@ -18,6 +20,8 @@ _LOCAL_DB = "postgresql+asyncpg://{user}:{user}@localhost:5432/commerce_os"
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})  # noqa: S104 — taqiqlash uchun ro'yxat
 _WEAK_PASSWORDS = frozenset({"postgres", "password", "admin", "secret", "app_runtime", "app_migrator"})
 MIN_DB_PASSWORD_LENGTH = 12
+_DEV_JWT_SECRET = "dev-only-insecure-jwt-secret-change-me"  # noqa: S105 — faqat lokal, prod'da rad etiladi
+MIN_JWT_SECRET_LENGTH = 32
 
 
 def _unsafe_db_url_reason(url: str) -> str | None:
@@ -45,6 +49,24 @@ class Settings(BaseSettings):
     db_max_overflow: int = 5
     db_statement_timeout_ms: int = 5_000
 
+    # Redis: db0 kesh va rate limit (08). Testlarda "memory".
+    redis_url: str = "redis://localhost:6379/0"
+    rate_limit_backend: Literal["redis", "memory"] = "redis"
+
+    # Auth (ADR-023, 10 §5)
+    jwt_secret: SecretStr = SecretStr(_DEV_JWT_SECRET)
+    access_token_ttl_minutes: int = 15
+    refresh_token_ttl_days: int = 30
+    login_max_failures: int = 5
+    login_lockout_minutes: int = 15
+    invite_ttl_hours: int = 72
+    password_reset_ttl_hours: int = 24
+    app_public_url: str = "http://localhost:3000"
+    cookie_secure: bool = True
+    cors_origins: list[str] = ["http://localhost:3000"]
+    argon2_time_cost: int = 3
+    argon2_memory_kib: int = 65_536
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
@@ -56,7 +78,29 @@ class Settings(BaseSettings):
                 reason = _unsafe_db_url_reason(getattr(self, name))
                 if reason:
                     raise ValueError(f"{name} {self.app_env} muhitida ishlatib bo'lmaydi: {reason}")
+            secret = self.jwt_secret.get_secret_value()
+            if secret == _DEV_JWT_SECRET or len(secret) < MIN_JWT_SECRET_LENGTH:
+                raise ValueError(
+                    f"jwt_secret {self.app_env} muhitida kamida {MIN_JWT_SECRET_LENGTH} belgi bo'lsin"
+                )
+            if not self.cookie_secure:
+                raise ValueError(f"cookie_secure {self.app_env} muhitida o'chirilmaydi")
         return self
+
+    def auth_config(self) -> AuthConfig:
+        return AuthConfig(
+            jwt_secret=self.jwt_secret.get_secret_value(),
+            access_token_ttl=timedelta(minutes=self.access_token_ttl_minutes),
+            refresh_token_ttl=timedelta(days=self.refresh_token_ttl_days),
+            login_max_failures=self.login_max_failures,
+            login_lockout=timedelta(minutes=self.login_lockout_minutes),
+            invite_ttl=timedelta(hours=self.invite_ttl_hours),
+            password_reset_ttl=timedelta(hours=self.password_reset_ttl_hours),
+            app_public_url=self.app_public_url.rstrip("/"),
+            cookie_secure=self.cookie_secure,
+            argon2_time_cost=self.argon2_time_cost,
+            argon2_memory_kib=self.argon2_memory_kib,
+        )
 
     def database_config(self) -> DatabaseConfig:
         return DatabaseConfig(

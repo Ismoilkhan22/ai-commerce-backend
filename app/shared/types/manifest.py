@@ -37,6 +37,8 @@ class DomainManifest:
     event_subscribers: Sequence[Callable[..., Any]] = ()
     scheduled_jobs: Sequence[Any] = ()
     permissions: Sequence[str] = ()
+    # Rol → shu modul ruxsatlari (10 §6). Ilova ishga tushganda hamma modullardan yig'iladi.
+    role_grants: Mapping[str, frozenset[str]] = field(default_factory=dict)
     privacy_handlers: Sequence[Any] = ()
     # Majburlab (force_transition) o'tib bo'lmaydigan holatlar: pul va qoldiq invarianti (04 §7)
     non_forceable_states: Mapping[str, frozenset[str]] = field(default_factory=dict)

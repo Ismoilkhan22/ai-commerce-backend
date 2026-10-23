@@ -49,6 +49,7 @@ def test_unsafe_db_urls_rejected_in_production(url: str) -> None:
             app_env="production",
             database_url=url,
             database_migrator_url="postgresql+asyncpg://app_migrator:s3cret-long@db.internal:5432/cos",
+            jwt_secret="x" * 40,
         )
 
 
@@ -59,4 +60,16 @@ def test_local_db_defaults_rejected_in_production() -> None:
         app_env="production",
         database_url="postgresql+asyncpg://app_runtime:r4nd0m-runtime-pw@db.internal:5432/cos",
         database_migrator_url="postgresql+asyncpg://app_migrator:r4nd0m-migrator-pw@db.internal:5432/cos",
+        jwt_secret="x" * 40,
     )
+
+
+def test_production_requires_strong_jwt_secret_and_secure_cookie() -> None:
+    urls = {
+        "database_url": "postgresql+asyncpg://app_runtime:r4nd0m-runtime-pw@db.internal:5432/cos",
+        "database_migrator_url": "postgresql+asyncpg://app_migrator:r4nd0m-migrator-pw@db.internal:5432/cos",
+    }
+    with pytest.raises(ValidationError, match="jwt_secret"):
+        Settings(app_env="production", **urls)  # standart dev kaliti
+    with pytest.raises(ValidationError, match="cookie_secure"):
+        Settings(app_env="production", jwt_secret="x" * 40, cookie_secure=False, **urls)
