@@ -104,3 +104,12 @@ def test_permission_registry_merges_module_grants() -> None:
     )
     assert registry.for_role("OWNER") == {"a.b.c", "d.e.f"}
     assert registry.for_role("UNKNOWN") == frozenset()
+
+
+def test_real_manifests_give_owner_everything_manager_less() -> None:
+    from app.main import discover_manifests
+
+    registry = PermissionRegistry.from_manifests(discover_manifests())
+    owner, manager, sales = (registry.for_role(r) for r in ("OWNER", "MANAGER", "SALES"))
+    assert manager < owner and "staff.member.invite" in owner and "staff.member.invite" not in manager
+    assert "shops.settings.view" not in sales

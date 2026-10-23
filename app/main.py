@@ -23,7 +23,9 @@ from app.config.settings import Settings, get_settings
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
+from app.platform.shops.services.shop_service import ShopService
 from app.platform.staff.permissions import PermissionRegistry
+from app.platform.staff.services.staff_service import StaffService
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
 from app.shared.db.session import Database
@@ -169,10 +171,13 @@ def _wire_platform_services(app: FastAPI, settings: Settings, manifests: Sequenc
     hasher = PasswordHasher(
         auth_config.argon2_time_cost, auth_config.argon2_memory_kib, auth_config.argon2_parallelism
     )
+    staff = StaffService(use, audit, auth_config)
     app.state.auth_config = auth_config
     app.state.permissions = PermissionRegistry.from_manifests(manifests)
     app.state.use = use
     app.state.auth_service = AuthService(auth_config, hasher, audit, use)
+    app.state.staff_service = staff
+    app.state.shop_service = ShopService(use, audit, auth_config, staff)
 
 
 app = create_app()

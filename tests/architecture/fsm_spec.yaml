@@ -1,0 +1,12 @@
+# business/05 dagi strelkalar — kod (state_machine.py) shu bilan AYNAN teng bo'lishi shart (04 §8).
+# Yangi strelka: avval business/05, keyin shu fayl, keyin kod.
+platform.shop:
+  - [SUBMIT_FOR_VERIFICATION, DRAFT, PENDING_VERIFICATION]
+  - [ACTIVATE, PENDING_VERIFICATION, ACTIVE]
+  - [SUSPEND, ACTIVE, SUSPENDED]
+  - [REACTIVATE, SUSPENDED, ACTIVE]
+  - [CLOSE, ACTIVE, CLOSED]
+platform.membership:
+  - [ACCEPT_INVITE, INVITED, ACTIVE]
+  - [DISABLE, ACTIVE, DISABLED]
+  - [REVOKE_INVITE, INVITED, DISABLED]
