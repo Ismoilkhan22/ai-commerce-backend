@@ -14,6 +14,11 @@ from alembic.config import Config
 from app.db.bootstrap import bootstrap
 from app.db.schemas import SCHEMAS
 
+# Ryuk (testcontainers tozalovchi konteyneri) ketma-ket yugurishlarda ba'zan port ololmaydi
+# ("Port mapping ... 8080 is not available") va hamma integratsiya testi yiqiladi. Konteynerni
+# `with PostgresContainer(...)` o'zi to'xtatadi, shuning uchun Ryuk kerak emas.
+os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
+
 RUNTIME_PASSWORD = "runtime-test"
 MIGRATOR_PASSWORD = "migrator-test"
 
