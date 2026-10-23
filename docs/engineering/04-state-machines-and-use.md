@@ -154,8 +154,7 @@ async def start_processing(self, order_id, actor, idem_key, db):
         order = await self.repo.get_for_update(actor.shop_id, order_id, db)
         rule = self.use.validate_transition("commerce.order", order.status, "PROCESSING", "START_PROCESSING", actor)
         await self.inventory.allocate(actor.shop_id, order.id, db)       # reservation ACTIVE → ALLOCATED
-        order.status = rule.to_status
-        order.version += 1
+        order.status = rule.to_status          # version avtomatik oshadi (VersionMixin, 12 §4)
         await self.use.log_transition(db, entity_id=order.id, rule=rule, actor=actor)
         await self.audit.record("commerce.order.processing", order.id, actor, db)
         await write_outbox(db, OrderProcessingV1.from_order(order))
@@ -194,7 +193,7 @@ CREATE INDEX ON platform.transition_log (shop_id, entity_type, entity_id, occurr
 - Cross-schema: domen tranzaksiyasi `platform.transition_log` ga yozadi — ruxsat etilgan istisno (ADR-035 neytral bandi). FK yo'q.
 - Dashboard'da "Tarix" bo'limi shu jadvaldan + `audit` dan o'qiladi.
 
-Audit (`audit.events`) bilan farqi: transition_log — faqat holat o'tishlari, tez so'rovlar uchun; audit — barcha muhim o'zgarishlar (narx, ruxsat, sozlamalar), eski/yangi qiymatlar bilan (`10`).
+Audit (`audit.audit_entries`) bilan farqi: transition_log — faqat holat o'tishlari, tez so'rovlar uchun; audit — barcha muhim o'zgarishlar (narx, ruxsat, sozlamalar), eski/yangi qiymatlar bilan (`10`).
 
 ---
 
@@ -203,8 +202,8 @@ Audit (`audit.events`) bilan farqi: transition_log — faqat holat o'tishlari, t
 Faqat runbook holatlari uchun (masalan, xato tufayli `EXCEPTION` da qotib qolgan buyurtma):
 - Ruxsat: `platform.state.force` (faqat platforma admini, shop xodimlarida yo'q).
 - Majburiy: `reason` (≥ 20 belgi), shop egasi xabardor qilinadi (`25`).
-- `forced = true`, audit'ga alohida yozuv, Sentry'ga `warning`.
-- Pul va qoldiq bog'liq o'tishlar (`CONFIRMED`, `COMPLETED`) `force` bilan **qilinmaydi** — ularni faqat oddiy service yo'li bilan (qoldiq invarianti saqlanishi uchun).
+- `forced = true`; audit yozuvi (`platform.state.forced`, eski/yangi holat, sabab) **USE'ning o'zida** yoziladi — chaqiruvchi unutib qo'yolmaydi (founder, 2026-10-23). Sentry'ga `warning`.
+- Qoldiq va pulga bog'liq holatlar (`DomainManifest.non_forceable_states`; buyurtma uchun `CONFIRMED`, `PROCESSING`, `COMPLETED`) — bu holatlarga **kirish ham, ulardan chiqish ham** majburlab bo'lmaydi (founder, 2026-10-23). Masalan, `CONFIRMED → CANCELLED` majburlansa, rezerv bo'shatilmay qolardi. Bunday holatlar faqat oddiy service yo'li bilan (qoldiq invarianti saqlanishi uchun).
 
 ---
 

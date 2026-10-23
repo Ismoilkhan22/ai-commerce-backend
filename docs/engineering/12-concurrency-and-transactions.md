@@ -45,6 +45,8 @@ Hech qanday himoya bo'lmasa — uchalasi ham "bor" deb o'qiydi va uchalasi ham o
 | Suhbat egasi (`messaging.conversations.speaker_version`) | Atomik `UPDATE … SET speaker_version = speaker_version + 1 … RETURNING` | Fencing (§8) |
 | Shop sozlamalari, profil | `version` + `If-Match` | Kam to'qnashuv |
 
+**`version` qanday oshadi:** faqat avtomatik — modelda `VersionMixin` (SQLAlchemy `version_id_col`). Har UPDATE `... SET version = version + 1 WHERE id = :id AND version = :o'qilgan` ko'rinishida ketadi; qator boshqa tranzaksiyada o'zgargan bo'lsa, 0 qator yangilanadi va `VERSION_CONFLICT` bo'ladi. Kodda `version` ni qo'lda oshirish — TAQIQ (ikki marta oshib ketadi). `If-Match` dagi versiya o'qilgan obyekt versiyasi bilan solishtiriladi.
+
 `If-Match` sarlavhasi dashboard tahrir formalarida majburiy; eskirgan versiya → `409 VERSION_CONFLICT` va UI "sahifani yangilang" (`business/05` umumiy qoida 3).
 
 ---
@@ -83,9 +85,9 @@ BEGIN                                                      -- READ COMMITTED
       PC taklif bo'lsa: quote.status='ACCEPTED', quote.expires_at tekshirilmaydi (qabul qilingan),
                         lekin quote revision qatorlari bilan solishtiriladi
       farq bor → 409 PRICE_CHANGED {old, new} — xaridordan qayta rozilik (TC-031)
- 9. reserved += qty (har balans), stock_ledger ga RESERVE yozuvlari, stock_version += 1
+ 9. reserved += qty (har balans), stock_ledger ga RESERVE yozuvlari   -- balans version'i avtomatik oshadi (§4)
 10. reservation := INSERT ACTIVE (order_id, lines)
-11. order.status = 'CONFIRMED', order.version += 1, confirmed_by, confirmed_at
+11. order.status = 'CONFIRMED', confirmed_by, confirmed_at   -- version avtomatik oshadi (§4)
 12. use.log_transition(...); audit.record(...)
 13. outbox: commerce.order.confirmed, commerce.reservation.created, commerce.stock.changed (har SKU)
 14. notifications.request('order.confirmed', customer)    -- platform outbox
@@ -202,6 +204,8 @@ messaging subscriber, yuborishdan oldin (bitta TX):
 | Rejali ish | `<job>:<entity_id>:<window>` | eslatma/vazifa | Takror eslatma yo'q (`06` §5) |
 | Xabarnoma | `(shop_id, template_key, aggregate_id, aggregate_version, recipient)` | `platform.notifications` | Bitta hodisaga bitta xabar (FSM-12) |
 
+Dublikat kutmaydi: `begin()` avval `pg_try_advisory_xact_lock(kalit)` oladi; band bo'lsa — darhol `409 REQUEST_IN_PROGRESS` (baza ulanishi band bo'lib turmaydi, founder 2026-10-23). Qulf COMMIT yoki ROLLBACK bilan o'zi ochiladi.
+
 Idempotency yozuvi biznes o'zgarishi bilan **bitta tranzaksiyada** (2-qadam) — COMMIT bo'lmasa, kalit ham yo'q. HTTP javob COMMIT'dan keyin yo'qolsa, klient shu kalit bilan qayta yuboradi va saqlangan javobni oladi.
 
 ## 10. Taklif, narx va vaqt
@@ -219,7 +223,7 @@ Haqiqiy PostgreSQL'da (testcontainers), `sleep` emas — **barrier** bilan (`asy
 |---|---|---|
 | TC-CON-01 / TC-002 | Ikki operator oxirgi donani bir vaqtda tasdiqlaydi | Bittasi `CONFIRMED`, ikkinchisi 409; `available = 0` |
 | TC-CON-02 / TC-027 | Online tasdiq va tez sotuv bir vaqtda | Bittasi o'tadi; `available ≥ 0` |
-| TC-CON-03 / TC-003 | Bir `Idempotency-Key` bilan tasdiq 5 marta parallel | Bitta rezerv, bir xil javob |
+| TC-CON-03 / TC-003 | Bir `Idempotency-Key` bilan tasdiq 5 marta parallel | Bitta rezerv; birinchisi bajarilayotganda qolganlari darhol `409 REQUEST_IN_PROGRESS`, keyingi qayta so'rov — birinchisining saqlangan javobi |
 | TC-CON-04 / TC-030 | `complete` ikki marta | `on_hand` bir marta kamayadi, bitta `SALE` ledger yozuvi |
 | TC-CON-05 | Ikki bekor qilish + rezerv muddati vazifasi | Bitta `RELEASE` |
 | TC-CON-06 / TC-009 | Ikki AI javobi + operator suhbatni oldi | Eski versiyadagi AI javobi yuborilmaydi |

@@ -44,6 +44,7 @@
 | ID | UUIDv7, string. Ichki ID ommaviy token sifatida ishlatilmaydi (taklif/buyurtma kuzatuvi uchun alohida token) |
 | Vaqt | ISO-8601 UTC, `Z` bilan: `2026-10-22T09:15:00Z`. Hisobot sanalari shop timezone'ida + javobda `timezone` |
 | Pul | `{"amount_minor": 1250000000, "currency": "UZS"}` — butun son (ADR-025, UZS exponent 2). Float yo'q. Formatlash — ko'rsatish qatlamida |
+| Kasr son (foiz, kurs) | **Matn**: `"8.50"` — aniqlik yo'qolmaydi. Javoblar, xato `details` va saqlangan idempotency javoblari bitta serializer'dan o'tadi (`app/shared/serialization.py`, Pydantic) |
 | Shop | `shop_id` so'rovda **qabul qilinmaydi** — serverda aniqlanadi (K-01) |
 | Null | Ma'lum, lekin bo'sh — `null`. Sxemadagi maydonlar har doim qaytadi |
 | Versiya | O'zgaradigan resurslarda `version` maydoni; yozishda `If-Match: "v4"` |
@@ -143,6 +144,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `METHOD_NOT_ALLOWED` | 405 | Yo'l bor, metod yo'q | yo'q |
 | `VERSION_CONFLICT` | 409 | `If-Match` / `version` mos emas | yangisini o'qib, foydalanuvchi qaror qiladi |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Bir xil key, boshqa tana | yo'q |
+| `REQUEST_IN_PROGRESS` | 409 | Shu `Idempotency-Key` bilan birinchi so'rov hali bajarilmoqda — dublikat kutmaydi (founder, 2026-10-23) | ha, 1–2 s dan keyin **xuddi shu kalit bilan**: saqlangan javob yoki (birinchisi yiqilgan bo'lsa) yangi bajarilish |
 | `INVALID_STATE_TRANSITION` | 409 | FSM'da ruxsat etilmagan o'tish (ADR-034) | yo'q |
 | `INSUFFICIENT_AVAILABLE_STOCK` | 409 | Tasdiqlash / tez sotuv paytida qoldiq yetmadi (TC-002, TC-027) | yo'q |
 | `PRICE_CHANGED` | 409 | Narx snapshot'dan farq qiladi — xaridordan qayta rozilik (TC-031) | yo'q |
@@ -245,6 +247,8 @@ Katalogdagi qolgan kodlar uchun ham klass bor: `InvalidRequestError` (`INVALID_R
 | `RequestValidationError` (FastAPI) | 422 `VALIDATION_FAILED`, Pydantic xatolari `details.fields[]` ga (§6.3 kodlari) |
 | `HTTPException` 404 / 405 / 413 / 415 | `NOT_FOUND` / `METHOD_NOT_ALLOWED` / `PAYLOAD_TOO_LARGE` / `UNSUPPORTED_MEDIA_TYPE` — FastAPI'ning `{"detail": ...}` formati **hech qachon** chiqmaydi |
 | `sqlalchemy.exc.IntegrityError` (unikal cheklov) | Repository'da domen xatosiga o'giriladi; o'girilmagani — 500 (bug) |
+| `HTTPException` — katalogda yo'q status | 4xx — asl status saqlanadi, kod `INVALID_REQUEST`, `WARNING` log; 5xx — 500 `INTERNAL_ERROR`. Bizning kodda `HTTPException` ishlatilmaydi — faqat `DomainError` |
+| `StaleDataError` (`VersionMixin`) | 409 `VERSION_CONFLICT` |
 | Boshqa har qanday `Exception` | 500 `INTERNAL_ERROR`, umumiy `message`; to'liq xato Sentry'ga va `ERROR` logga (`trace_id` bilan) |
 
 Har xato javobida `X-Request-ID` va `trace_id`. 4xx — `WARNING` log, 5xx — `ERROR` log + Sentry ([09-observability.md](09-observability.md)).

@@ -4,6 +4,30 @@
 > **Bajaruvchi:** founder + AI kodlash yordamchisi. **Stage 2/3 ni oldindan qurmaymiz.**
 > **Asos:** DEC-005 (slice'lar), DEC-004 C / ADR-031 (papkalar), DEC-003 D / ADR-033 (outbox + arq), DEC-126 / ADR-032 (`commerce` domeni), [../business/10](../business/10_UAT_ACCEPTANCE_AND_RELEASES.md) §1.
 
+## 0. Amaldagi tartib va holat (2026-10-23, founder)
+
+Ish **modul-modul, har modul to'liq** qilinadi (baza loyihasi → founder tasdig'i → kod → testlar). Har modul bazasi avval `db/<domain>.dbml` da loyihalanadi va tasdiqlanadi. Quyidagi S-vazifalar shu modullarga taqsimlangan; fon ishlari (S0-06) birinchi haqiqiy ehtiyoj bilan — 5-modulda quriladi.
+
+| № | Modul | Ichidagi vazifalar | Holat |
+|---|---|---|---|
+| — | Texnik asos | S0-01, S0-02, S0-03, S0-07 | ✅ tayyor (testlar: unit + PostgreSQL) |
+| 1 | Auth, shop va xodimlar (to'liq auth) | S0-04 (+ CORS, rate limit; `get_db` actor dependency'ga aniq bog'lanadi — shop konteksti va RLS'siz tranzaksiya ochilmasligi uchun) | Baza tasdiqlandi ([db/platform.dbml](db/platform.dbml), DEC-131) |
+| 2 | Katalog | S1-01…S1-05, S0-08 (fayllar) | Baza loyihasi kutilmoqda |
+| 3 | Savdo (commerce) | S1 ombor, S3 lead/taklif, S4 buyurtmalar | — |
+| 4 | Shop sayti | S1 storefront | — |
+| 5 | Kanallar va inbox | S2, **S0-06** (outbox, arq, scheduler) | — |
+| 6 | AI sotuvchi | S3 | — |
+| 7 | Xabarnomalar, kafolat, hisobotlar | S2/S5 | — |
+| — | Frontend | S0-09, keyin har modul bilan | 1-moduldan keyin |
+| — | Monitoring, deploy | S0-05, S0-10 | Pilotdan oldin |
+
+**Muddati bor texnik qarzlar** (fon ishlari bilan birga qilinadi):
+
+| ID | Vazifa | Muddat | Nega |
+|---|---|---|---|
+| TD-01 | `transition_log` va `audit_entries` uchun har oy kamida 12 oy oldinga partition yaratadigan rejali ish. Mexanizm hal qilinishi kerak: `app_scheduler` da DDL huquqi yo'q — `app_migrator` egaligidagi `SECURITY DEFINER` funksiya yoki deploy migratsiyasi | **2027-12-01 gacha** (migratsiyalar 2028-12 gacha yaratgan; `test_partitions_cover_next_months…` 12 oydan kam qolsa yiqiladi) | Aks holda yozuvlar DEFAULT partition'ga tushadi va keyingi partition yaratilmaydi |
+| TD-02 | Eskirgan `idempotency_keys` ni tozalash (soatlik) | 1-pilotdan oldin | Jadval cheksiz o'smasin |
+
 ## 1. Qoidalar
 
 1. **Vertikal bo'laklar:** har slice oxirida ishlaydigan, ko'rsatsa bo'ladigan yo'l bor: `shop → katalog → sayt → xabar → AI/taklif → buyurtma → hisobot`. Ajralgan "abstrakt modul" emas.

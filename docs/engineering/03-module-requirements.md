@@ -159,11 +159,12 @@ async def confirm_order(
     order_id: UUID,
     actor: ActorContext = Depends(require_permission("commerce.order.confirm")),
     idem_key: str = Depends(get_idempotency_key),
-    db: AsyncSession = Depends(get_db),
+    db: DbSession,                      # Annotated[AsyncSession, Depends(get_db, scope="function")]
     service: OrderService = Depends(get_order_service),
 ):
     return await service.confirm(order_id, actor, idem_key, db)
 ```
+- [ ] Sessiya **faqat `DbSession` / `ReadDbSession`** orqali (`app/shared/db/session.py`). `Depends(get_db)` to'g'ridan-to'g'ri — TAQIQ: standart `scope="request"` da COMMIT javob yuborilgandan keyin bo'ladi va COMMIT xatosi (`VERSION_CONFLICT`, unikal cheklov) klientga yetmaydi — u 200 oladi, hech narsa saqlanmaydi (kod tekshiruvi, 2026-10-23)
 
 ---
 

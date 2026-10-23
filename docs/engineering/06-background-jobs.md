@@ -123,7 +123,7 @@ async def main():
 | `exchange_rate_staleness` | har soat | catalog | shop kursi 3 kundan eski → egaga ogohlantirish; yangi taklif yakuniy narxi bloklanadi | `fx_stale:{shop_id}:{date}` | BL-018, UAT-M05 |
 | `exchange_rate_fetch` | har kuni 09:30 | catalog | Markaziy bank kursini olib, "MB kursi" tanlagan shoplar uchun yangilaydi | `fx_fetch:{date}` | DEC-121 |
 | `channel_health_check` | har 30 daq | messaging | token muddati yaqin / xatolar ko'p → `DEGRADED`, egaga ogohlantirish | `channel_health:{channel_id}:{hour}` | FSM-03 |
-| `audit_partition_create` | har oy 25-sanasi | platform/audit | keyingi oy partitsiyalari (`audit.events`, `platform.transition_log`) | partition nomi | `07` |
+| `audit_partition_create` | har oy 25-sanasi | platform/audit | keyingi oy partitsiyalari (`audit.audit_entries`, `platform.transition_log`); kamida 12 oy oldinga (TD-01) | partition nomi | `07` |
 | `audio_purge` | har soat | reporting | transkripsiya qilingan audio fayllarni o'chiradi | `audio_id` | DEC-117 |
 | `outbox_reconcile` (`app.workers.reconcile_tasks`) | har 5 daq | workers | `PUBLISHED` > 10 daq, lekin kutilgan consumer uchun `consumer_receipts` yo'q → `dispatch_event` qayta qo'yiladi | `{event_id}:{consumer}` | ADR-033 |
 | `outbox_cleanup` | har kuni 03:00 | platform | `PUBLISHED` > 14 kun va `consumer_receipts` > 7 kun — o'chirish (bo'laklab, 1000 tadan; muddatlar manbai — `07` §5.3) | — | — |
