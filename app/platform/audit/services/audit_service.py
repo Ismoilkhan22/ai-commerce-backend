@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.audit.models.orm import AuditEntry
+from app.shared.serialization import to_json_compatible
 from app.shared.tracing.context import get_trace_id
 from app.shared.types.actor import ActorContext
 
@@ -93,7 +94,7 @@ class AuditService:
                 entity_id=entity_id,
                 entity_version=entity_version,
                 reason=reason,
-                diff=diff,
+                diff=to_json_compatible(diff) if diff is not None else None,  # Decimal, UUID, sana
                 trace_id=get_trace_id(),
             )
         )

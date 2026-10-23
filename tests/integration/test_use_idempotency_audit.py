@@ -196,3 +196,30 @@ async def test_concurrent_duplicate_gets_request_in_progress(db: Database) -> No
     async with db.transaction(shop_id) as session:
         stored = await store.begin(session, shop_id, "order.confirm", key, body_hash)
     assert stored is not None and stored.body == {"n": 1}
+
+
+async def test_audit_diff_with_decimal_uuid_and_datetime(db: Database) -> None:
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    shop_id, entity_id = uuid4(), uuid4()
+    async with db.transaction(shop_id) as session:
+        await AuditService().record(
+            session,
+            action="shops.policy.updated",
+            entity_type="platform.shop_policy",
+            entity_id=entity_id,
+            actor=_actor(shop_id),
+            diff={
+                "limit": {"new": Decimal("7.50")},
+                "ref": uuid4(),
+                "at": datetime(2026, 10, 23, tzinfo=UTC),
+            },
+        )
+    async with db.transaction(shop_id) as session:
+        diff = (
+            await session.execute(
+                text("SELECT diff FROM audit.audit_entries WHERE entity_id = :e"), {"e": entity_id}
+            )
+        ).scalar_one()
+    assert diff["limit"] == {"new": "7.50"} and diff["at"] == "2026-10-23T00:00:00Z"
