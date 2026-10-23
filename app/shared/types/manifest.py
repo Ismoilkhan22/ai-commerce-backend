@@ -6,11 +6,13 @@ avtomatik topadi va router'larni surface prefiksi bilan ulaydi.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fastapi import APIRouter
+
+from app.shared.types.state import StateMachineRule
 
 Surface = Literal["auth", "shop", "storefront", "webhooks", "platform", "public"]
 
@@ -30,9 +32,11 @@ class DomainManifest:
     name: str
     schema_name: str | None = None
     routers: dict[Surface, APIRouter] = field(default_factory=dict)
-    # Keyingi slice'larda to'ldiriladi: S0-07 (state rules), S0-06 (subscribers, jobs), S0-04 (permissions)
-    state_machine_rules: Sequence[Any] = ()
+    state_machine_rules: Sequence[StateMachineRule] = ()  # 04, ADR-034
+    # Keyingi slice'larda to'ldiriladi: S0-06 (subscribers, jobs), S0-04 (permissions)
     event_subscribers: Sequence[Callable[..., Any]] = ()
     scheduled_jobs: Sequence[Any] = ()
     permissions: Sequence[str] = ()
     privacy_handlers: Sequence[Any] = ()
+    # Majburlab (force_transition) o'tib bo'lmaydigan holatlar: pul va qoldiq invarianti (04 §7)
+    non_forceable_states: Mapping[str, frozenset[str]] = field(default_factory=dict)

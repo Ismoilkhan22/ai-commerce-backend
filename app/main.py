@@ -15,6 +15,8 @@ from fastapi.routing import APIRoute
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
+from app.platform.use.infrastructure.rules_loader import RulesRegistry
+from app.platform.use.services.use_service import UseService
 from app.shared.db.session import Database
 from app.shared.errors.handlers import register_exception_handlers
 from app.shared.i18n.middleware import I18nMiddleware
@@ -97,7 +99,9 @@ def create_app(
     )
     register_exception_handlers(app)
     app.include_router(health_router)
-    mount_manifests(app, discover_manifests() if manifests is None else manifests)
+    manifests = discover_manifests() if manifests is None else manifests
+    mount_manifests(app, manifests)
+    app.state.use = UseService(RulesRegistry.from_manifests(manifests))
 
     # Starlette middleware'larni teskari tartibda o'raydi: oxirgi qo'shilgan — eng tashqi.
     app.add_middleware(I18nMiddleware, default_locale=settings.default_locale)

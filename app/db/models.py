@@ -12,8 +12,8 @@ from sqlalchemy import MetaData
 from app.shared.db.base import Base
 
 MODEL_MODULES: dict[str, tuple[str, ...]] = {
-    "platform": (),
-    "audit": (),
+    "platform": ("app.platform.use.models.orm", "app.shared.idempotency.models"),
+    "audit": ("app.platform.audit.models.orm",),
     "catalog": (),
     "commerce": (),
     "messaging": (),

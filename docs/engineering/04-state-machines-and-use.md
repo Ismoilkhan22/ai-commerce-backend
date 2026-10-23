@@ -18,7 +18,7 @@ Boshqa tomondan, bismuth v1 tajribasi: markaziy "USE" hamma side-effect'ni o'zig
 
 | Funksiya | Nima qiladi | Qachon |
 |---|---|---|
-| `validate_transition(entity_type, from_status, to_status, command)` | Qoida bormi? Yo'q bo'lsa `InvalidTransitionError` → `409 INVALID_STATE_TRANSITION` | Holat o'zgarishidan oldin, tranzaksiya ichida |
+| `validate_transition(entity_type, from_status, to_status, command, actor)` | Qoida bormi va `actor.actor_type` qoidaning `actors` ro'yxatidami? Yo'q bo'lsa `InvalidTransitionError` → `409 INVALID_STATE_TRANSITION` (AI xodim buyrug'ini bajara olmaydi — TC-028) | Holat o'zgarishidan oldin, tranzaksiya ichida |
 | `log_transition(entity_type, entity_id, rule, actor, reason, db)` | `platform.transition_log` ga yozadi | O'sha tranzaksiyada |
 | `force_transition(...)` | Qoidadan tashqari o'tish — faqat platforma admini, majburiy sabab, audit | Runbook'lar (`25`) |
 
@@ -37,7 +37,7 @@ class StateMachineRule(BaseModel):
     command: str                # "CONFIRM"
     from_status: str            # "PENDING_CONFIRMATION"
     to_status: str              # "CONFIRMED"
-    actors: set[ActorKind]      # {STAFF} | {STAFF, AI} | {SYSTEM} | {CUSTOMER}
+    actors: frozenset[ActorType]  # ActorContext.actor_type: STAFF | AI_AGENT | CUSTOMER | SYSTEM | PLATFORM
     requires_reason: bool = False
     business_ref: str           # "FSM-08" — business/05 ga havola
 ```
@@ -152,11 +152,11 @@ async def start_processing(self, order_id, actor, idem_key, db):
     async with db.begin():
         await self.idempotency.check_or_record(actor.shop_id, "order.start_processing", idem_key, db)
         order = await self.repo.get_for_update(actor.shop_id, order_id, db)
-        rule = self.use.validate_transition("commerce.order", order.status, "PROCESSING", "START_PROCESSING")
+        rule = self.use.validate_transition("commerce.order", order.status, "PROCESSING", "START_PROCESSING", actor)
         await self.inventory.allocate(actor.shop_id, order.id, db)       # reservation ACTIVE → ALLOCATED
         order.status = rule.to_status
         order.version += 1
-        await self.use.log_transition("commerce.order", order.id, rule, actor, reason=None, db=db)
+        await self.use.log_transition(db, entity_id=order.id, rule=rule, actor=actor)
         await self.audit.record("commerce.order.processing", order.id, actor, db)
         await write_outbox(db, OrderProcessingV1.from_order(order))
 ```
@@ -171,14 +171,14 @@ Bir xil holatga takroriy o'tish (masalan, `COMPLETE` ikki marta): ikkinchi chaqi
 
 ```sql
 CREATE TABLE platform.transition_log (
-    id              UUID PRIMARY KEY,              -- UUIDv7
+    id              UUID NOT NULL,                 -- UUIDv7; PK (id, occurred_at) — partition kaliti PK'da
     shop_id         UUID,                          -- platforma darajasidagi entity uchun NULL bo'lishi mumkin
     entity_type     TEXT NOT NULL,                 -- 'commerce.order'
     entity_id       UUID NOT NULL,
     command         TEXT NOT NULL,                 -- 'CONFIRM'
     from_status     TEXT NOT NULL,
     to_status       TEXT NOT NULL,
-    actor_kind      TEXT NOT NULL,                 -- STAFF | AI | SYSTEM | CUSTOMER | PLATFORM_ADMIN
+    actor_type      TEXT NOT NULL,                 -- STAFF | AI_AGENT | CUSTOMER | SYSTEM | PLATFORM (ActorContext)
     actor_id        UUID,
     reason          TEXT,
     forced          BOOLEAN NOT NULL DEFAULT false,
