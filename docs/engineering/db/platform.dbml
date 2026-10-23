@@ -1,6 +1,6 @@
 // =====================================================================
 // AI Commerce OS — `platform` schemasi: Shop va xodimlar (1-funksiya)
-// Holat: QORALAMA — founder ko‘rib chiqishi uchun (2026-10-23)
+// Holat: TASDIQLANGAN (DEC-131) va 1-modulda kodga tushgan (2026-10-23, migratsiya platform_0004)
 // Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
 // Manba hujjatlar: engineering/07 §4.1, engineering/10, business/04, business/05 (FSM-01)
 // =====================================================================
@@ -178,6 +178,8 @@ Table platform.memberships {
   Odam ↔ shop bog‘lanishi: shu shopda kim, qaysi holatda, qaysi filiallar doirasida.
   Oxirgi ACTIVE OWNER’ni o‘chirib yoki rolini o‘zgartirib bo‘lmaydi (LAST_OWNER_REQUIRED) — ilova va trigger bilan.
   Rol → ruxsatlar ro‘yxati bazada emas, kodda (app/platform/staff/permissions.py, DEC-131).
+  RLS (FORCE): faqat joriy shop a’zoliklari YOKI odamning o‘z a’zoligi ko‘rinadi — login paytida shop hali noma’lum (engineering/10 §4).
+  Trigger trg_memberships_last_owner: oxirgi egani o‘chirish/rolini almashtirish bazada ham to‘xtatiladi (parallel so‘rovlarda ham).
   '''
 }
 
@@ -195,7 +197,8 @@ Table platform.membership_branches {
 Table platform.invitations {
   id uuid [pk]
   shop_id uuid [not null]
-  membership_id uuid [not null, note: 'INVITED holatidagi a’zolik']
+  membership_id uuid [not null, note: 'Taklif — INVITED a’zolik; parol tiklash — ACTIVE a’zolik']
+  purpose text [not null, note: 'INVITE (xodim taklifi, 72 soat) | PASSWORD_RESET (parol tiklash, 24 soat)']
   token_hash text [not null, unique, note: 'Havola tokenining hash’i; tokenning o‘zi saqlanmaydi']
   channel text [not null, default: 'LINK', note: 'Hozir faqat LINK — ega havolani o‘zi yuboradi (DEC-131). Keyin SMS | TELEGRAM']
   expires_at timestamptz [not null, note: 'Masalan 72 soat']
@@ -206,13 +209,14 @@ Table platform.invitations {
   indexes {
     (shop_id, membership_id)
   }
-  Note: 'Xodimni taklif qilish. Qayta yuborilsa — yangi yozuv, eskisi revoked.'
+  Note: 'Bir martalik havolalar: xodim taklifi va parolni tiklash. Qayta berilsa — yangi yozuv, oldingi ochiq havolalar revoked. Havolaning o‘zi hech qayerda saqlanmaydi (idempotency javobida ham).'
 }
 
 Table platform.sessions {
   id uuid [pk]
   principal_id uuid [not null]
   shop_id uuid [note: 'Xodimning shopi; platforma xodimi uchun NULL']
+  audience text [not null, note: 'shop | platform — qaysi panel uchun. Shop paneli tokeni platforma panelida ishlamaydi']
   family_id uuid [not null, note: 'Refresh token zanjiri. O‘g‘irlangan token qayta ishlatilsa — butun zanjir bekor (ADR-023)']
   refresh_token_hash text [not null, unique]
   expires_at timestamptz [not null]
@@ -226,7 +230,7 @@ Table platform.sessions {
     (principal_id, revoked_at)
     family_id
   }
-  Note: 'Kirish sessiyalari. Access token (10–15 daq) bazaga yozilmaydi — faqat refresh token hash’i.'
+  Note: 'Kirish sessiyalari. Access token (15 daq) bazaga yozilmaydi — faqat refresh token hash’i (30 kun, har ishlatilganda yangilanadi). RLS (FORCE): joriy shop YOKI o‘z sessiyalari.'
 }
 
 // ---------------------------------------------------------------------

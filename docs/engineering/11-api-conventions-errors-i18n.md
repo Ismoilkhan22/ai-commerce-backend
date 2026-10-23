@@ -173,7 +173,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 
 | Code | `details` |
 |---|---|
-| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique` |
+| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak` (`too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi) |
 | `VERSION_CONFLICT` | `{"current_version": 5, "your_version": 4}` |
 | `INVALID_STATE_TRANSITION` | `{"entity": "commerce.order", "from": "DRAFT", "command": "COMPLETE"}` |
 | `INSUFFICIENT_AVAILABLE_STOCK` | `{"lines": [{"sku_id", "branch_id", "requested", "available"}]}` |
@@ -354,25 +354,34 @@ Prefiks `/api/v1/<surface>`. **Idem** — `Idempotency-Key` majburiy. **IfM** �
 
 ### 9.1 `auth`
 
+1-modulda qurilgan (2026-10-23). Login — telefon + parol; telefon istalgan ko'rinishda kelishi mumkin, `+998XXXXXXXXX` ga keltiriladi.
+
 | Metod va yo'l | Nima | Izoh |
 |---|---|---|
-| `POST /auth/login` | Kirish → access token + refresh cookie | Rate limit |
-| `POST /auth/refresh` | Token yangilash (rotatsiya) | Faqat cookie |
-| `POST /auth/logout` | Sessiyani yopish | |
-| `POST /auth/switch-shop` | Boshqa shopga o'tish | A'zolik tekshiriladi |
-| `POST /auth/ws-ticket` | WebSocket ticket (30 s) | |
-| `POST /auth/password-reset`, `POST /auth/password-reset/confirm` | Parolni tiklash | Rate limit |
-| `POST /auth/invites/{token}/accept` | Xodim taklifini qabul qilish | Idem |
+| `POST /auth/login` | Kirish → access token + refresh cookie | Rate limit (IP + telefon); 5 xato → 15 daqiqa blok (`429 RATE_LIMITED`, `retry_after_seconds`) |
+| `POST /auth/refresh` | Token yangilash (rotatsiya) | Faqat `cos_refresh` cookie; eski token qayta kelsa — butun oila bekor |
+| `POST /auth/logout`, `POST /auth/logout-all` | Joriy sessiyani yoki barcha sessiyalarni yopish | |
+| `GET /auth/me` | Kim, qaysi shop, rol, ruxsatlar, filiallar | Frontend menyuni shundan quradi |
+| `POST /auth/password/change` | Parolni o'zgartirish | Joriy parol so'raladi; boshqa sessiyalar bekor |
+| `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | Faol qurilmalar va bittasini yopish | |
+| `POST /auth/invites/{token}/accept` | Taklifni qabul qilish: parol o'rnatiladi, darhol kiriladi | Token bir martalik — Idem kerak emas; `404` + `reason`: `invalid`, `used`, `revoked`, `expired` |
+| `POST /auth/password-reset/confirm` | Tiklash havolasi bilan yangi parol | Barcha sessiyalar bekor; `404` + `reason` xuddi yuqoridagidek |
+
+Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS provayder kerak; hozir havolani ega yoki platforma admini beradi), `POST /auth/switch-shop` (bir odam — bitta shop, DEC-131), `POST /auth/ws-ticket` (realtime moduli bilan qo'shiladi).
 
 ### 9.2 `shop` surface — platform modullari
 
 | Metod va yo'l | Ruxsat | Idem / IfM |
 |---|---|---|
 | `GET /shop/profile`, `PATCH /shop/profile` | `shops.settings.view` / `shops.settings.edit` | — / IfM |
+| `POST /shop/profile/submit-for-verification` | `shops.settings.edit` | Idem |
 | `GET /shop/policies`, `PATCH /shop/policies` | `shops.settings.view` / `shops.policy.edit` | — / IfM |
 | `GET /shop/branches`, `POST /shop/branches`, `PATCH /shop/branches/{id}` | `shops.settings.view` / `shops.branch.edit` | — / Idem / IfM |
+| `POST /shop/branches/{id}/close` | `shops.branch.edit` | Idem |
 | `GET /shop/members` | `staff.member.view` | — |
-| `POST /shop/members/invites` | `staff.member.invite` | Idem |
+| `POST /shop/members/invites` | `staff.member.invite` | Idem (takror so'rovda havola qayta beriladi — havola bazada saqlanmaydi) |
+| `POST /shop/members/{id}/invites` | `staff.member.invite` — taklifni qayta yuborish | Idem; har chaqiruv yangi havola, eskisi bekor |
+| `POST /shop/members/{id}/password-reset` | `staff.member.password_reset` | Idem; har chaqiruv yangi havola (24 soat) |
 | `PUT /shop/members/{id}/roles` | `staff.member.edit_roles` | IfM |
 | `POST /shop/members/{id}/disable` | `staff.member.disable` | Idem |
 | `GET /shop/tasks`, `POST /shop/tasks/{id}/complete` | `staff.task.view` | — / Idem |
@@ -480,7 +489,10 @@ Prefiks `/api/v1/<surface>`. **Idem** — `Idempotency-Key` majburiy. **IfM** �
 |---|---|
 | `POST /webhooks/telegram/{account_ref}` | `X-Telegram-Bot-Api-Secret-Token` tekshiriladi |
 | `GET /webhooks/meta` (verify), `POST /webhooks/meta` | `X-Hub-Signature-256`; sahifa/akkaunt ID → `channel_accounts` |
-| `POST /platform/shops`, `POST /platform/shops/{id}/activate`, `POST …/{id}/suspend` | `platform.shop.activate` / `.suspend`; sabab majburiy |
+| `POST /platform/shops` | `platform.shop.create`; shop + ega taklifi bitta tranzaksiyada, javobda ega havolasi. Idem |
+| `GET /platform/shops`, `GET /platform/shops/{id}` | `platform.shop.view_meta` |
+| `POST /platform/shops/{id}/activate`, `…/reactivate`, `…/suspend`, `…/close` | `platform.shop.activate` (activate, reactivate) / `.suspend` / `.close`; suspend, reactivate va close uchun sabab majburiy. Idem |
+| `POST /platform/shops/{id}/members/{membership_id}/password-reset` | `platform.member.password_reset` — faqat shop egasi uchun. Idem |
 | `GET/POST/PATCH /platform/hardware-specs` | `platform.spec.edit` |
 | `POST /platform/support-grants` | Break-glass so'rovi ([10](10-security-tenancy-rbac.md) §9) |
 | `POST /platform/outbox/{schema}/{event_id}/replay` | `platform.outbox.replay` |

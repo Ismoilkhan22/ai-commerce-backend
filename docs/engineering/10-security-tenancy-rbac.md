@@ -74,6 +74,15 @@ RLS — ikkinchi qavat. Birinchi qavat — repository'dagi `WHERE shop_id = :sho
      USING (shop_id = current_setting('app.shop_id', true)::uuid)
      WITH CHECK (shop_id = current_setting('app.shop_id', true)::uuid);
    ```
+   Sozlama bir marta ishlatilgach tranzaksiya oxirida `''` bo'lib qoladi (NULL emas), shuning uchun haqiqiy kodda `NULLIF(current_setting('app.shop_id', true), '')::uuid` yoziladi — aks holda `''::uuid` xato beradi.
+   **Identity varianti (`platform.memberships`, `platform.sessions`, 1-modul):** login va refresh paytida shop hali noma'lum, shuning uchun bu ikki jadvalda "joriy shop **yoki** o'zim" qoidasi:
+   ```sql
+   -- memberships
+   USING (shop_id = <app.shop_id> OR principal_id = <app.principal_id>)
+   -- sessions (refresh paytida faqat sessiya id ma'lum)
+   USING (principal_id = <app.principal_id> OR id = <app.session_id> OR shop_id = <app.shop_id>)
+   ```
+   Kontekst `set_identity_context(...)` bilan, xuddi shu `set_config(..., true)` orqali o'rnatiladi. Sozlamasiz — baribir 0 qator (testda tekshirilgan).
 5. Ommaviy o'qish (storefront) private jadvallarga kirmaydi — `storefront.public_products` proyeksiyasidan.
 6. Platforma uchun "bypass" roli yo'q. Shoplararo rejali ishlar (`scheduler`) — `SECURITY DEFINER` funksiyalar orqali faqat "qaysi shopda ish bor" ro'yxati, keyin har shop uchun alohida tranzaksiya va `set_config` ([07](07-data-layer.md) §10).
 
@@ -105,14 +114,16 @@ Qolgan jadvallar (katalog, sayt) — app-layer filtri + composite FK; keyin kera
 
 | Element | Qoida |
 |---|---|
-| Parol | Argon2id; kirish urinishlari cheklangan (IP + login bo'yicha); parolni tiklash — muddatli bir martalik havola/kod |
-| Access token | JWT, 10–15 daqiqa, **frontend xotirasida** (`Authorization: Bearer`). localStorage — TAQIQ. `iss`, `aud`, `kid`, imzo tekshiriladi. Claim'lar: `sub`, `sid`, `shop`, `exp` (rollar emas — ular DB'dan) |
-| Refresh token | Tasodifiy, DB'da hash (`platform.sessions`), rotatsiya har ishlatilganda; `httpOnly Secure SameSite=Strict` cookie, `Path=/api/v1/auth/refresh` |
+| Parol | Argon2id; kamida 8 belgi, telefon raqami va oddiy parollar (`12345678`, `password`…) — `too_weak`. Kirish urinishlari cheklangan: IP + telefon bo'yicha rate limit va ketma-ket 5 xatodan keyin 15 daqiqa blok. Noma'lum telefon va noto'g'ri parol — bir xil javob va bir xil vaqt (dummy hash) |
+| Parolni tiklash | Stage 1: ega (`staff.member.password_reset`) yoki platforma admini (`platform.member.password_reset`) bir martalik havola beradi, 24 soat amal qiladi, hash'i `platform.invitations` da (`purpose = PASSWORD_RESET`). Tiklangach — barcha sessiyalar bekor. Xodim o'zi SMS orqali tiklashi — SMS provayder ulanganda |
+| Access token | JWT (HS256, `kid`), 15 daqiqa, **frontend xotirasida** (`Authorization: Bearer`). localStorage — TAQIQ. `iss`, `aud`, `kid`, imzo tekshiriladi. Claim'lar: `sub`, `sid`, `shop`, `iat`, `exp`, `jti` (rollar emas — ular DB'dan). `aud`: `cos-shop` yoki `cos-platform` — bir panel tokeni boshqasida ishlamaydi |
+| Refresh token | `<session_id>.<sir>`, 30 kun; DB'da faqat sirning sha256 hash'i (`platform.sessions`), rotatsiya har ishlatilganda (yangi qator, o'sha `family_id`); `httpOnly Secure SameSite=Strict` cookie, `Path=/api/v1/auth/refresh` |
 | Reuse aniqlansa | Butun sessiya oilasi (`family_id`) bekor qilinadi, foydalanuvchi qayta kiradi |
-| Shop almashtirish | `POST /api/v1/auth/switch-shop` — a'zolik tekshiriladi, yangi access token |
-| Xodim o'chirilsa | Barcha sessiyalari darhol bekor (FSM: `ACTIVE → DISABLED`), ruxsat keshi o'chiriladi |
+| Shop almashtirish | Stage 1 da yo'q: bir odam — bitta shop (DEC-131, `memberships.principal_id` unikal). Ko'p shop yoqilganda `POST /api/v1/auth/switch-shop` qo'shiladi |
+| Xodim o'chirilsa | Barcha sessiyalari va ochiq havolalari darhol bekor (FSM: `ACTIVE → DISABLED`). Ruxsatlar har so'rovda DB'dan o'qilgani uchun eski access token ham darhol ishlamay qoladi (TC-025) |
+| Parol o'zgarsa | Joriydan boshqa barcha sessiyalar bekor |
 | Domenlar | `app.<platforma>.uz` (dashboard) va `api.<platforma>.uz` — bitta site (cookie uchun) |
-| WebSocket | `POST /api/v1/auth/ws-ticket` → 30 s amal qiladigan bir martalik ticket; `/ws?ticket=...` ([08](08-cache-and-realtime.md)) |
+| WebSocket | `POST /api/v1/auth/ws-ticket` → 30 s amal qiladigan bir martalik ticket; `/ws?ticket=...` ([08](08-cache-and-realtime.md)). Realtime moduli bilan qo'shiladi (1-modulda yo'q) |
 | Muhim amallar | Shopni yopish, egani almashtirish, eksport — qayta parol (step-up), keyinroq 2FA |
 
 ### 5.2 Surface'lar bo'yicha
@@ -123,7 +134,7 @@ Qolgan jadvallar (katalog, sayt) — app-layer filtri + composite FK; keyin kera
 | `/api/v1/storefront/{slug}/*` | Anonim; buyurtma kuzatuvi va taklif — bitta resursga signed token (hash DB'da, muddatli) | 60/daq per IP; buyurtma so'rovi — 5/daq per IP + captcha keyin |
 | `/api/v1/webhooks/*` | Provayder imzosi (Telegram `secret_token` header, Meta `X-Hub-Signature-256`), `account_ref` | Provayder bo'yicha |
 | `/api/v1/platform/*` | Platforma xodimi JWT + platform roli; muhim amallar sabab bilan auditga | 120/daq |
-| `/api/v1/auth/*` | — | Login 10/daq per IP+login |
+| `/api/v1/auth/*` | — | Login 10/daq per IP+telefon (Redis; testda xotirada) |
 
 ---
 
@@ -151,6 +162,7 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `staff.member.invite` | ✓ | — | — | — | — | — | — | — | — | Xodimlar va rollar |
 | `staff.member.edit_roles` | ✓ | — | — | — | — | — | — | — | — | Xodimlar va rollar |
 | `staff.member.disable` | ✓ | — | — | — | — | — | — | — | — | Xodimlar va rollar; oxirgi egani o'chirib bo'lmaydi |
+| `staff.member.password_reset` | ✓ | — | — | — | — | — | — | — | — | Xodim parolini tiklash havolasi (SMS'siz Stage 1) |
 | `audit.entry.view` | ✓ | — | — | — | — | — | — | — | — | M20 (UAT-M20) |
 | `audit.entry.export` | ✓ (step-up) | — | — | — | — | — | — | — | — | M20, "xavfli amallar qo'shimcha tasdiq" |
 | `billing.plan.view` | ✓ | — | — | — | — | — | — | — | — | Tarif (menejer qila olmaydi) |
@@ -241,7 +253,10 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 
 | Kod | PLATFORM_ADMIN | PLATFORM_SUPPORT | SPEC_EDITOR |
 |---|---|---|---|
-| `platform.shop.activate`, `platform.shop.suspend` | ✓ | — | — |
+| `platform.shop.create` (shop + ega taklifi) | ✓ | — | — |
+| `platform.shop.activate` (qayta yoqish ham), `platform.shop.suspend`, `platform.shop.close` | ✓ | — | — |
+| `platform.member.password_reset` (shop egasining parolini tiklash) | ✓ | — | — |
+| `platform.state.force` (holatni majburan o'zgartirish, sabab + audit) | ✓ | — | — |
 | `platform.shop.view_meta` (holat, tarif, xatolar — ichki ma'lumotsiz) | ✓ | ✓ | — |
 | `platform.spec.edit` (texnik ma'lumotlar kutubxonasi, DEC-120) | ✓ | — | ✓ |
 | `platform.support.grant_request` (break-glass so'rovi, §9) | ✓ | ✓ | — |

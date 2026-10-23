@@ -1,6 +1,6 @@
 # `platform` schemasi — ma'lumotlar lug'ati
 
-> **Holat:** qoralama, founder ko'rib chiqmoqda (2026-10-23). Diagramma: [`platform.dbml`](platform.dbml) → dbdiagram.io.
+> **Holat:** tasdiqlangan (DEC-131) va kodda — migratsiya `platform_0004_shops_staff_auth` (2026-10-23). Diagramma: [`platform.dbml`](platform.dbml) → dbdiagram.io.
 > **Kim o'qiydi:** founder va dasturchilar. Har jadval: nima uchun kerak → har maydon nima va nega shunday → bog'lanishlar → misol.
 
 Misollarda bitta shop ishlatiladi: **"TechPC"** (Chilonzor va Yunusobod filiallari), egasi **Ali**, operatori **Vali**.
@@ -138,11 +138,13 @@ Bu qarorlar har jadvalda takrorlanadi, shuning uchun bir marta tushuntiraman.
 | `created_at`, `updated_at`, `version` | §0 | |
 
 **Indekslar:**
-- `(shop_id, principal_id)` **unikal** — bir odamning bir shopda ikkita a'zoligi bo'lmaydi (rollar alohida jadvalda).
-- `(shop_id, id)` unikal — rollar va filiallar a'zolikka shop bilan birga bog'lanishi uchun.
+- `(shop_id, principal_id)` **unikal** — bir odamning bir shopda ikkita a'zoligi bo'lmaydi.
+- `(shop_id, id)` unikal — filiallar va havolalar a'zolikka shop bilan birga bog'lanishi uchun.
 - `principal_id` **unikal** — hozircha bir odam faqat bitta shopda ishlaydi (founder, 2026-10-23). Jadvallar ajratilgani uchun keyin ko'p shopga o'tish faqat shu cheklovni olib tashlash bilan bo'ladi, ma'lumotni qayta ko'chirish kerak emas.
 
-**Muhim qoida:** shopda kamida bitta faol `OWNER` qolishi shart. Oxirgi egani o'chirib yoki rolini o'zgartirib bo'lmaydi (`LAST_OWNER_REQUIRED`, UAT-M02). Bu kodda **va** bazadagi trigger bilan tekshiriladi.
+**Muhim qoida:** shopda kamida bitta faol `OWNER` qolishi shart. Oxirgi egani o'chirib yoki rolini o'zgartirib bo'lmaydi (`LAST_OWNER_REQUIRED`, UAT-M02). Bu kodda **va** bazadagi trigger (`trg_memberships_last_owner`) bilan tekshiriladi. Trigger shop qatorini qulflaydi, shuning uchun ikki ega bir vaqtda bir-birini o'chirmoqchi bo'lsa ham bittasi to'xtaydi (testda tekshirilgan).
+
+**RLS:** jadvalda `FORCE ROW LEVEL SECURITY`. Ko'rinadi: joriy shop a'zoliklari **yoki** odamning o'z a'zoligi. Ikkinchi shart login uchun kerak: kirish paytida shop hali noma'lum, avval "bu odam qaysi shopda" topiladi (`engineering/10` §4).
 
 **Ruxsatlar qayerda:** "Operator nima qila oladi" ro'yxati bazada emas, **kodda** (`app/platform/staff/permissions.py`, DEC-131). Rollar hamma shop uchun bir xil va o'zgarmaydi, shuning uchun ro'yxat kod bilan birga versiyalanadi va testlar uni avtomatik tekshiradi (TC-API-06). Ruxsat kodlarining to'liq katalogi — `engineering/10` §6. Shop o'z rolini yaratadigan bo'lsa (Stage 2), jadval qo'shiladi.
 
@@ -163,17 +165,20 @@ Bu qarorlar har jadvalda takrorlanadi, shuning uchun bir marta tushuntiraman.
 
 ---
 
-## 7. `invitations` — xodimni taklif qilish
+## 7. `invitations` — bir martalik havolalar (taklif va parol tiklash)
 
-**Nima uchun kerak:** Ali Valini qo'shadi → Valiga havola ketadi → Vali bosib, parol o'rnatadi → a'zoligi `ACTIVE` bo'ladi.
+**Nima uchun kerak:**
+- taklif: Ali Valini qo'shadi → Valiga havola ketadi → Vali bosib, parol o'rnatadi → a'zoligi `ACTIVE` bo'ladi;
+- parol tiklash: Vali parolini unutdi → Ali (yoki platforma admini) tiklash havolasini beradi → Vali yangi parol qo'yadi, eski sessiyalari tugaydi.
 
 | Maydon | Nima saqlaydi | Nega shunday |
 |---|---|---|
 | `id`, `shop_id` | | §0 |
-| `membership_id` | `INVITED` holatidagi a'zolik | Taklif qabul qilinganda shu a'zolik faollashadi |
+| `membership_id` | Kimga tegishli a'zolik | Taklifda — `INVITED` a'zolik (qabul qilinganda faollashadi); tiklashda — `ACTIVE` a'zolik |
+| `purpose` | `INVITE` yoki `PASSWORD_RESET` | Ikkala havola bir xil ishlaydi (hash, muddat, bir marta), shuning uchun bitta jadval. Turi aralashib ketmasligi uchun belgi: taklif havolasi bilan parolni tiklab bo'lmaydi |
 | `token_hash` | Havoladagi maxfiy kodning hash'i | **Kodning o'zi saqlanmaydi.** Baza o'g'irlansa ham havolalar ishlamaydi (parol kabi). `unique` |
 | `channel` | Hozir faqat `LINK` | **Ega havolani o'zi nusxalab yuboradi** (masalan, Telegram'da) — bepul, qo'shimcha xizmat kerak emas (DEC-131). Ustun keyin SMS yoki Telegram bot qo'shilishi uchun qoldirilgan |
-| `expires_at` | Muddati (masalan, 72 soat) | Eski havola cheksiz ishlamasligi kerak — xavfsizlik |
+| `expires_at` | Muddati: taklif 72 soat, tiklash 24 soat | Eski havola cheksiz ishlamasligi kerak — xavfsizlik |
 | `accepted_at`, `revoked_at` | Qabul qilindi yoki bekor qilindi | Qayta yuborilsa — yangi qator yoziladi, eskisi bekor qilinadi. Shunda faqat oxirgi havola ishlaydi |
 | `created_at` | | |
 
@@ -186,14 +191,15 @@ Bu qarorlar har jadvalda takrorlanadi, shuning uchun bir marta tushuntiraman.
 ## 8. `sessions` — kim tizimga kirib turibdi
 
 **Nima uchun kerak:** login qilingandan keyin har safar parol so'ramaslik uchun (ADR-023, DEC-008):
-- **access token** — 10–15 daqiqa yashaydi, brauzer xotirasida, bazaga yozilmaydi;
-- **refresh token** — uzoq yashaydi, `httpOnly` cookie'da, uning hash'i shu jadvalda. Access token tugaganda yangisini olish uchun ishlatiladi.
+- **access token** — 15 daqiqa yashaydi, brauzer xotirasida, bazaga yozilmaydi;
+- **refresh token** — 30 kun (har ishlatilganda yangilanadi), `httpOnly` cookie'da, uning hash'i shu jadvalda. Access token tugaganda yangisini olish uchun ishlatiladi.
 
 | Maydon | Nima saqlaydi | Nega shunday |
 |---|---|---|
 | `id` | Sessiya | |
 | `principal_id` | Kimning sessiyasi | |
 | `shop_id` | Xodim qaysi shopda ishlayapti | Hozir har odamda bitta shop. Platforma xodimi uchun `NULL`. Bu faqat **ishora**: har so'rovda a'zolik bazadan qayta tekshiriladi |
+| `audience` | `shop` yoki `platform` | Qaysi panel uchun ochilgan. Shop panelidagi sessiya bilan platforma paneliga kirib bo'lmaydi va aksincha |
 | `family_id` | Token zanjiri | Har refresh'da yangi token beriladi, eskisi bekor qilinadi (rotation). **O'g'irlangan eski token** qayta ishlatilsa, tizim buni ko'radi va butun zanjirni bekor qiladi — o'g'ri ham, egasi ham chiqib ketadi, egasi qayta kiradi |
 | `refresh_token_hash` | Token hash'i | Tokenning o'zi saqlanmaydi. `unique` |
 | `expires_at`, `revoked_at`, `revoked_reason` | Muddati, bekor qilinganmi, nega | `revoked_reason`: chiqib ketdi, almashtirildi, o'g'irlik shubhasi, xodim o'chirildi — xavfsizlik tekshiruvi uchun |
@@ -202,6 +208,7 @@ Bu qarorlar har jadvalda takrorlanadi, shuning uchun bir marta tushuntiraman.
 
 **Indekslar:** `(principal_id, revoked_at)` — "odamning faol sessiyalari", xodim o'chirilganda hammasini bekor qilish uchun. `family_id` — zanjirni tez bekor qilish uchun.
 **Bog'lanishlar:** `→ principals` (cascade), `→ shops`.
+**RLS:** `FORCE`; ko'rinadi — joriy shop sessiyalari yoki odamning o'z sessiyalari (login va refresh paytida shop konteksti hali yo'q).
 
 ---
 

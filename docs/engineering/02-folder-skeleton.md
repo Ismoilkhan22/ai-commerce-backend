@@ -85,8 +85,8 @@ ai-commerce-backend/
 │   │
 │   ├── domains/                             # ❌ Domen → domen import TAQIQ
 │   │   ├── catalog/
-│   │   │   ├── __init__.py                  # DOMAIN_MANIFEST
-│   │   │   ├── domain_manifest.py
+│   │   │   ├── __init__.py                  # bo'sh (faqat docstring) — aylanma import bo'lmasin
+│   │   │   ├── domain_manifest.py           # DOMAIN_MANIFEST
 │   │   │   ├── permissions.py               # catalog.product.edit, catalog.price.change, ...
 │   │   │   ├── events.py                    # chiqaradigan va tinglaydigan event'lar ro'yxati
 │   │   │   ├── subscribers.py
@@ -184,7 +184,7 @@ ai-commerce-backend/
 ### `app/main.py`
 - Lifespan (DB, Redis, OTel ishga tushadi va to'xtaydi)
 - Middleware zanjiri (`01` §5)
-- `app/domains/*/DOMAIN_MANIFEST` larni avtomatik topadi va router'larni surface prefiksi bilan ulaydi
+- Manifest'larni avtomatik topadi: `app/platform/*/manifest.py` → `MODULE_MANIFEST`, `app/domains/*/domain_manifest.py` → `DOMAIN_MANIFEST`. Router'larni surface prefiksi bilan ulaydi, bir xil yo'l ikki modulda bo'lsa ishga tushmaydi. Manifest paket `__init__.py` ida emas, alohida faylda — paketni import qilish boshqa modullarni tortib kelmasligi uchun
 - `/health/*`
 - **Biznes logika yo'q**
 
@@ -210,6 +210,7 @@ DOMAIN_MANIFEST = DomainManifest(
     event_subscribers=[on_order_draft_requested, on_quote_draft_requested],
     scheduled_jobs=[order_reminders_job, reservation_expiry_job, quote_expiry_job],
     permissions=COMMERCE_PERMISSIONS,
+    role_grants=COMMERCE_ROLE_GRANTS,          # rol → shu domen ruxsatlari; PermissionRegistry yig'adi (10 §6)
     privacy_handlers=COMMERCE_PRIVACY_HANDLERS,   # xaridor/shop ma'lumotini eksport va o'chirish (26-…)
 )
 ```

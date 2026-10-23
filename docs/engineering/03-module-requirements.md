@@ -9,7 +9,7 @@
 
 ### 1.1 Tuzilma
 - [ ] Domen `app/domains/<name>/` da
-- [ ] `__init__.py` da `DOMAIN_MANIFEST`, `domain_manifest.py` to'liq (name, schema, routers, rules, subscribers, jobs, permissions, privacy_handlers)
+- [ ] `domain_manifest.py` da `DOMAIN_MANIFEST` to'liq (name, schema, routers, rules, subscribers, jobs, permissions, role_grants, privacy_handlers); `__init__.py` bo'sh
 - [ ] Shaxsiy ma'lumot saqlasa — `privacy_handlers` (eksport, o'chirish, saqlash muddati tozalash) — `26-privacy-and-retention.md`
 - [ ] Har sub-modul: `api/`, `services/`, `repository/`, `models/`, `state_machine.py` (holati bo'lsa), `tests/`
 - [ ] `events.py` — chiqaradigan va tinglaydigan event'lar ro'yxati

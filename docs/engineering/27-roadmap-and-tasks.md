@@ -11,7 +11,7 @@ Ish **modul-modul, har modul to'liq** qilinadi (baza loyihasi → founder tasdig
 | № | Modul | Ichidagi vazifalar | Holat |
 |---|---|---|---|
 | — | Texnik asos | S0-01, S0-02, S0-03, S0-07 | ✅ tayyor (testlar: unit + PostgreSQL) |
-| 1 | Auth, shop va xodimlar (to'liq auth) | S0-04 (+ CORS, rate limit; `get_db` actor dependency'ga aniq bog'lanadi — shop konteksti va RLS'siz tranzaksiya ochilmasligi uchun) | Baza tasdiqlandi ([db/platform.dbml](db/platform.dbml), DEC-131) |
+| 1 | Auth, shop va xodimlar (to'liq auth) | S0-04 (+ CORS, rate limit; `get_db` actor dependency'ga aniq bog'lanadi — shop konteksti va RLS'siz tranzaksiya ochilmasligi uchun) | ✅ kod va testlar (2026-10-23): 33 endpoint, RLS (`memberships`, `sessions`), oxirgi ega trigger'i. Ataylab keyinga: xodim o'zi parol tiklashi (SMS), `switch-shop`, `ws-ticket` ([11](11-api-conventions-errors-i18n.md) §9.1) |
 | 2 | Katalog | S1-01…S1-05, S0-08 (fayllar) | Baza loyihasi kutilmoqda |
 | 3 | Savdo (commerce) | S1 ombor, S3 lead/taklif, S4 buyurtmalar | — |
 | 4 | Shop sayti | S1 storefront | — |
@@ -64,7 +64,7 @@ Parallel: S0-00 Meta arizasi (S2 dagi Instagram uchun)
 | S0-01 | Python 3.12 + uv, ruff, mypy, pytest, **import-linter** (`.importlinter`: layers + domains-independent), pre-commit, CI | ADR-031 | CI yashil; bo'sh `app/domains/x` boshqa domenni import qilsa CI yiqiladi |
 | S0-02 | `app/main.py`, `config/`, `dependencies.py`; DomainManifest avto-ulash; surface router'lari (`shop`, `storefront`, `webhooks`, `platform`); `shared/errors` + global handler (K-07); `shared/i18n` | S0-01 | `/health/live`, `/health/ready`; barcha xatolar bitta formatda, uch tilda |
 | S0-03 | `shared/db`: async session, `get_db`/`get_read_db`, mixin'lar (`ShopScopedMixin`), `schemas.sql` (schemalar, `app_migrator`, `app_runtime NOBYPASSRLS`), Alembic multi-env | S0-02 | Rollback va pool testlari; har schema `upgrade/downgrade` |
-| S0-04 | `platform/auth` (ADR-023, refresh rotation, WS ticket), `platform/shops` (FSM-01, filiallar), `platform/staff` (a'zolik, rollar, ruxsat katalogi, `require_permission`, filial doirasi); **RLS spike** (DEC-002): `set_config('app.shop_id', …, true)` async pool bilan | S0-03 | TC-ISO-01…10, TC-025; oxirgi egani o'chirib bo'lmaydi |
+| S0-04 | `platform/auth` (ADR-023, refresh rotation; WS ticket — realtime bilan), `platform/shops` (FSM-01, filiallar), `platform/staff` (a'zolik, rollar, ruxsat katalogi, `require_permission`, filial doirasi); **RLS spike** (DEC-002): `set_config('app.shop_id', …, true)` async pool bilan | S0-03 | TC-ISO-01…10, TC-025; oxirgi egani o'chirib bo'lmaydi |
 | S0-05 | `shared/tracing`, structlog JSON sxemasi, PII filtri, OTel → Grafana Cloud, Sentry (DEC-012) | S0-02 | Bitta `trace_id` API → outbox → arq task'gacha; logda PII yo'q |
 | S0-06 | `shared/events` (envelope K-08, `write_outbox`, `@subscribe` registry), `outbox_events` har schemada; `workers/outbox_worker` (SKIP LOCKED, retry, `DEAD`), `workers/task_worker` (arq), `workers/scheduler_worker` (APScheduler + advisory lock) | S0-03 | TC-022 (failpoint), 3 nusxa scheduler → har ish 1 marta; Redis o'chib-yonsa vazifa yo'qolmaydi |
 | S0-07 | `platform/use` (validate/log/force transition, rules_loader), `shared/idempotency`, `platform/audit` (append-only, oyma-oy partition) | S0-03 | FSM-01 o'tishlari jurnalda; takror `Idempotency-Key` → bir xil javob |
