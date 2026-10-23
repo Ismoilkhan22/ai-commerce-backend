@@ -26,9 +26,13 @@ class TimestampMixin:
 
 
 class ShopScopedMixin:
-    """Har shop jadvali (K-01). Indekslar `shop_id` dan boshlanadi; RLS siyosati shu ustunga (10 §4)."""
+    """Har shop jadvali (K-01). RLS siyosati shu ustunga (10 §4).
 
-    shop_id: Mapped[UUID] = mapped_column(nullable=False, index=True)
+    Alohida indeks yaratilmaydi: jadvalning o'z indekslari `shop_id` dan boshlanadi
+    (`UNIQUE (shop_id, id)`, `(shop_id, status)` …) — ular shu ustun bo'yicha qidiruvni ham qoplaydi.
+    """
+
+    shop_id: Mapped[UUID] = mapped_column(nullable=False)
 
 
 class VersionMixin:

@@ -83,6 +83,26 @@ async def set_shop_context(session: AsyncSession, shop_id: UUID) -> None:
     await session.execute(text("SELECT set_config('app.shop_id', :shop_id, true)"), {"shop_id": str(shop_id)})
 
 
+async def set_identity_context(
+    session: AsyncSession,
+    *,
+    shop_id: UUID | None = None,
+    principal_id: UUID | None = None,
+    session_id: UUID | None = None,
+) -> None:
+    """RLS konteksti (10 §4): shop, odam va sessiya — faqat shu tranzaksiya uchun.
+
+    `platform.memberships` / `platform.sessions` siyosatlari shop YOKI odam (YOKI sessiya) bo'yicha
+    ruxsat beradi — login va token yangilashda shop hali noma'lum bo'ladi.
+    """
+    values = {"app.shop_id": shop_id, "app.principal_id": principal_id, "app.session_id": session_id}
+    for name, value in values.items():
+        if value is not None:
+            await session.execute(
+                text("SELECT set_config(:name, :value, true)"), {"name": name, "value": str(value)}
+            )
+
+
 def _request_shop_id(request: Request) -> UUID | None:
     # S0-04: ActorContext autentifikatsiya dependency'sida `request.state.shop_id` ga yoziladi.
     shop_id: UUID | None = getattr(request.state, "shop_id", None)

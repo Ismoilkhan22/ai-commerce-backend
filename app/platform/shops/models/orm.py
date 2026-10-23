@@ -1,0 +1,103 @@
+"""platform.shops, branches, shop_policies — db/platform.dbml §shop_va_filiallar (DEC-131)."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.shared.db.base import Base
+from app.shared.db.mixins import IdMixin, TimestampMixin, VersionMixin
+
+SHOP_STATUSES = ("DRAFT", "PENDING_VERIFICATION", "ACTIVE", "SUSPENDED", "CLOSED")
+
+
+class Shop(IdMixin, TimestampMixin, VersionMixin, Base):
+    __tablename__ = "shops"
+    __table_args__ = (
+        UniqueConstraint("slug"),
+        UniqueConstraint("tin"),
+        CheckConstraint(f"status IN {SHOP_STATUSES}", name="status"),
+        CheckConstraint("deployment_mode IN ('SHARED', 'DEDICATED')", name="deployment_mode"),
+        CheckConstraint("slug ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'", name="slug_format"),
+        CheckConstraint("tin ~ '^[0-9]{9}$'", name="tin_format"),
+        {"schema": "platform"},
+    )
+
+    slug: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    legal_name: Mapped[str | None] = mapped_column(Text)
+    tin: Mapped[str] = mapped_column(Text)  # STIR — majburiy (DEC-131)
+    status: Mapped[str] = mapped_column(Text, server_default="DRAFT")
+    default_locale: Mapped[str] = mapped_column(Text, server_default="uz")
+    timezone: Mapped[str] = mapped_column(Text, server_default="Asia/Tashkent")
+    deployment_mode: Mapped[str] = mapped_column(Text, server_default="SHARED")
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Branch(IdMixin, TimestampMixin, VersionMixin, Base):
+    __tablename__ = "branches"
+    __table_args__ = (
+        UniqueConstraint("shop_id", "id"),
+        Index("ix_branches_shop_id_status", "shop_id", "status"),
+        CheckConstraint("status IN ('ACTIVE', 'CLOSED')", name="status"),
+        {"schema": "platform"},
+    )
+
+    shop_id: Mapped[UUID] = mapped_column(ForeignKey("platform.shops.id", ondelete="RESTRICT"))
+    name: Mapped[str] = mapped_column(Text)
+    address: Mapped[str] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(Text)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    working_hours: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    is_pickup_point: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    status: Mapped[str] = mapped_column(Text, server_default="ACTIVE")
+
+
+class ShopPolicy(VersionMixin, Base):
+    __tablename__ = "shop_policies"
+    __table_args__ = (
+        CheckConstraint("quote_approval_mode IN ('ALL', 'RISKY_ONLY')", name="quote_approval_mode"),
+        CheckConstraint("exchange_rate_source IN ('MANUAL', 'CBU')", name="exchange_rate_source"),
+        CheckConstraint("stock_display IN ('EXACT', 'STATUS_ONLY')", name="stock_display"),
+        CheckConstraint(
+            "discount_limit_sales_pct BETWEEN 0 AND 100 AND discount_limit_manager_pct BETWEEN 0 AND 100",
+            name="discount_limits",
+        ),
+        CheckConstraint("quote_ttl_hours > 0 AND low_stock_threshold >= 0", name="positive_values"),
+        {"schema": "platform"},
+    )
+
+    shop_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform.shops.id", ondelete="RESTRICT"), primary_key=True
+    )
+    quote_ttl_hours: Mapped[int] = mapped_column(Integer, server_default="24")
+    discount_limit_sales_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="0")
+    discount_limit_manager_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="5")
+    order_reminder_hours: Mapped[list[int]] = mapped_column(ARRAY(Integer), server_default="{24,72}")
+    quote_approval_mode: Mapped[str] = mapped_column(Text, server_default="ALL")
+    exchange_rate_source: Mapped[str] = mapped_column(Text, server_default="MANUAL")
+    stock_display: Mapped[str] = mapped_column(Text, server_default="STATUS_ONLY")
+    low_stock_threshold: Mapped[int] = mapped_column(Integer, server_default="2")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
