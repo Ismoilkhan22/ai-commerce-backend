@@ -7,12 +7,27 @@ from typing import Literal, Self
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 from app.shared.db.session import DatabaseConfig
 from app.shared.i18n.locale import Locale
 
 # Faqat lokal muhit uchun standart qiymatlar (.env.example bilan bir xil).
 _LOCAL_DB = "postgresql+asyncpg://{user}:{user}@localhost:5432/commerce_os"
+
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})  # noqa: S104 — taqiqlash uchun ro'yxat
+_WEAK_PASSWORDS = frozenset({"postgres", "password", "admin", "secret", "app_runtime", "app_migrator"})
+MIN_DB_PASSWORD_LENGTH = 12
+
+
+def _unsafe_db_url_reason(url: str) -> str | None:
+    parsed = make_url(url)
+    if (parsed.host or "").strip("[]") in _LOCAL_HOSTS:
+        return "lokal manzil"
+    password = parsed.password or ""
+    if password in _WEAK_PASSWORDS or password == parsed.username or len(password) < MIN_DB_PASSWORD_LENGTH:
+        return f"zaif parol (kamida {MIN_DB_PASSWORD_LENGTH} belgi, standart qiymat emas)"
+    return None
 
 
 class Settings(BaseSettings):
@@ -38,8 +53,9 @@ class Settings(BaseSettings):
     def _no_local_defaults_outside_dev(self) -> Self:
         if self.app_env in ("staging", "production"):
             for name in ("database_url", "database_migrator_url"):
-                if "@localhost:" in getattr(self, name):
-                    raise ValueError(f"{name} {self.app_env} muhitida aniq berilishi kerak")
+                reason = _unsafe_db_url_reason(getattr(self, name))
+                if reason:
+                    raise ValueError(f"{name} {self.app_env} muhitida ishlatib bo'lmaydi: {reason}")
         return self
 
     def database_config(self) -> DatabaseConfig:

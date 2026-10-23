@@ -50,9 +50,14 @@ def upgrade() -> None:
         "ON platform.transition_log (shop_id, entity_type, entity_id, occurred_at)"
     )
     op.execute(f"REVOKE UPDATE, DELETE, TRUNCATE ON platform.transition_log FROM {RUNTIME_ROLE}")
-    for month in month_starts(FIRST_MONTH, INITIAL_MONTHS):
-        op.execute(monthly_partition_sql("platform", "transition_log", month, append_only_role=RUNTIME_ROLE))
-    op.execute(default_partition_sql("platform", "transition_log", append_only_role=RUNTIME_ROLE))
+    statements = [
+        stmt
+        for month in month_starts(FIRST_MONTH, INITIAL_MONTHS)
+        for stmt in monthly_partition_sql("platform", "transition_log", month, append_only_role=RUNTIME_ROLE)
+    ]
+    statements += default_partition_sql("platform", "transition_log", append_only_role=RUNTIME_ROLE)
+    for statement in statements:
+        op.execute(statement)
 
     op.execute(
         """

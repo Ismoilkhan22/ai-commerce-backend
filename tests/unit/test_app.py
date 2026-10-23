@@ -11,8 +11,8 @@ from app.main import RouteConflictError, create_app
 from app.shared.types.manifest import DomainManifest
 
 
-def _router(path: str) -> APIRouter:
-    router = APIRouter()
+def _router(path: str, prefix: str = "") -> APIRouter:
+    router = APIRouter(prefix=prefix)
 
     @router.get(path)
     async def handler() -> dict[str, str]:
@@ -36,6 +36,22 @@ def test_same_route_in_two_modules_fails_on_boot(settings: Settings) -> None:  #
     first = DomainManifest(name="catalog", routers={"shop": _router("/products")})
     second = DomainManifest(name="commerce", routers={"shop": _router("/products")})
     with pytest.raises(RouteConflictError, match="catalog"):
+        create_app(settings, manifests=[first, second])
+
+
+def test_conflict_between_prefixed_and_plain_router_is_detected(settings: Settings) -> None:
+    # Bir xil yakuniy manzil: /api/v1/shop/orders/{id} — biri prefiks bilan, biri prefikssiz
+    first = DomainManifest(name="commerce", routers={"shop": _router("/{order_id}", prefix="/orders")})
+    second = DomainManifest(name="support", routers={"shop": _router("/orders/{order_id}")})
+    with pytest.raises(RouteConflictError, match="/api/v1/shop/orders/\\{order_id\\}"):
+        create_app(settings, manifests=[first, second])
+
+
+def test_conflict_with_differently_named_path_params_is_detected(settings: Settings) -> None:
+    # /orders/{order_id} va /orders/{case_id} — bir xil manzil; ikkinchisi jimgina yopilib qolardi
+    first = DomainManifest(name="commerce", routers={"shop": _router("/orders/{order_id}")})
+    second = DomainManifest(name="support", routers={"shop": _router("/orders/{case_id}")})
+    with pytest.raises(RouteConflictError):
         create_app(settings, manifests=[first, second])
 
 

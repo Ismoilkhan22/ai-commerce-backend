@@ -19,23 +19,26 @@ def month_starts(first: date, count: int) -> list[date]:
 
 def monthly_partition_sql(
     schema: str, table: str, month: date, *, append_only_role: str | None = None
-) -> str:
-    """Bitta oy partition'i. `append_only_role` berilsa — unga partition'da UPDATE/DELETE yo'q."""
+) -> list[str]:
+    """Bitta oy partition'i. `append_only_role` berilsa — unga partition'da UPDATE/DELETE yo'q.
+
+    Har buyruq alohida: asyncpg bitta so'rovda bir nechta SQL buyruqni bajarmaydi.
+    """
     start = date(month.year, month.month, 1)
     end = date(start.year + (start.month == 12), start.month % 12 + 1, 1)
     child = f"{schema}.{table}_y{start.year}m{start.month:02d}"
-    sql = (
+    statements = [
         f"CREATE TABLE IF NOT EXISTS {child} PARTITION OF {schema}.{table} "
-        f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}');"
-    )
+        f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}')"
+    ]
     if append_only_role:
-        sql += f"\nREVOKE UPDATE, DELETE, TRUNCATE ON {child} FROM {append_only_role};"
-    return sql
+        statements.append(f"REVOKE UPDATE, DELETE, TRUNCATE ON {child} FROM {append_only_role}")
+    return statements
 
 
-def default_partition_sql(schema: str, table: str, *, append_only_role: str | None = None) -> str:
+def default_partition_sql(schema: str, table: str, *, append_only_role: str | None = None) -> list[str]:
     child = f"{schema}.{table}_default"
-    sql = f"CREATE TABLE IF NOT EXISTS {child} PARTITION OF {schema}.{table} DEFAULT;"
+    statements = [f"CREATE TABLE IF NOT EXISTS {child} PARTITION OF {schema}.{table} DEFAULT"]
     if append_only_role:
-        sql += f"\nREVOKE UPDATE, DELETE, TRUNCATE ON {child} FROM {append_only_role};"
-    return sql
+        statements.append(f"REVOKE UPDATE, DELETE, TRUNCATE ON {child} FROM {append_only_role}")
+    return statements

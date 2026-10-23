@@ -83,3 +83,10 @@ def test_domain_importing_composition_root_is_rejected(fake_repo: Path) -> None:
     _write(fake_repo, "app/domains/catalog/api.py", "from app.dependencies import get_x\n")
     [violation] = check_boundaries(fake_repo)
     assert "composition root" in violation.rule
+
+
+def test_domain_importing_db_registry_is_rejected(fake_repo: Path) -> None:
+    # app.db barcha domen modellarini import qiladi — u ham composition root
+    _write(fake_repo, "app/domains/catalog/service.py", "from app.db.models import load_metadata\n")
+    [violation] = check_boundaries(fake_repo)
+    assert "composition root" in violation.rule

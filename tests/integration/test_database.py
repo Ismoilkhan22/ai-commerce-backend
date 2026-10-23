@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from uuid import uuid4
 
 import asyncpg
 import pytest
+from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.checks import cross_schema_foreign_keys
 from app.db.schemas import SCHEMAS
 from app.shared.db.session import Database, DatabaseConfig
-from tests.integration.conftest import PgUrls, migrate_all
+from tests.integration.conftest import PgUrls, alembic_config, migrate_all
 
 pytestmark = pytest.mark.integration
 
@@ -37,7 +40,19 @@ def test_every_schema_upgrades_and_downgrades(migrated: PgUrls) -> None:
         finally:
             await conn.close()
 
-    assert asyncio.run(versions()) == {s: f"{s}_0001" for s in SCHEMAS}
+    heads = {s: ScriptDirectory.from_config(alembic_config(s)).get_current_head() for s in SCHEMAS}
+    assert asyncio.run(versions()) == heads
+
+
+@pytest.mark.parametrize("schema", SCHEMAS)
+def test_models_match_migrations(migrated: PgUrls, schema: str) -> None:
+    """ORM modellari va migratsiyalar bir xil: autogenerate hech narsa taklif qilmasligi kerak.
+    Aks holda keyingi `--autogenerate` partition'lar yoki jadvallarni o'chiradigan migratsiya yasaydi."""
+    os.environ["ALEMBIC_DATABASE_URL"] = migrated.migrator
+    try:
+        command.check(alembic_config(schema))
+    finally:
+        os.environ.pop("ALEMBIC_DATABASE_URL", None)
 
 
 async def test_no_cross_schema_foreign_keys(migrated: PgUrls) -> None:  # TC-DB-05
@@ -56,6 +71,16 @@ async def test_runtime_role_cannot_bypass_rls_or_run_ddl(migrated: PgUrls) -> No
         assert (flags["rolsuper"], flags["rolbypassrls"]) == (False, False)
         with pytest.raises(asyncpg.InsufficientPrivilegeError):
             await conn.execute("CREATE TABLE commerce.should_fail (id int)")
+    finally:
+        await conn.close()
+
+
+async def test_runtime_role_cannot_touch_migration_state(migrated: PgUrls) -> None:
+    conn = await asyncpg.connect(_plain(migrated.runtime))
+    try:
+        for schema in SCHEMAS:
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await conn.execute(f"UPDATE {schema}.alembic_version SET version_num = version_num")
     finally:
         await conn.close()
 

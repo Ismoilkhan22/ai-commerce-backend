@@ -24,6 +24,7 @@ ERROR_CATALOG: dict[str, ErrorSpec] = {
     "METHOD_NOT_ALLOWED": ErrorSpec(405),
     "VERSION_CONFLICT": ErrorSpec(409),
     "IDEMPOTENCY_KEY_REUSED": ErrorSpec(409),
+    "REQUEST_IN_PROGRESS": ErrorSpec(409, retryable=True),
     "INVALID_STATE_TRANSITION": ErrorSpec(409),
     "INSUFFICIENT_AVAILABLE_STOCK": ErrorSpec(409),
     "PRICE_CHANGED": ErrorSpec(409),

@@ -49,9 +49,14 @@ def upgrade() -> None:
         "CREATE INDEX ix_audit_entries_entity ON audit.audit_entries (shop_id, entity_type, entity_id)"
     )
     op.execute(f"REVOKE UPDATE, DELETE, TRUNCATE ON audit.audit_entries FROM {RUNTIME_ROLE}")
-    for month in month_starts(FIRST_MONTH, INITIAL_MONTHS):
-        op.execute(monthly_partition_sql("audit", "audit_entries", month, append_only_role=RUNTIME_ROLE))
-    op.execute(default_partition_sql("audit", "audit_entries", append_only_role=RUNTIME_ROLE))
+    statements = [
+        stmt
+        for month in month_starts(FIRST_MONTH, INITIAL_MONTHS)
+        for stmt in monthly_partition_sql("audit", "audit_entries", month, append_only_role=RUNTIME_ROLE)
+    ]
+    statements += default_partition_sql("audit", "audit_entries", append_only_role=RUNTIME_ROLE)
+    for statement in statements:
+        op.execute(statement)
 
 
 def downgrade() -> None:

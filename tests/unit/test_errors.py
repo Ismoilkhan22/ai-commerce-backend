@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from uuid import UUID
+
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.config.settings import Settings
 from app.main import create_app
@@ -23,6 +27,13 @@ class LineIn(BaseModel):
 
 class OrderIn(BaseModel):
     lines: list[LineIn] = Field(min_length=1)
+
+
+class DiscountIn(BaseModel):
+    percent: Decimal = Field(ge=Decimal("0.01"), le=Decimal("100"))
+
+
+SKU_ID = UUID("0192b6f0-3c1a-7c2e-9f00-5a1b2c3d4e5f")
 
 
 router = APIRouter()
@@ -43,6 +54,31 @@ async def confirm_order(order_id: str) -> dict[str, str]:
     raise base.InsufficientStockError(
         "Insufficient available stock", lines=[{"sku_id": "s1", "requested": 1, "available": 0}]
     )
+
+
+@router.post("/discounts")
+async def apply_discount(body: DiscountIn) -> dict[str, str]:
+    return {"percent": str(body.percent)}
+
+
+@router.post("/orders/{order_id}/lines")
+async def add_line(order_id: str) -> dict[str, str]:
+    # details'da UUID va Decimal — JSON'ga xavfsiz aylanishi kerak
+    raise base.DiscountLimitExceededError("Too big", sku_id=SKU_ID, requested_percent=Decimal("8.5"))
+
+
+@router.patch("/settings")
+async def update_settings() -> dict[str, str]:
+    raise StaleDataError(
+        "UPDATE statement on table 'shop_policies' expected to update 1 row(s); 0 were matched."
+    )
+
+
+@router.get("/legacy-conflict")
+async def legacy_conflict() -> dict[str, str]:
+    from fastapi import HTTPException
+
+    raise HTTPException(status_code=409, detail="conflict from a library")
 
 
 @router.get("/boom")
@@ -110,6 +146,34 @@ def test_domain_errors_map_to_catalog_status(client: TestClient) -> None:
     assert response.status_code == 409
     error = _assert_envelope(response.json(), "INSUFFICIENT_AVAILABLE_STOCK")
     assert error["details"] == {"lines": [{"sku_id": "s1", "requested": 1, "available": 0}]}
+
+
+def test_decimal_constraint_returns_422_not_500(client: TestClient) -> None:
+    response = client.post("/api/v1/shop/discounts", json={"percent": "0"})
+    assert response.status_code == 422
+    field = _assert_envelope(response.json(), "VALIDATION_FAILED")["details"]["fields"][0]
+    assert (field["field"], field["code"], field["params"]) == ("percent", "min_value", {"min": "0.01"})
+
+
+def test_domain_error_details_with_uuid_and_decimal(client: TestClient) -> None:
+    response = client.post("/api/v1/shop/orders/1/lines")
+    assert response.status_code == 422
+    error = _assert_envelope(response.json(), "DISCOUNT_LIMIT_EXCEEDED")
+    assert error["details"] == {"sku_id": str(SKU_ID), "requested_percent": "8.5"}
+
+
+def test_stale_data_becomes_version_conflict(client: TestClient) -> None:
+    response = client.patch("/api/v1/shop/settings")
+    assert response.status_code == 409
+    error = _assert_envelope(response.json(), "VERSION_CONFLICT")
+    assert "shop_policies" not in response.text  # jadval nomi tashqariga chiqmaydi
+    assert error["details"] == {}
+
+
+def test_unmapped_4xx_keeps_its_status(client: TestClient) -> None:
+    response = client.get("/api/v1/shop/legacy-conflict")
+    assert response.status_code == 409  # 500 emas — klient "qayta urinish mumkin" deb o'ylamasin
+    _assert_envelope(response.json(), "INVALID_REQUEST")
 
 
 def test_unexpected_exception_is_hidden(client: TestClient) -> None:  # TC-CONV-03

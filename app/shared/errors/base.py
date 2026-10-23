@@ -55,6 +55,13 @@ class IdempotencyKeyReusedError(ConflictError):
     abstract = False
 
 
+class RequestInProgressError(ConflictError):
+    """Shu Idempotency-Key bilan birinchi so'rov hali bajarilmoqda — klient biroz kutib qayta yuboradi."""
+
+    code = "REQUEST_IN_PROGRESS"
+    abstract = False
+
+
 class InvalidTransitionError(ConflictError):
     code = "INVALID_STATE_TRANSITION"
     abstract = False

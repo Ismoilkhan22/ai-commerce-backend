@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from typing import Any
 
 from alembic import context
@@ -16,6 +17,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.models import load_metadata
+from app.db.schemas import RUNTIME_ROLE
 
 
 def _url() -> str:
@@ -28,10 +30,22 @@ def _url() -> str:
     return Settings().database_migrator_url
 
 
+# Oyma-oy partition'lar (`transition_log_y2026m10`, `audit_entries_default`) ORM'da yo'q — ular
+# migratsiya va rejali ish bilan yaratiladi. Autogenerate ularni "ortiqcha jadval" deb o'chirishni
+# taklif qilmasligi kerak (aks holda audit tarixini o'chiradigan migratsiya paydo bo'ladi).
+_PARTITION_NAME = re.compile(r"_(y\d{4}m\d{2}|default)$")
+
+
+def _is_partition(table_name: str | None) -> bool:
+    return bool(table_name and _PARTITION_NAME.search(table_name))
+
+
 def _include_object(schema: str) -> Any:
     def include(obj: Any, name: str | None, type_: str, reflected: bool, compare_to: Any) -> bool:
         if type_ == "table":
-            return bool(obj.schema == schema)
+            return bool(obj.schema == schema) and not (reflected and _is_partition(name))
+        if type_ == "index" and reflected and _is_partition(obj.table.name):
+            return False
         return True
 
     return include
@@ -48,10 +62,17 @@ def _configure(schema: str, **kwargs: Any) -> None:
     )
 
 
+def _protect_version_table(schema: str) -> None:
+    """Default privileges ilova roliga schemadagi har jadvalda DML beradi — alembic_version ham.
+    Ilova migratsiya holatini o'zgartira olmasligi kerak, shuning uchun huquq har safar olib qo'yiladi."""
+    context.execute(f"REVOKE ALL ON {schema}.alembic_version FROM {RUNTIME_ROLE}")
+
+
 def _run_sync(connection: Connection, schema: str) -> None:
     _configure(schema, connection=connection)
     with context.begin_transaction():
         context.run_migrations()
+        _protect_version_table(schema)
 
 
 async def _run_online(schema: str) -> None:
@@ -66,5 +87,6 @@ def run(schema: str) -> None:
         _configure(schema, url=_url(), literal_binds=True)
         with context.begin_transaction():
             context.run_migrations()
+            _protect_version_table(schema)
     else:
         asyncio.run(_run_online(schema))

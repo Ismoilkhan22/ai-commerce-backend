@@ -1,7 +1,12 @@
 """Idempotency (K-06, 12 §9): bir xil `Idempotency-Key` bilan so'rov ikki marta bajarilmaydi.
 
 Yozuv biznes o'zgarishi bilan **bitta tranzaksiyada**: COMMIT bo'lmasa, kalit ham yo'q.
-Bir vaqtda kelgan ikkinchi so'rov unikal indeksda birinchisi tugashini kutadi, so'ng saqlangan javobni oladi.
+
+Bir vaqtda kelgan dublikat KUTMAYDI (founder, 2026-10-23): tranzaksiya qulfi
+(`pg_try_advisory_xact_lock`) band bo'lsa — darhol 409 REQUEST_IN_PROGRESS. Klient kutib qayta yuboradi:
+- birinchisi muvaffaqiyatli bo'lsa — saqlangan javobni oladi;
+- birinchisi yiqilgan yoki server o'chgan bo'lsa — tranzaksiya bekor, qulf ochiq:
+  so'rov yangidek bajariladi.
 
     async with db.begin():
         stored = await idempotency.begin(db, shop_id, "order.confirm", key, request_hash)
@@ -20,12 +25,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.errors.base import IdempotencyKeyReusedError
+from app.shared.errors.base import IdempotencyKeyReusedError, RequestInProgressError
 from app.shared.idempotency.models import IdempotencyKey
+from app.shared.serialization import to_json_compatible
 
 NIL_SHOP_ID = UUID(int=0)
 DEFAULT_TTL = timedelta(hours=24)
@@ -52,6 +58,14 @@ class IdempotencyStore:
         """Yangi kalit — None (davom eting). Takroriy — saqlangan javob. Boshqa tana — 409."""
         scope = shop_id or NIL_SHOP_ID
         now = datetime.now(UTC)
+        # Bloklamaydigan qulf: shu kalit bilan boshqa so'rov ishlayotgan bo'lsa — kutmasdan 409.
+        # Qulf tranzaksiya tugashi bilan (COMMIT yoki ROLLBACK) o'zi ochiladi.
+        locked = await db.execute(
+            text("SELECT pg_try_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": f"idempotency:{scope}:{operation}:{key}"},
+        )
+        if not locked.scalar_one():
+            raise RequestInProgressError("A request with this Idempotency-Key is in progress")
         inserted = await db.execute(
             insert(IdempotencyKey)
             .values(
@@ -97,5 +111,7 @@ class IdempotencyStore:
                 IdempotencyKey.operation == operation,
                 IdempotencyKey.key == key,
             )
-            .values(response_status=status, response_body=body)
+            .values(
+                response_status=status, response_body=to_json_compatible(body)
+            )  # javob bilan aynan bir xil
         )

@@ -8,6 +8,7 @@ errors:
   METHOD_NOT_ALLOWED: "Действие не поддерживается"
   VERSION_CONFLICT: "Данные изменены другим пользователем. Обновите страницу"
   IDEMPOTENCY_KEY_REUSED: "Этот запрос уже был отправлен с другими данными"
+  REQUEST_IN_PROGRESS: "Запрос выполняется, подождите немного"
   INVALID_STATE_TRANSITION: "Действие недоступно в текущем статусе"
   INSUFFICIENT_AVAILABLE_STOCK: "Недостаточно товара"
   PRICE_CHANGED: "Цена изменилась. Получите повторное согласие покупателя"

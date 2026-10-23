@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # Composition root: domenlarni import qila oladigan yagona joylar (02 §2).
-COMPOSITION_ROOTS = ("app.dependencies", "app.workers", "app.main")
+COMPOSITION_ROOTS = (
+    "app.dependencies",
+    "app.workers",
+    "app.main",
+    "app.db",
+)  # app.db.models domenlarni yuklaydi
 
 
 @dataclass(frozen=True)

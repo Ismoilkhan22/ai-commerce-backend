@@ -11,6 +11,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.platform.audit.services.audit_service import AuditService
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.models.orm import TransitionLog
 from app.shared.errors.base import ForbiddenError, InvalidTransitionError, ValidationError
@@ -24,8 +25,9 @@ FORCE_REASON_MIN_LENGTH = 20
 
 
 class UseService:
-    def __init__(self, registry: RulesRegistry) -> None:
+    def __init__(self, registry: RulesRegistry, audit: AuditService) -> None:
         self.registry = registry
+        self.audit = audit
 
     def validate_transition(
         self, entity_type: str, from_status: str, to_status: str, command: str, actor: ActorContext
@@ -80,7 +82,12 @@ class UseService:
         actor: ActorContext,
         reason: str,
     ) -> None:
-        """Faqat platforma admini, runbook holatlari uchun (04 §7). Holatni chaqiruvchi o'zgartiradi."""
+        """Faqat platforma admini, runbook holatlari uchun (04 §7). Holatni chaqiruvchi o'zgartiradi.
+
+        Qoldiq va pulga bog'liq holatlarga KIRISH ham, ulardan CHIQISH ham majburlab bo'lmaydi
+        (founder, 2026-10-23): masalan CONFIRMED → CANCELLED majburlansa, rezerv bo'shatilmay qolardi.
+        Har majburlash shu yerning o'zida jurnal va auditga yoziladi — chaqiruvchi unutib qo'yolmaydi.
+        """
         if actor.actor_type != "PLATFORM" or "platform.state.force" not in actor.permissions:
             raise ForbiddenError("Force transition requires platform.state.force")
         if len(reason.strip()) < FORCE_REASON_MIN_LENGTH:
@@ -90,12 +97,22 @@ class UseService:
                     {"field": "reason", "code": "min_length", "params": {"min": FORCE_REASON_MIN_LENGTH}}
                 ],
             )
-        if to_status in self.registry.non_forceable.get(entity_type, frozenset()):
+        protected = self.registry.non_forceable.get(entity_type, frozenset())
+        if from_status in protected or to_status in protected:
             raise InvalidTransitionError(
                 "State cannot be forced", entity=entity_type, **{"from": from_status}, command="FORCE"
             )
         await self._insert(
             db, entity_type, entity_id, "FORCE", from_status, to_status, actor, reason, forced=True
+        )
+        await self.audit.record(
+            db,
+            action="platform.state.forced",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            actor=actor,
+            reason=reason,
+            diff={"status": {"old": from_status, "new": to_status}},
         )
         logger.warning(
             "use.transition_forced", entity_type=entity_type, from_status=from_status, to_status=to_status

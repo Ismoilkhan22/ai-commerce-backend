@@ -34,11 +34,29 @@ def test_migration_env_exists_for_every_schema() -> None:
         assert (root / f"app/db/migrations/{schema}/env.py").exists()
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql+asyncpg://app_runtime:x@127.0.0.1:5432/cos",
+        "postgresql+asyncpg://app_runtime:x@[::1]:5432/cos",
+        "postgresql+asyncpg://app_runtime:app_runtime@db.internal:5432/cos",  # standart parol
+        "postgresql+asyncpg://app_runtime:postgres@db.internal:5432/cos",
+    ],
+)
+def test_unsafe_db_urls_rejected_in_production(url: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            app_env="production",
+            database_url=url,
+            database_migrator_url="postgresql+asyncpg://app_migrator:s3cret-long@db.internal:5432/cos",
+        )
+
+
 def test_local_db_defaults_rejected_in_production() -> None:
     with pytest.raises(ValidationError, match="database_url"):
         Settings(app_env="production")
     Settings(
         app_env="production",
-        database_url="postgresql+asyncpg://app_runtime:x@db.internal:5432/cos",
-        database_migrator_url="postgresql+asyncpg://app_migrator:x@db.internal:5432/cos",
+        database_url="postgresql+asyncpg://app_runtime:r4nd0m-runtime-pw@db.internal:5432/cos",
+        database_migrator_url="postgresql+asyncpg://app_migrator:r4nd0m-migrator-pw@db.internal:5432/cos",
     )

@@ -12,10 +12,12 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm.exc import StaleDataError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.shared.errors.base import DomainError
 from app.shared.errors.catalog import status_for
+from app.shared.serialization import to_json_compatible
 from app.shared.tracing.context import get_trace_id
 
 logger = structlog.get_logger(__name__)
@@ -59,13 +61,20 @@ _LOCATION_ROOTS = {"body", "query", "path", "header", "cookie"}
 
 
 def error_body(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {"error": {"code": code, "message": message, "details": details or {}, "trace_id": get_trace_id()}}
+    # details'da UUID, Decimal, datetime bo'lishi mumkin — aylantirilmasa, xato javobining o'zi 500 bo'ladi
+    safe_details = to_json_compatible(details or {})
+    return {"error": {"code": code, "message": message, "details": safe_details, "trace_id": get_trace_id()}}
 
 
 def error_response(
-    code: str, message: str, details: dict[str, Any] | None = None, headers: dict[str, str] | None = None
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    status_code: int | None = None,
 ) -> JSONResponse:
-    return JSONResponse(error_body(code, message, details), status_code=status_for(code), headers=headers)
+    status = status_code or status_for(code)
+    return JSONResponse(error_body(code, message, details), status_code=status, headers=headers)
 
 
 def internal_error_response() -> JSONResponse:
@@ -112,13 +121,32 @@ async def _validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 async def _http_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    """Bizning kodda HTTPException ishlatilmaydi (DomainError ishlating) — bu framework va kutubxonalardan
+    keladiganlar uchun. Katalogda yo'q 4xx o'z statusini saqlaydi: 409 ni 500 qilsak, klient
+    "server xatosi, qayta urinish mumkin" deb noto'g'ri tushunadi."""
     assert isinstance(exc, StarletteHTTPException)
-    code = _HTTP_STATUS_CODES.get(exc.status_code, "INTERNAL_ERROR")
+    headers = dict(exc.headers) if exc.headers else None
+    code = _HTTP_STATUS_CODES.get(exc.status_code)
+    if code is None:
+        is_client_error = 400 <= exc.status_code < 500
+        code = "INVALID_REQUEST" if is_client_error else "INTERNAL_ERROR"
+        status = exc.status_code if is_client_error else 500
+        (logger.warning if is_client_error else logger.error)(
+            "unmapped_http_exception", status=exc.status_code
+        )
+        return error_response(code, code, headers=headers, status_code=status)
     message = exc.detail if isinstance(exc.detail, str) else code
-    return error_response(code, message, headers=dict(exc.headers) if exc.headers else None)
+    return error_response(code, message, headers=headers)
+
+
+async def _stale_data_handler(_: Request, exc: Exception) -> JSONResponse:
+    # VersionMixin: obyekt o'qilgandan keyin boshqa tranzaksiyada o'zgargan (12 §4)
+    logger.warning("version_conflict")
+    return error_response("VERSION_CONFLICT", "Resource was modified by another request")
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(DomainError, _domain_error_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
+    app.add_exception_handler(StaleDataError, _stale_data_handler)

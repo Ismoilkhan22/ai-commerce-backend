@@ -32,7 +32,12 @@ class ShopScopedMixin:
 
 
 class VersionMixin:
-    """Optimistic lock: `If-Match` va `VERSION_CONFLICT` (12 §4)."""
+    """Optimistic lock: `If-Match` va `VERSION_CONFLICT` (12 §4).
+
+    `version` faqat avtomatik oshadi: har UPDATE `WHERE version = <o'qilgan>` bilan ketadi.
+    Qator boshqa tranzaksiyada o'zgargan bo'lsa — `StaleDataError` → 409 VERSION_CONFLICT.
+    Qo'lda oshirish TAQIQ.
+    """
 
     version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
 

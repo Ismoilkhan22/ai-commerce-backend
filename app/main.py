@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
+import re
 from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from fastapi.routing import APIRoute
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
+from app.platform.audit.services.audit_service import AuditService
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
 from app.shared.db.session import Database
@@ -25,6 +27,9 @@ from app.shared.tracing.middleware import RequestContextMiddleware
 from app.shared.types.manifest import SURFACE_PREFIXES, DomainManifest, Surface
 
 MANIFEST_SOURCES = (("app.platform", "MODULE_MANIFEST"), ("app.domains", "DOMAIN_MANIFEST"))
+
+
+_PATH_PARAM = re.compile(r"\{[^}]*\}")
 
 
 class RouteConflictError(RuntimeError):
@@ -52,9 +57,12 @@ def _check_route_conflicts(manifests: Iterable[DomainManifest]) -> None:
             for route in router.routes:
                 if not isinstance(route, APIRoute):
                     continue
-                path = SURFACE_PREFIXES[surface] + router.prefix + route.path
+                # route.path router prefiksini allaqachon o'z ichiga oladi (APIRouter(prefix=...)).
+                # Parametr nomi ahamiyatsiz: /orders/{order_id} va /orders/{case_id} — bir xil manzil.
+                path = SURFACE_PREFIXES[surface] + route.path
+                shape = _PATH_PARAM.sub("{}", path)
                 for method in route.methods or ():
-                    key = (method, path)
+                    key = (method, shape)
                     if key in owners and owners[key] != manifest.name:
                         raise RouteConflictError(
                             f"{method} {path}: {owners[key]!r} va {manifest.name!r} ikkalasi e'lon qilgan"
@@ -101,7 +109,7 @@ def create_app(
     app.include_router(health_router)
     manifests = discover_manifests() if manifests is None else manifests
     mount_manifests(app, manifests)
-    app.state.use = UseService(RulesRegistry.from_manifests(manifests))
+    app.state.use = UseService(RulesRegistry.from_manifests(manifests), AuditService())
 
     # Starlette middleware'larni teskari tartibda o'raydi: oxirgi qo'shilgan — eng tashqi.
     app.add_middleware(I18nMiddleware, default_locale=settings.default_locale)

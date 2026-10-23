@@ -58,6 +58,14 @@ def test_valid_idempotency_key(client: TestClient) -> None:
         {"customer_phone": "+998901234567"},
         {"changes": {"delivery_address": "x"}},
         {"items": [{"refresh_token": "t"}]},
+        {"refreshToken": "t"},
+        {"customerEmail": "a@b.uz"},
+        {"card_number": "8600"},
+        {"addresses": ["x"]},
+        {"customer_phones": ["+998"]},
+        {"emails": ["a@b.uz"]},
+        {"changes": [{"field": "phone", "old": "+998901", "new": "+998902"}]},
+        {"changed": {"name": "delivery_address", "new": "x"}},
     ],
 )
 def test_audit_diff_rejects_pii_and_secrets(diff: dict[str, object]) -> None:
@@ -65,5 +73,7 @@ def test_audit_diff_rejects_pii_and_secrets(diff: dict[str, object]) -> None:
         _check_diff(diff)
 
 
-def test_audit_diff_allows_business_fields() -> None:
+@pytest.mark.parametrize("key", ["tokens_in", "tokens_out", "discard_reason", "scorecard", "status", "price"])
+def test_audit_diff_allows_business_fields(key: str) -> None:
+    _check_diff({key: {"old": 1, "new": 2}})
     _check_diff({"price": {"old": {"amount_minor": 100, "currency": "UZS"}, "new": {"amount_minor": 120}}})

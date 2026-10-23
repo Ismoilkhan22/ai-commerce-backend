@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.platform.audit.services.audit_service import AuditService
 from app.platform.use.infrastructure.rules_loader import DuplicateRuleError, RulesRegistry
 from app.platform.use.services.use_service import UseService
 from app.shared.errors.base import ForbiddenError, InvalidTransitionError, ValidationError
@@ -61,9 +62,10 @@ def use() -> UseService:
     manifest = DomainManifest(
         name="commerce",
         state_machine_rules=ORDER_RULES,
-        non_forceable_states={"commerce.order": frozenset({"CONFIRMED", "COMPLETED"})},
+        # Qoldiq va band qilishga bog'liq holatlar (founder, 2026-10-23)
+        non_forceable_states={"commerce.order": frozenset({"CONFIRMED", "PROCESSING", "COMPLETED"})},
     )
-    return UseService(RulesRegistry.from_manifests([manifest]))
+    return UseService(RulesRegistry.from_manifests([manifest]), AuditService())
 
 
 def test_allowed_transition_returns_rule(use: UseService) -> None:
@@ -124,35 +126,61 @@ async def test_force_requires_platform_permission(use: UseService) -> None:
         )
 
 
-async def test_force_rejects_short_reason_and_money_states(use: UseService) -> None:
-    common: dict[str, Any] = {"entity_type": "commerce.order", "entity_id": uuid4(), "actor": ADMIN}
+REASON = "Runbook RB-05: buyurtma xato bilan qotib qolgan"
+
+
+async def test_force_rejects_short_reason(use: UseService) -> None:
     with pytest.raises(ValidationError):
         await use.force_transition(
-            FakeSession(), from_status="EXCEPTION", to_status="PROCESSING", reason="qisqa", **common
-        )  # type: ignore[arg-type]
-    with pytest.raises(InvalidTransitionError):
-        await use.force_transition(
             FakeSession(),  # type: ignore[arg-type]
-            from_status="EXCEPTION",
-            to_status="COMPLETED",
-            reason="Runbook RB-05: buyurtma xato bilan qotib qolgan",
-            **common,
+            entity_type="commerce.order",
+            entity_id=uuid4(),
+            from_status="DRAFT",
+            to_status="CANCELLED",
+            actor=ADMIN,
+            reason="qisqa",
         )
 
 
-async def test_force_is_logged_as_forced(use: UseService) -> None:
+@pytest.mark.parametrize(
+    ("src", "dst"),
+    [
+        ("EXCEPTION", "COMPLETED"),  # pul/qoldiq holatiga KIRISH
+        ("CONFIRMED", "CANCELLED"),  # band qilingan holatdan CHIQISH — rezerv bo'shatilmay qolardi
+        ("PROCESSING", "EXCEPTION"),
+    ],
+)
+async def test_force_cannot_enter_or_leave_stock_states(use: UseService, src: str, dst: str) -> None:
     session = FakeSession()
+    with pytest.raises(InvalidTransitionError):
+        await use.force_transition(
+            session,  # type: ignore[arg-type]
+            entity_type="commerce.order",
+            entity_id=uuid4(),
+            from_status=src,
+            to_status=dst,
+            actor=ADMIN,
+            reason=REASON,
+        )
+    assert session.added == []
+
+
+async def test_force_is_logged_and_audited(use: UseService) -> None:
+    session = FakeSession()
+    entity_id = uuid4()
     await use.force_transition(
         session,  # type: ignore[arg-type]
         entity_type="commerce.order",
-        entity_id=uuid4(),
-        from_status="EXCEPTION",
-        to_status="PROCESSING",
+        entity_id=entity_id,
+        from_status="DRAFT",
+        to_status="CANCELLED",
         actor=ADMIN,
-        reason="Runbook RB-05: buyurtma xato bilan qotib qolgan",
+        reason=REASON,
     )
-    [log] = session.added
+    log, audit = session.added
     assert (log.command, log.forced, log.actor_type) == ("FORCE", True, "PLATFORM")
+    assert (audit.action, audit.entity_id, audit.reason) == ("platform.state.forced", entity_id, REASON)
+    assert audit.diff == {"status": {"old": "DRAFT", "new": "CANCELLED"}}
 
 
 def test_conflicting_rules_fail_on_boot() -> None:

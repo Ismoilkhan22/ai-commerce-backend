@@ -8,6 +8,7 @@ errors:
   METHOD_NOT_ALLOWED: "This action is not supported"
   VERSION_CONFLICT: "The data was changed by another user. Refresh the page"
   IDEMPOTENCY_KEY_REUSED: "This request was already sent with different data"
+  REQUEST_IN_PROGRESS: "The request is being processed, please wait"
   INVALID_STATE_TRANSITION: "This action isn't available in the current status"
   INSUFFICIENT_AVAILABLE_STOCK: "Not enough stock"
   PRICE_CHANGED: "The price has changed. Get the customer's consent again"

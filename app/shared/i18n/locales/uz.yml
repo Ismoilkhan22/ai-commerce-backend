@@ -9,6 +9,7 @@ errors:
   METHOD_NOT_ALLOWED: "Bu amal qo‘llab-quvvatlanmaydi"
   VERSION_CONFLICT: "Maʼlumot boshqa foydalanuvchi tomonidan o‘zgartirildi. Sahifani yangilang"
   IDEMPOTENCY_KEY_REUSED: "Bu so‘rov allaqachon boshqa maʼlumot bilan yuborilgan"
+  REQUEST_IN_PROGRESS: "So‘rov bajarilmoqda, biroz kuting"
   INVALID_STATE_TRANSITION: "Hozirgi holatda bu amalni bajarib bo‘lmaydi"
   INSUFFICIENT_AVAILABLE_STOCK: "Mahsulot yetarli emas"
   PRICE_CHANGED: "Narx o‘zgargan. Xaridordan qayta rozilik oling"

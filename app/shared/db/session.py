@@ -11,9 +11,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import Request
+from fastapi import Depends, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
@@ -98,3 +99,11 @@ async def get_read_db(request: Request) -> AsyncIterator[AsyncSession]:
     database: Database = request.app.state.db
     async with database.transaction(_request_shop_id(request), read_only=True) as session:
         yield session
+
+
+# scope="function": tranzaksiya endpoint funksiyasi tugashi bilan, JAVOB YUBORILISHIDAN OLDIN yopiladi.
+# Standart scope="request" da COMMIT javobdan keyin bo'ladi — COMMIT xatosi (VERSION_CONFLICT,
+# unikal cheklov, ulanish uzilishi) klientga yetib bormaydi: u 200 oladi, lekin hech narsa saqlanmaydi.
+# Endpoint'larda faqat shu tiplar ishlatiladi, `Depends(get_db)` to'g'ridan-to'g'ri emas.
+DbSession = Annotated[AsyncSession, Depends(get_db, scope="function")]
+ReadDbSession = Annotated[AsyncSession, Depends(get_read_db, scope="function")]
