@@ -51,7 +51,7 @@ Har modulning qisqa qabul mezonlari `02` da, modul kartochkasining oxirida. Bu y
 | **UAT-M01** Shop akkaunti | Platforma shopni faollashtiradi → sayt ochiladi, AI ishlay boshlaydi | Faollashtirilmagan shopda AI javob bermaydi | A shop egasi B shop sahifasini ocha olmaydi |
 | **UAT-M02** Xodimlar | Ega operatorni taklif qiladi → operator kiradi, faqat ruxsat etilgan sahifalarni ko'radi | Ega o'zini o'chirmoqchi, boshqa ega yo'q → rad etiladi | O'chirilgan xodim sessiyasi darhol tugaydi |
 | **UAT-M03** Filiallar | Filial qo'shiladi, saytda manzil va ish vaqti ko'rinadi | Yopiq filialni olib ketish joyi sifatida tanlab bo'lmaydi | 1-filial menejeri 2-filialni o'zgartira olmaydi |
-| **UAT-M04** Katalog | 5000 qatorli fayl yuklanadi; xato qatorlar ro'yxati beriladi | Takror SKU kodi qabul qilinmaydi; narxsiz mahsulot saytga chiqmaydi | Katalog xodimi narx o'zgartira olmaydi |
+| **UAT-M04** Katalog | 5000 qatorli fayl yuklanadi; xato qatorlar ro'yxati beriladi | Takror SKU kodi qabul qilinmaydi; narxsiz mahsulot saytga chiqmaydi | Operator narx o'zgartira olmaydi |
 | **UAT-M05** Narx | 300 dollar, kurs 12 800 → saytda 3 840 000 so'm | Kurs 3 kundan beri yangilanmagan → ogohlantirish, yangi taklif berilmaydi | Operator 3% chegirma bersa, menejer tasdig'iga tushadi |
 | **UAT-M06** Ombor | Kirim qilinadi, qoldiq ko'payadi, tarixda sababi bilan | Qoldiq 1 ta, ikki tasdiq bir vaqtda → bittasi o'tadi, manfiy bo'lmaydi | Omborchi narxni ko'ra oladi, lekin o'zgartira olmaydi |
 | **UAT-M07** Shop sayti | Xaridor saytda buyurtma beradi → operatorga vazifa, xaridorga "qabul qilindi" xabari | Yashirilgan mahsulot havolasi → "mavjud emas" | B shop mahsuloti A shop saytida hech qachon ko'rinmaydi |

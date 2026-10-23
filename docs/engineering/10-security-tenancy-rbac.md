@@ -129,7 +129,9 @@ Qolgan jadvallar (katalog, sayt) — app-layer filtri + composite FK; keyin kera
 
 ## 6. Ruxsatlar katalogi
 
-**Manba:** kim nima qila olishi — `../business/04` (DEC-015). Bu bo'lim — kodda ishlatiladigan kodlar va ularning rollarga 1:1 xaritasi. Rol → ruxsat bog'lanishi seed ma'lumotida (`platform.role_permissions`), shop o'zgartira olmaydi (Stage 1).
+**Manba:** kim nima qila olishi — `../business/04` (DEC-015). Bu bo'lim — kodda ishlatiladigan kodlar va ularning rollarga 1:1 xaritasi. Rol → ruxsat bog'lanishi **kodda** (`app/platform/staff/permissions.py`), bazada jadval yo'q; shop o'zgartira olmaydi (DEC-131).
+
+> **DEC-131 (2026-10-23):** Stage 1 da 4 ta rol — `OWNER`, `MANAGER`, `SALES`, `WAREHOUSE`; har xodimga bitta rol. Quyidagi jadvallardagi `FINANCE`, `CATALOG_EDITOR`, `ANALYST`, `AI_POLICY_EDITOR` ustunlari — keyinroq qo'shiladigan rollar uchun; Stage 1 da ularning ishini `business/04` §1 dagidek ega yoki menejer qiladi.
 
 **Kod formati:** domenlar uchun `<domain>.<entity>.<action>`, platform modullari uchun `<module>.<entity>.<action>`. Har domen o'z kodlarini `permissions.py` da e'lon qiladi.
 

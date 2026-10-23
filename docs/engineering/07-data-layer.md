@@ -68,15 +68,15 @@ Faqat asosiy ustunlar. To'liq DDL — migratsiyalarda.
 
 ### 4.1 `platform`
 
+> Maydonlar darajasidagi loyiha va izohlar: [db/platform.dbml](db/platform.dbml), [db/platform.md](db/platform.md) — shu jadvaldan ustun turadi (DEC-131).
+
 | Jadval | Asosiy ustunlar | Cheklovlar va izoh |
 |---|---|---|
 | `shops` | `id`, `slug`, `name`, `status` (FSM-01: `DRAFT, PENDING_VERIFICATION, ACTIVE, SUSPENDED, CLOSED`), `default_locale`, `timezone`, `deployment_mode` (`SHARED`/`DEDICATED`), `version` | `UNIQUE (slug)`. `shop_id` ustuni yo'q — `id` o'zi tenant |
 | `branches` | `id`, `shop_id`, `name`, `address`, `geo`, `working_hours` (JSONB), `phone`, `status` (`ACTIVE`/`CLOSED`) | `UNIQUE (shop_id, id)`; FK `shop_id → shops(id)` |
 | `shop_policies` | `shop_id` (PK), `quote_ttl_hours` (24), `discount_limit_sales_pct` (0), `discount_limit_manager_pct` (5), `reminder_hours` (`{24,72}`), `quote_approval_mode` (`ALL`/`RISKY_ONLY`), `exchange_rate_source` (`MANUAL`/`CBU`), `stock_display` (`EXACT`/`STATUS_ONLY`, default `STATUS_ONLY`), `low_stock_threshold` (default 2), `version` | DEC-102…110 |
 | `principals` | `id`, `phone`, `email`, `password_hash` (Argon2id), `locale`, `status` | Global (shopdan tashqari), bir odam bir nechta shopda ishlashi mumkin |
-| `memberships` | `id`, `shop_id`, `principal_id`, `status` (`INVITED, ACTIVE, DISABLED`), `branch_scope` (`ALL` yoki filiallar ro'yxati), `version` | `UNIQUE (shop_id, principal_id)` |
-| `membership_roles` | `shop_id`, `membership_id`, `role` (`OWNER, MANAGER, SALES, WAREHOUSE, FINANCE, CATALOG_EDITOR, ANALYST, AI_POLICY_EDITOR`) | PK `(membership_id, role)`; bir xodimga bir nechta rol |
-| `role_permissions` | `role`, `permission` | Seed ma'lumot; shop o'zgartira olmaydi (Stage 1) |
+| `memberships` | `id`, `shop_id`, `principal_id`, `role` (`OWNER, MANAGER, SALES, WAREHOUSE` — bitta, DEC-131), `status` (`INVITED, ACTIVE, DISABLED`), `branch_scope` (`ALL` yoki filiallar ro'yxati), `version` | `UNIQUE (principal_id)` — hozircha bir odam bitta shopda (DEC-131) |
 | `membership_branches` | `shop_id`, `membership_id`, `branch_id` | Composite FK branch'ga |
 | `sessions` | `id`, `principal_id`, `shop_id`, `refresh_token_hash`, `family_id`, `expires_at`, `revoked_at`, `user_agent` | Refresh rotation (ADR-023) |
 | `platform_staff` | `id`, `principal_id`, `role` (`PLATFORM_ADMIN, PLATFORM_SUPPORT, SPEC_EDITOR`), `status` | Platforma jamoasi ([10](10-security-tenancy-rbac.md) §6.7) |

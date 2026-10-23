@@ -280,7 +280,7 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | DEC-100c | AI buyurtma qoralamasini yarata oladimi? | A: AI `DRAFT` buyurtma (mahsulot, miqdor, kontakt, manzil) yaratadi + operatorni chaqiradi; qoralama stok band qilmaydi va hech narsani tasdiqlamaydi · B: faqat operatorni chaqiradi | `APPROVED (2026-10-21): A` — tool `orders.create_draft` (K-10). Afzallik: operator vaqti tejaladi; kamchilik: AI xatosini operator tekshiradi |
 | DEC-100d | Saytdan kelgan buyurtma ham operator tasdig'idan o'tadimi? | A: ha, har buyurtma · B: stok bo'lsa avtomatik | `APPROVED (2026-10-21): A` — Stage 2 da merchant avto-tasdiqni ixtiyoriy yoqishi mumkin. Afzallik: narx/yetkazish/manzil aniq, feyk buyurtma kam; kamchilik: operatorga yuk |
 | DEC-100e | Online sotuvda oddiy mahsulot (PC emas) uchun quote kerakmi? | A: yo'q — online oddiy xarid to'g'ridan-to'g'ri buyurtma qoralamasiga (narx buyurtma qatorida muzlatiladi); quote faqat PC yig'ma va maxsus narx uchun · B: har doim quote | `APPROVED (2026-10-21): A`. Offline (do'kondagi) sotuv bu savolga kirmaydi — DEC-123 |
-| DEC-100f | Operator va sotuvchi bitta odammi? | A: tizimda alohida ruxsatlar (Sales, Warehouse/Manager), bitta odamga bir nechta rol berilishi mumkin; onboarding'da "kichik do'kon" shabloni — egasiga barcha rollar · B: bitta "sotuvchi" roli | `APPROVED (2026-10-21): A` |
+| DEC-100f | Operator va sotuvchi bitta odammi? | A: tizimda alohida ruxsatlar (Sales, Warehouse/Manager), bitta odamga bir nechta rol berilishi mumkin; onboarding'da "kichik do'kon" shabloni — egasiga barcha rollar · B: bitta "sotuvchi" roli | `CHANGED (2026-10-23): A → DEC-131` — alohida rollar qoladi, lekin har xodimga bitta rol; shablon kerak emas (ega hammasini qiladi) |
 | DEC-100g | Operator xaridor bilan qanday bog'lanadi? | A: chat yoki telefon; telefon natijasi buyurtmaga izoh sifatida kiritiladi · B: faqat chat | `APPROVED (2026-10-21): A`. Ta'sir: buyurtma kartochkasida "qo'ng'iroq natijasi / kelishuv" izohi (audit bilan) |
 | DEC-100h | Yetkazish narxi qanday qo'shiladi? | A: alohida "yetkazish" qatori (operator yoki tarifdan) · B: tizimda yuritilmaydi | `DEFERRED (2026-10-21, founder)`: Stage 1 da tizim yetkazish narxini hisoblamaydi — operator xaridor bilan sotish paytida kelishadi. Oqibat: hisobotdagi buyurtma summasi yetkazishsiz. Qayta ko'rish: pilot intervyulari va M15 dizaynida |
 
@@ -563,6 +563,20 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 |---|---|---|---|
 | A ✅ | Operator ochadi va ma'lumot yig'adi; qabul/rad qarorini menejer yoki ega qiladi | Xaridor bilan gaplashayotgan odam darhol ro'yxatga oladi | — |
 | B | Faqat menejer ochadi | Nazorat kuchli | Sekinroq |
+
+### DEC-131 — Xodimlar, rollar va ruxsatlar (1-funksiya bazasi) — `APPROVED (2026-10-23, founder)`
+**Nima:** `platform` diagrammasini ko'rib chiqishda qabul qilingan qarorlar.
+**Qayerda:** `engineering/db/platform.dbml`, `engineering/db/platform.md`, `business/04`, `business/02` M02.
+
+| Savol | Qaror | Nega |
+|---|---|---|
+| Bir odam nechta shopda ishlaydi? | Hozircha **bitta** (`memberships.principal_id` unikal) | Pilot uchun yetarli; jadvallar ajratilgani uchun keyin cheklovni olib tashlash oson |
+| Bitta xodimga nechta rol? | **Bitta** (`memberships.role`) | Sodda; kichik shopda ega baribir hammasini qila oladi. DEC-100f dagi "bir nechta rol / kichik do'kon shabloni" o'rniga |
+| Stage 1 rollari | **4 ta:** Ega, Menejer, Operator, Omborchi | Pilot shoplarda 1–5 kishi. Moliya, katalog xodimi, tahlilchi, AI muharriri — keyinroq |
+| Rol → ruxsatlar qayerda? | **Kodda** (`app/platform/staff/permissions.py`), bazada jadval yo'q | Rollar hamma shop uchun bir xil; bitta manba, testlar tekshiradi. Shop o'z rolini yaratsa (Stage 2) — jadval |
+| Xodim taklifi | **Ega havolani o'zi yuboradi** (`invitations.channel = LINK`) | Bepul, SMS provayder kerak emas; SMS keyin |
+| STIR | **Majburiy va unikal** | Pilot kelishuvi, bitta korxona ikki marta ro'yxatdan o'tmasin |
+| Login | Telefon (majburiy) + parol; parolni terib topishdan himoya (5 xato → 15 daqiqa blok) | SMS kod (OTP) keyinroq |
 
 ## 4. Eski ID'lar xaritasi
 

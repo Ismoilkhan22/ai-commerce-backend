@@ -121,8 +121,8 @@ Modullar uchta bosqichga bo'lingan:
 
 **Nima qila oladi:**
 1. Xodimni taklif qilish (havola orqali) va taklifni qabul qilish.
-2. Rol berish: ega, menejer, operator, omborchi, moliya, katalog xodimi va boshqalar (`04`).
-3. Bitta xodimga bir nechta rol berish. Kichik shopda egaga hamma rol beriladi (DEC-100f).
+2. Rol berish: ega, menejer, operator yoki omborchi (`04`). Har xodimga bitta rol (DEC-131).
+3. Kichik shopda ega hamma ishni o'zi qila oladi — alohida shablon kerak emas.
 4. Xodimni filialga biriktirish (faqat o'z filialini ko'rsin).
 5. Xodimni o'chirish: barcha sessiyalari darhol tugaydi.
 6. Sezgir amallar uchun ikkinchi tasdiq (masalan, katta chegirma).

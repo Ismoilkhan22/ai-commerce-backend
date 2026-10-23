@@ -14,7 +14,7 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 **Asosiy qoidalar:**
 1. Ruxsat berilmagan narsa taqiqlangan.
 2. Har kim faqat o'z shopini ko'radi. Filialga biriktirilgan xodim faqat o'z filialini ko'radi.
-3. Bitta xodimga bir nechta rol berilishi mumkin. Kichik shopda egaga hamma rol beriladi ("kichik shop" shabloni, DEC-100f).
+3. Har xodimga **bitta rol** beriladi. Stage 1 da 4 ta rol bor: ega, menejer, operator, omborchi (DEC-131). Kichik shopda ega hamma ishni o'zi qila oladi.
 4. AI hech qachon o'zi ishlayotgan foydalanuvchidan ko'proq huquqqa ega bo'lmaydi.
 5. Sahifada tugma ko'rinmasligi yetarli emas: server ham har so'rovda ruxsatni tekshiradi.
 
@@ -47,21 +47,6 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 - Stok tuzatishni taklif qiladi (katta tuzatishni menejer tasdiqlaydi).
 - Qila olmaydi: narx va sozlamalarni o'zgartirish, xaridor suhbatlarini ko'rish.
 
-**Moliya (Finance)**
-- Hisobotlar, "to'landi" belgisi.
-- Stage 2 dan: to'lov tekshiruvi va pul qaytarish (hozir to'lov tizimdan tashqarida, DEC-100).
-
-**Katalog xodimi (Catalog Editor)**
-- Mahsulot qo'shadi va tahrirlaydi, fayldan yuklaydi.
-- Saytga chiqarishni menejer tasdiqlaydi; narxni o'zgartira olmaydi.
-
-**Tahlilchi (Analyst)**
-- Faqat umumiy hisobotlarni ko'radi; xaridorlarning shaxsiy ma'lumoti va tannarx faqat alohida ruxsat bilan.
-
-**AI sozlamalari muharriri (AI Policy Editor)**
-- AI uchun FAQ va siyosatlar qoralamasini tayyorlaydi va sinab ko'radi.
-- AI'ga qo'llashni ega tasdiqlaydi.
-
 ### AI
 
 **AI sotuvchi**
@@ -82,7 +67,12 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 - Shop saytini ko'radi, chatda yozadi, buyurtma beradi, o'z buyurtmasi holatini ko'radi.
 - Boshqa xaridorlarning ma'lumotini ko'rmaydi.
 
-**Keyinroq qo'shiladigan rollar:** kuryer (DEC-113), integratsiya akkaunti (Stage 2), global AI maslahatchi va ro'yxatdan o'tgan xaridor (Stage 3).
+**Keyinroq qo'shiladigan rollar** (DEC-131):
+- **Moliya** — hisobotlar, to'lov tekshiruvi (to'lov moduli bilan). Hozir "to'landi" belgisini ega, menejer yoki operator (o'ziniki) qo'yadi.
+- **Katalog xodimi** — mahsulot qo'shish va fayldan yuklash. Hozir — ega yoki menejer.
+- **Tahlilchi** — faqat hisobotlar. Hozir — ega yoki menejer.
+- **AI sozlamalari muharriri** — AI uchun FAQ va siyosatlar. Hozir — ega.
+- Kuryer (DEC-113), integratsiya akkaunti (Stage 2), global AI maslahatchi va ro'yxatdan o'tgan xaridor (Stage 3).
 
 ---
 
@@ -90,30 +80,30 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 
 **Belgilar:** **Ha** — qila oladi · **O'ziniki** — faqat o'ziga biriktirilganini · **So'raydi** — taklif qiladi, boshqa odam tasdiqlaydi · **Tasdiqlaydi** — boshqaning so'rovini tasdiqlaydi · **Ko'radi** — faqat o'qiydi · **—** — yo'q.
 
-| Amal | Ega | Menejer | Operator | Omborchi | Moliya | AI sotuvchi |
-|---|---|---|---|---|---|---|
-| Shop sozlamalari | Ha | Ko'radi | — | — | — | — |
-| Xodimlar va rollar | Ha | Ko'radi | — | — | — | — |
-| Mahsulot qo'shish va tahrirlash | Ha | Ha | Ko'radi | Ko'radi | Ko'radi | Ko'radi |
-| Mahsulotni saytga chiqarish | Tasdiqlaydi | Tasdiqlaydi | — | — | — | — |
-| Narx o'zgartirish | Ha | Ha | — | — | Ko'radi | Ko'radi |
-| Chegirma | Ha (cheklovsiz) | 5% gacha | So'raydi | — | — | — |
-| Stok kirimi | Ha | Tasdiqlaydi | Ko'radi | Ha | Ko'radi | Ko'radi |
-| Stok tuzatish | Tasdiqlaydi | Tasdiqlaydi | — | So'raydi | — | — |
-| "Tez sotuv" (do'kondagi sotuv) | Ha | Ha | Ha | Ha | — | — |
-| Suhbatlar va inbox | Ha | Ha | O'ziniki | — | — | Javob beradi |
-| PC taklif qoralamasi | Ha | Ha | Ha | — | Ko'radi | Qoralama |
-| PC taklifini tasdiqlash | Ha | Limit ichida | — | — | — | — |
-| Buyurtma qoralamasi | Ha | Ha | Ha | — | Ko'radi | Qoralama |
-| Buyurtmani tasdiqlash | Ha | Ha | O'ziniki | — | Ko'radi | — |
-| Buyurtmani tayyorlash va topshirish | Ha | Ha | O'ziniki | Tayyorlash | Ko'radi | — |
-| Buyurtmani bekor qilish | Ha | Ha | — | — | Ko'radi | — |
-| "To'landi" belgisi | Ha | Ha | O'ziniki | — | Ha | — |
-| Kafolat murojaatini ochish | Ha | Ha | Ha | Ko'radi | — | — |
-| Kafolat murojaati bo'yicha qaror (qabul/rad) | Ha | Ha | — | — | — | — |
-| Hisobotlar | Ha | Ha | O'ziniki | O'z filiali | Ha | — |
-| Tannarx va foyda | Ha | Ruxsat bilan | — | — | Ruxsat bilan | — |
-| AI sozlamalari | Ha | Ko'radi | — | — | — | — |
+| Amal | Ega | Menejer | Operator | Omborchi | AI sotuvchi |
+|---|---|---|---|---|---|
+| Shop sozlamalari | Ha | Ko'radi | — | — | — |
+| Xodimlar va rollar | Ha | Ko'radi | — | — | — |
+| Mahsulot qo'shish va tahrirlash | Ha | Ha | Ko'radi | Ko'radi | Ko'radi |
+| Mahsulotni saytga chiqarish | Tasdiqlaydi | Tasdiqlaydi | — | — | — |
+| Narx o'zgartirish | Ha | Ha | — | — | Ko'radi |
+| Chegirma | Ha (cheklovsiz) | 5% gacha | So'raydi | — | — |
+| Stok kirimi | Ha | Tasdiqlaydi | Ko'radi | Ha | Ko'radi |
+| Stok tuzatish | Tasdiqlaydi | Tasdiqlaydi | — | So'raydi | — |
+| "Tez sotuv" (do'kondagi sotuv) | Ha | Ha | Ha | Ha | — |
+| Suhbatlar va inbox | Ha | Ha | O'ziniki | — | Javob beradi |
+| PC taklif qoralamasi | Ha | Ha | Ha | — | Qoralama |
+| PC taklifini tasdiqlash | Ha | Limit ichida | — | — | — |
+| Buyurtma qoralamasi | Ha | Ha | Ha | — | Qoralama |
+| Buyurtmani tasdiqlash | Ha | Ha | O'ziniki | — | — |
+| Buyurtmani tayyorlash va topshirish | Ha | Ha | O'ziniki | Tayyorlash | — |
+| Buyurtmani bekor qilish | Ha | Ha | — | — | — |
+| "To'landi" belgisi | Ha | Ha | O'ziniki | — | — |
+| Kafolat murojaatini ochish | Ha | Ha | Ha | Ko'radi | — |
+| Kafolat murojaati bo'yicha qaror (qabul/rad) | Ha | Ha | — | — | — |
+| Hisobotlar | Ha | Ha | O'ziniki | O'z filiali | — |
+| Tannarx va foyda | Ha | Ruxsat bilan | — | — | — |
+| AI sozlamalari | Ha | Ko'radi | — | — | — |
 
 **AI hisobot yordamchisi** har doim so'rayotgan foydalanuvchining ruxsatlari bilan ishlaydi: operator so'rasa, faqat operator ko'radigan raqamlarni beradi.
 
@@ -157,7 +147,7 @@ Tarixda eski va yangi qiymat, sabab va kim tasdiqlagani saqlanadi.
 ### AI sozlamalarini qo'llash
 
 ```
-AI muharriri FAQ yoki siyosatni tayyorlaydi ──▶ Sinov oynasida tekshiriladi ──▶ Ega tasdiqlaydi ──▶ AI ishlata boshlaydi
+Ega FAQ yoki siyosatni tayyorlaydi ──▶ Sinov oynasida tekshiriladi ──▶ Ega qo'llaydi ──▶ AI ishlata boshlaydi
 ```
 Xato chiqsa, oldingi versiyaga qaytariladi.
 

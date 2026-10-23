@@ -35,7 +35,7 @@ Kelishuv ──▶ Akkaunt va jamoa (1-kun) ──▶ Katalog (1–3-kun) ──
 | 1.1 | Platforma panelida shop yaratiladi ("qoralama" holatida) | Platforma | — |
 | 1.2 | Ega taklif qilinadi, tizimga kiradi va parol o'rnatadi | Shop egasi | Ega kirdi |
 | 1.3 | Filiallar: manzil, ish vaqti, telefon | Ega + platforma | Saytda to'g'ri ko'rinadi |
-| 1.4 | Xodimlar va rollar. Kichik shop bo'lsa — "kichik shop" shabloni (DEC-100f) | Ega | Har xodim kirdi |
+| 1.4 | Xodimlar: har biriga bitta rol — menejer, operator yoki omborchi (DEC-131). Ega taklif havolasini o'zi yuboradi | Ega | Har xodim kirdi |
 | 1.5 | Shop sozlamalari: taklif amal qilish muddati (24 soat), chegirma limitlari (operator 0%, menejer 5%), eslatmalar (24 va 72 soat). Kerak bo'lsa o'zgartiriladi | Ega | Saqlandi |
 | 1.6 | Narxlar dollarda bo'lsa — kurs qayerdan olinadi (ega o'zi kiritadi yoki Markaziy bank kursi) | Ega | Kurs bor |
 
