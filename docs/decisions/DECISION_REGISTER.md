@@ -603,6 +603,18 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Stok tuzatish tasdig'i | Omborchiniki **har doim** tasdiq bilan; ega/menejer to'g'ridan | Sozlama yo'q, kamomadni jim yashirib bo'lmaydi |
 | Kurs o'zgarsa | Tasdiqlashda **so'm narxi qayta hisoblanadi**; farq bo'lsa "narx o'zgardi" va xaridor roziligi | Xaridor ko'rgan summa jim o'zgarmaydi (BL-047), farqni shop ham ko'tarmaydi |
 
+### DEC-135 — Shop sayti bazasi (4-modul) — `APPROVED (2026-10-25, founder)`
+**Nima:** `storefront` diagrammasini ko'rib chiqishda qabul qilingan qarorlar.
+**Qayerda:** `engineering/db/storefront.dbml`, `engineering/db/storefront.md`.
+
+| Savol | Qaror | Nega |
+|---|---|---|
+| Sayt ma'lumotni qayerdan o'qiydi | Katalog va ombordan **to'g'ridan**, faqat ochiq maydonlar, 60 s kesh; nusxa jadvali keyin | Fon ishlari 5-modulda; 4-modul hozir quriladi |
+| O'z domeni | Stage 1 da **yo'q**, faqat `slug.platforma.uz` | Bitta SSL, DNS tekshiruvi yo'q; pilotdan keyin |
+| Filial bo'yicha mavjudlik | **Mahsulot sahifasida** (2+ olib ketish joyi bo'lsa); ro'yxatda umumiy holat | Xaridor to'g'ri filialni tanlaydi, qo'ng'iroq kamayadi |
+| Ma'lumot sahifalari | **3 ta tayyor sahifa** | Sozlash sodda, har shopda kerakli javoblar bor |
+| Shop matnlari tili | **Bitta tilda**; sayt tugmalari doim 3 tilda | Mahsulot tavsifi bilan bir xil qoida |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

@@ -21,3 +21,4 @@ Har domen jadvallari shu papkada, [DBML](https://dbml.dbdiagram.io/docs/) format
 | `platform.dbml` + [`platform.md`](platform.md) (har jadval va maydon izohi) | Shop, filiallar, foydalanuvchilar, rollar, sessiyalar | ✅ Tasdiqlangan (DEC-131), kodda — 1-modul |
 | `catalog.dbml` + [`catalog.md`](catalog.md) | Toifalar, mahsulot va SKU, narx va kurs, texnik kutubxona, fayllar | ✅ Tasdiqlangan (DEC-133) — 2-modul |
 | `commerce.dbml` + [`commerce.md`](commerce.md) | Ombor (qoldiq, daftar, kirim, tuzatish), tez sotuv, buyurtmalar, band qilish, saytdan buyurtma so'rovi | ✅ Tasdiqlangan (DEC-134) — 3-modul |
+| `storefront.dbml` + [`storefront.md`](storefront.md) | Shop sayti: sozlamalar (logotip, rang, kontaktlar, ochiq/yopiq), ma'lumot sahifalari; keyin — katalog nusxasi va o'z domeni | ✅ Tasdiqlangan (DEC-135) — 4-modul |

@@ -1,0 +1,211 @@
+// =====================================================================
+// AI Commerce OS — `storefront` schemasi: Shop sayti (4-modul)
+// Holat: TASDIQLANGAN — DEC-135 (2026-10-25). Founder qarorlari: storefront.md oxirida
+// Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
+// Izohlar: db/storefront.md (har jadval va maydon nega kerak)
+// Manba hujjatlar: business/02 M01 (4-band), M03, M07; business/03 BL-009, BL-010, BL-024…BL-026;
+//                  business/06 §2; business/13 3.3; engineering/01 §7, engineering/05 §8.8, engineering/07 §4.7,
+//                  engineering/08 §4, §5, engineering/10 §3, §4, §5.2, §6.6, engineering/21 §6, engineering/26 §8;
+//                  DEC-100d, DEC-113, DEC-115, DEC-121, DEC-128, DEC-133, DEC-134
+// Hajm: sayt sozlamalari va ma’lumot sahifalari (hozir). Ommaviy katalog nusxasi va shopning o‘z domeni —
+//       "KEYIN" guruhida: DEC-135 bo‘yicha 4-modulda yaratilmaydi.
+// Saytda ko‘rinadigan qolgan hamma narsa boshqa schemalarda: shop nomi, manzili (slug) va filiallar — platform;
+// mahsulot, narx, rasm — catalog; qoldiq, buyurtma so‘rovi, buyurtma holati — commerce; sayt chati — messaging.
+// =====================================================================
+
+Project ai_commerce_os_storefront {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Umumiy qoidalar (07 §2)** — platform, catalog va commerce schemasidagi bilan bir xil:
+  - id — UUIDv7, ilovada yaratiladi. Vaqt — timestamptz (UTC).
+  - Har jadvalda `shop_id NOT NULL`; schema ichidagi FK’lar shop_id orqali — boshqa shop yozuviga bog‘lab bo‘lmaydi.
+  - Holatlar — TEXT + CHECK (diagrammada Enum).
+  - Boshqa schemadagi obyekt (platform.shops, platform.stored_files, platform.memberships, catalog.*) — faqat uuid, FK’siz (07 §6.3).
+  - Tahrirlanadigan jadvallarda `version` (12 §4): eskirgan versiya → VERSION_CONFLICT.
+
+  **Ommaviy o‘qish (10 §4, 5-band):** xaridor so‘rovi anonim. Shop URL’dagi `slug` (yoki Host) dan aniqlanadi,
+  shop ACTIVE va sayt LIVE bo‘lishi shart. Tranzaksiya READ ONLY, `app.shop_id` shu shopga o‘rnatiladi.
+  Javobda faqat ommaviy maydonlar (TC-SEC-09). Kesh — Redis, kalitda shop prefiksi (08 §4).
+
+  **Xaridor ma’lumoti bu schemada yo‘q.** Savatcha brauzerda turadi; buyurtma so‘rovi — commerce.orders (DEC-115).
+
+  **Standart texnik jadvallar** (diagrammada yo‘q, 07 §5): storefront.outbox_events, storefront.consumer_receipts —
+  fon ishlari bilan (5-modul, S0-06).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum)
+// ---------------------------------------------------------------------
+
+Enum storefront.site_status {
+  DRAFT [note: 'Qoralama — ega hali sozlayapti. Xaridor "Sayt tez orada ochiladi" ko‘radi']
+  LIVE [note: 'Ochiq — shop ACTIVE bo‘lsa, xaridor saytni ko‘radi va buyurtma beradi']
+  PAUSED [note: 'Ega vaqtincha yopdi — "vaqtincha ishlamayapti", buyurtma qabul qilinmaydi']
+}
+
+Enum storefront.theme_mode {
+  LIGHT [note: 'Oq fon']
+  DARK [note: 'To‘q fon']
+}
+
+Enum storefront.page_kind {
+  ABOUT [note: '"Biz haqimizda"']
+  DELIVERY_PAYMENT [note: '"Yetkazish va to‘lov" — to‘lov tizimdan tashqarida (DEC-100), yetkazishni shop o‘zi tashkil qiladi (DEC-113)']
+  WARRANTY_RETURNS [note: '"Kafolat va qaytarish"']
+}
+
+Enum storefront.stock_status {
+  IN_STOCK [note: 'Bor']
+  LOW [note: 'Kam qoldi — sotuvga mavjud <= shop_policies.low_stock_threshold']
+  OUT_OF_STOCK [note: 'Yo‘q']
+}
+
+Enum storefront.domain_status {
+  PENDING [note: 'DNS yozuvi kutilmoqda']
+  VERIFIED [note: 'Tasdiqlandi — sayt shu manzilda ochiladi']
+  FAILED [note: 'Tekshiruvdan o‘tmadi — sababi failure_reason’da']
+  REMOVED [note: 'Olib tashlangan']
+}
+
+// ---------------------------------------------------------------------
+// Sayt sozlamalari va sahifalar (4-modulda quriladi)
+// ---------------------------------------------------------------------
+
+Table storefront.sites {
+  shop_id uuid [pk, note: 'platform.shops.id — har shopga bitta sayt. Manzil — platform.shops.slug ({slug}.platforma.uz), bu yerda takrorlanmaydi']
+  status storefront.site_status [not null, default: 'DRAFT', note: 'Xaridorga ko‘rinishi: shop ACTIVE va sayt LIVE bo‘lsa']
+  logo_file_id uuid [note: 'platform.stored_files.id — FK’siz. Fayl turi SITE_LOGO, ochiq. Bo‘sh bo‘lsa — shop nomining bosh harflari']
+  accent_color text [not null, default: '#7C3AED', note: 'Asosiy rang, #RRGGBB (CHECK). Matn bilan kontrasti kodda tekshiriladi (WCAG AA)']
+  theme_mode storefront.theme_mode [not null, default: 'LIGHT']
+  tagline text [note: 'Qisqa shior, 120 belgigacha: "Kompyuter qismlari — rasmiy kafolat bilan"']
+  seo_description text [note: 'Google va havola oldindan ko‘rinishi (Telegram, Instagram) uchun, 160 belgigacha. Bo‘sh bo‘lsa — tagline']
+  contact_phone text [note: 'Saytdagi asosiy telefon, E.164. LIVE qilishdan oldin majburiy']
+  contact_email text
+  telegram_username text [note: 'Faqat username (techpc_uz), havola emas — saytga begona havola qo‘yib bo‘lmaydi']
+  instagram_username text [note: 'Faqat username']
+  published_at timestamptz [note: 'Birinchi marta LIVE bo‘lgan vaqt']
+  status_changed_at timestamptz
+  updated_by uuid [note: 'platform.memberships.id — oxirgi o‘zgartirgan']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  Note: '''
+  Sayt ko‘rinishi va kontaktlari. Yozuv ega birinchi marta saqlaganda yaratiladi; yozuv yo‘q — sayt DRAFT.
+  Faqat ega o‘zgartiradi (storefront.site.edit, 10 §6.6). Har o‘zgarish — audit (faqat maydon nomlari),
+  holat o‘zgarishi — platform.transition_log. O‘zgarganda sayt sozlamalari keshi darhol o‘chiriladi.
+  RLS yo‘q — ommaviy ma’lumot; himoya app-layer filtri va shop_id kaliti (10 §4).
+  '''
+}
+
+Table storefront.pages {
+  id uuid [pk]
+  shop_id uuid [not null]
+  kind storefront.page_kind [not null, note: 'Tayyor sahifa turi (DEC-135)']
+  title text [not null, note: 'Standart — turning nomi; ega o‘zgartira oladi, 80 belgigacha']
+  body_md text [not null, note: 'Matn, Markdown: sarlavha, ro‘yxat, qalin, havola. HTML qabul qilinmaydi, ko‘rsatishda tozalanadi (XSS). 20 000 belgigacha']
+  is_published boolean [not null, default: false, note: 'Saytning pastki menyusida faqat chiqarilganlar']
+  updated_by uuid [note: 'platform.memberships.id']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, kind) [unique, note: 'Har turdan bitta sahifa (matn bitta tilda — DEC-135)']
+  }
+  Note: '''
+  Shop yozadigan ma’lumot sahifalari. Matn shop tilida (DEC-135).
+  Maxfiylik siyosati bu yerda emas: platforma shabloni + shop rekvizitlari (26 §8), kodda versiyalanadi;
+  buyurtmadagi commerce.orders.consent_version shu shablon versiyasiga ishora qiladi.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// KEYIN: DEC-135 bo‘yicha 4-modulda yaratilmaydi
+// ---------------------------------------------------------------------
+
+Table storefront.public_products {
+  shop_id uuid [not null]
+  sku_id uuid [not null, note: 'catalog.skus.id']
+  product_id uuid [not null, note: 'catalog.products.id — saytda kartochka mahsulot bo‘yicha, variantlar ichida']
+  category_code text [not null, note: 'catalog.categories.code']
+  brand text
+  title text [not null]
+  variant_name text
+  condition text [not null, note: 'NEW | USED | REFURBISHED']
+  price_uzs_minor bigint [not null, note: 'Xaridor ko‘radigan narx, so‘mda (DEC-121). Dollar narxi shop kursi bilan, yaxlitlanmaydi (DEC-133)']
+  stock_status storefront.stock_status [not null]
+  available_qty int [note: 'Faqat shop_policies.stock_display = EXACT bo‘lsa; aks holda NULL (DEC-128)']
+  branch_availability jsonb [not null, default: '[]', note: 'DEC-135: [{"branch_id": "...", "status": "IN_STOCK", "qty": null}] — faqat ochiq olib ketish joylari']
+  media jsonb [not null, default: '[]', note: 'Ochiq rasm manzillari, tartibi bilan (DEC-133)']
+  warranty_months int
+  published_at timestamptz [not null, note: '"Yangilar" saralashi']
+  product_version bigint [not null, note: 'Event’lar tartibsiz kelsa, eskisi yangisini bosib ketmaydi (05 §9)']
+  price_version_id uuid [not null]
+  exchange_rate_id uuid [note: 'Dollar narxi bo‘lsa']
+  stock_version bigint [not null, default: 0]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, sku_id) [pk]
+    (shop_id, product_id)
+    (shop_id, category_code, price_uzs_minor) [note: 'Toifa + narx bo‘yicha filtr va saralash']
+    (shop_id, published_at) [note: '"Yangilar"']
+    title [note: 'GIN trigram (pg_trgm) — nom bo‘yicha qidiruv']
+  }
+  Note: '''
+  KEYIN (DEC-135). Saytdagi katalogning tayyor nusxasi: faqat PUBLISHED mahsulotning ACTIVE va narxi bor SKU’lari,
+  faqat ommaviy maydonlar (tannarx, ichki izoh, MPN yo‘q).
+  catalog.product.*, catalog.price.changed, catalog.exchange_rate.updated, commerce.stock.changed,
+  platform.shop.policy_changed event’laridan quriladi (05 §8.8) — fon ishlari kerak (5-modul, S0-06).
+  Buyurtma tasdiqlashda ishlatilmaydi: commerce narx va qoldiqni o‘z jadvallaridan qayta tekshiradi.
+  '''
+}
+
+Table storefront.site_domains {
+  id uuid [pk]
+  shop_id uuid [not null]
+  hostname text [not null, unique, note: 'Kichik harf, masalan techpc.uz. Butun platformada yagona (BL-025)']
+  status storefront.domain_status [not null, default: 'PENDING']
+  verification_token text [not null, note: 'DNS TXT yozuviga qo‘yiladigan qiymat. Sir emas (DNS’da hammaga ko‘rinadi), shuning uchun xesh emas']
+  is_primary boolean [not null, default: false, note: 'Asosiy manzil: qolganlari (slug.platforma.uz ham) shu yerga yo‘naltiriladi']
+  verified_at timestamptz
+  last_checked_at timestamptz
+  failure_reason text
+  created_by uuid [note: 'platform.memberships.id']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    shop_id [unique, note: 'Partial: WHERE is_primary — shopda bitta asosiy domen']
+  }
+  Note: '''
+  KEYIN (DEC-135). Shopning o‘z domeni. Tasdiqlanmaguncha sayt platforma manzilida ishlaydi (BL-025).
+  Saytni Host bo‘yicha topish faqat VERIFIED yozuvlar va Nginx allowlist orqali (21 §6, 10).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Bog‘lanishlar
+// ---------------------------------------------------------------------
+
+Ref: storefront.pages.shop_id > storefront.sites.shop_id [delete: restrict]
+Ref: storefront.site_domains.shop_id > storefront.sites.shop_id [delete: restrict]
+
+// ---------------------------------------------------------------------
+// Diagrammada guruhlash
+// ---------------------------------------------------------------------
+
+TableGroup sayt {
+  storefront.sites
+  storefront.pages
+}
+
+TableGroup keyin_qoshiladi {
+  storefront.public_products
+  storefront.site_domains
+}
