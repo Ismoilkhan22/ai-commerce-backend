@@ -117,11 +117,12 @@ Qolgan jadvallar (katalog, sayt) — app-layer filtri + composite FK; keyin kera
 | Parol | Argon2id; kamida 8 belgi, telefon raqami va oddiy parollar (`12345678`, `password`…) — `too_weak`. Kirish urinishlari cheklangan: IP + telefon bo'yicha rate limit va ketma-ket 5 xatodan keyin 15 daqiqa blok. Noma'lum telefon va noto'g'ri parol — bir xil javob va bir xil vaqt (dummy hash) |
 | Parolni tiklash | Stage 1: ega (`staff.member.password_reset`) yoki platforma admini (`platform.member.password_reset`) bir martalik havola beradi, 24 soat amal qiladi, hash'i `platform.invitations` da (`purpose = PASSWORD_RESET`). Tiklangach — barcha sessiyalar bekor. Xodim o'zi SMS orqali tiklashi — SMS provayder ulanganda |
 | Access token | JWT (HS256, `kid`), 15 daqiqa, **frontend xotirasida** (`Authorization: Bearer`). localStorage — TAQIQ. `iss`, `aud`, `kid`, imzo tekshiriladi. Claim'lar: `sub`, `sid`, `shop`, `iat`, `exp`, `jti` (rollar emas — ular DB'dan). `aud`: `cos-shop` yoki `cos-platform` — bir panel tokeni boshqasida ishlamaydi |
-| Refresh token | `<session_id>.<sir>`, 30 kun; DB'da faqat sirning sha256 hash'i (`platform.sessions`), rotatsiya har ishlatilganda (yangi qator, o'sha `family_id`); `httpOnly Secure SameSite=Strict` cookie, `Path=/api/v1/auth/refresh` |
+| Refresh token | `<session_id>.<sir>`, 30 kun; DB'da faqat sirning sha256 hash'i (`platform.sessions`), rotatsiya har ishlatilganda (yangi qator, o'sha `family_id`); `httpOnly Secure SameSite=Strict` cookie, `Path=/api/v1/auth/refresh`. **Har panelning o'z cookie'si:** `cos_refresh_shop` va `cos_refresh_platform` — bitta brauzerda ikkala panel bir-birining sessiyasini almashtirmaydi. Login va refresh so'rovida `audience` (`shop` / `platform`) aniq beriladi; odamda bu panelga huquq bo'lmasa — oddiy "noto'g'ri login" |
 | Reuse aniqlansa | Butun sessiya oilasi (`family_id`) bekor qilinadi, foydalanuvchi qayta kiradi |
 | Shop almashtirish | Stage 1 da yo'q: bir odam — bitta shop (DEC-131, `memberships.principal_id` unikal). Ko'p shop yoqilganda `POST /api/v1/auth/switch-shop` qo'shiladi |
 | Xodim o'chirilsa | Barcha sessiyalari va ochiq havolalari darhol bekor (FSM: `ACTIVE → DISABLED`). Ruxsatlar har so'rovda DB'dan o'qilgani uchun eski access token ham darhol ishlamay qoladi (TC-025) |
 | Parol o'zgarsa | Joriydan boshqa barcha sessiyalar bekor |
+| Bir nechta tab | Refresh token har ishlatilganda almashadi, shuning uchun ikki tab bir vaqtda yangilasa, ikkinchisi "qayta ishlatish" bo'lib qoladi va butun oila bekor bo'ladi. Frontend tablar orasida qulf (Web Locks API) bilan bir vaqtda faqat bitta refresh yuboradi ([21](21-frontend.md) §5) |
 | Domenlar | `app.<platforma>.uz` (dashboard) va `api.<platforma>.uz` — bitta site (cookie uchun) |
 | WebSocket | `POST /api/v1/auth/ws-ticket` → 30 s amal qiladigan bir martalik ticket; `/ws?ticket=...` ([08](08-cache-and-realtime.md)). Realtime moduli bilan qo'shiladi (1-modulda yo'q) |
 | Muhim amallar | Shopni yopish, egani almashtirish, eksport — qayta parol (step-up), keyinroq 2FA |
@@ -254,10 +255,14 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | Kod | PLATFORM_ADMIN | PLATFORM_SUPPORT | SPEC_EDITOR |
 |---|---|---|---|
 | `platform.shop.create` (shop + ega taklifi) | ✓ | — | — |
+| `platform.shop.edit` (shop ma'lumotini tuzatish, sabab bilan) | ✓ | — | — |
 | `platform.shop.activate` (qayta yoqish ham), `platform.shop.suspend`, `platform.shop.close` | ✓ | — | — |
 | `platform.member.password_reset` (shop egasining parolini tiklash) | ✓ | — | — |
 | `platform.state.force` (holatni majburan o'zgartirish, sabab + audit) | ✓ | — | — |
 | `platform.shop.view_meta` (holat, tarif, xatolar — ichki ma'lumotsiz) | ✓ | ✓ | — |
+| `platform.shop.note` (shop haqida ichki izoh qo'shish, business/15 §3) | ✓ | ✓ | — |
+| `platform.staff.view` (platforma jamoasi ro'yxati) | ✓ | ✓ | — |
+| `platform.staff.manage` (jamoaga taklif, rol, o'chirish, parol tiklash havolasi; oxirgi faol admin himoyalangan — `LAST_ADMIN_REQUIRED`) | ✓ | — | — |
 | `platform.spec.edit` (texnik ma'lumotlar kutubxonasi, DEC-120) | ✓ | — | ✓ |
 | `platform.support.grant_request` (break-glass so'rovi, §9) | ✓ | ✓ | — |
 | `platform.outbox.replay`, `platform.channel.kill`, `platform.ai.kill` | ✓ | — | — |

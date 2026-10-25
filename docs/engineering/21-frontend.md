@@ -2,6 +2,7 @@
 
 > **Versiya:** v2 (2026-10-22). Eski `18_FRONTEND_ARCHITECTURE_AND_UI` o'rnini bosadi. DEC-014 / ADR-010 (ikki Next.js app), DEC-008 / ADR-023 (auth), DEC-124 (`shop`).
 > **Kim o'qiydi:** frontend dasturchi, backend dasturchi (API kontraktlari uchun).
+> **Holat (2026-10-23):** `ai-commerce-frontend` da 1-modul qurilgan: `shop-dashboard`, `platform-admin`, umumiy paketlar va e2e. Nima qilingani — [progress/M01](progress/M01-auth-shops-staff.md) §8.
 > **Biznes manbai:** sahifalar va oqimlar — [../business/06](../business/06_UI_SITEMAP_AND_USER_FLOWS.md), rollar — [../business/04](../business/04_ROLES_PERMISSIONS_AND_APPROVALS.md).
 
 ## 1. Muammo va yechim
@@ -9,7 +10,7 @@
 **Muammo:** frontend backend'dan alohida yoziladi. Agar API turlari qo'lda takrorlansa, ular tez orada farqlanadi; agar ruxsatlar faqat UI'da tekshirilsa, tenant izolyatsiyasi buziladi; agar har sahifa xatolarni o'zicha ko'rsatsa, foydalanuvchi "nima bo'ldi" ni tushunmaydi.
 
 **Yechim:**
-1. Alohida repo, bitta pnpm workspace, ikki Next.js app.
+1. Alohida repo, bitta pnpm workspace, uch Next.js app: shop paneli, shop sayti va platforma paneli.
 2. API client **faqat OpenAPI'dan generatsiya** qilinadi.
 3. Ruxsat UI'da — faqat qulaylik uchun; haqiqiy tekshiruv backend'da (`10-security-tenancy-rbac.md`).
 4. Har sahifa bir xil holatlar modeli (§6) va bir xil xato envelope'ini (K-07) ishlatadi.
@@ -30,7 +31,8 @@ ai-commerce-frontend/
 │   │           ├── storefront/  channels/  team/  branches/  notifications/
 │   │           ├── settings/ai/  settings/billing/  audit/
 │   │           # payments/, fulfillment/ — DEFERRED (DEC-100, DEC-113)
-│   └── shop-storefront/                 # {shop}.<platforma>.uz — shop sayti (ommaviy, SEO, mobil)
+│   ├── shop-storefront/                 # {shop}.<platforma>.uz — shop sayti (4-modulda)
+│   └── platform-admin/                  # admin.<platforma>.uz — platforma jamoasi: shop yaratish, holatlar (1-modul)
 │       └── src/app/
 │           ├── page.tsx                 # / — katalog
 │           ├── p/[product]/             # mahsulot
@@ -40,8 +42,9 @@ ai-commerce-frontend/
 ├── packages/
 │   ├── ui/                              # dizayn tokenlari, accessible komponentlar
 │   ├── api-client/                      # OpenAPI'dan generatsiya — QO'LDA YOZILMAYDI
-│   ├── auth/                            # sessiya klienti, silent refresh, route ruxsatlari
-│   ├── i18n/                            # uz/ru/en matnlar, xato kodlari tarjimasi
+│   ├── auth/                            # sessiya (token xotirada), silent refresh, login/taklif/parol/profil ekranlari
+│   ├── app-kit/                         # umumiy: so'rovlar keshi, xatolarni ko'rsatish, til tanlash
+│   ├── i18n/                            # uz/ru/en matnlar, maydon xatolari tarjimasi
 │   └── analytics/                       # PII'siz tipli event logger
 ├── e2e/                                 # Playwright
 └── tooling/                             # eslint, tsconfig, CI
@@ -55,7 +58,7 @@ Bular workspace papkalari, alohida repo'lar emas. Stage 3 dagi ommaviy qidiruv u
 
 | Qatlam | Tanlov | Qoida |
 |---|---|---|
-| Framework | Next.js (App Router) + TypeScript `strict` | — |
+| Framework | Next.js 16 (App Router) + React 19 + TypeScript `strict` | Versiyalar aniq qotiriladi; xavfsizlik patch'i chiqsa darhol yangilanadi (`pnpm audit`) |
 | Stil | Tailwind + accessible komponentlar (`packages/ui`) | Vendor almashtirish mumkin |
 | Server holati | TanStack Query | Mutatsiyadan keyin aniq invalidatsiya |
 | Lokal UI holati | Zustand (kichik) | Faqat vaqtinchalik UI holati |
@@ -71,7 +74,7 @@ Bular workspace papkalari, alohida repo'lar emas. Stage 3 dagi ommaviy qidiruv u
 
 ```
 Backend OpenAPI (/api/v1/openapi.json)
-   ──▶ pnpm --filter api-client generate
+   ──▶ pnpm api:generate                (openapi-typescript)
    ──▶ packages/api-client (tiplar + fetch funksiyalari)
    ──▶ apps/* faqat shu client'ni ishlatadi
 ```
@@ -90,10 +93,13 @@ Login ──▶ access JWT (10–15 daq) — faqat xotirada
        ──▶ refresh token — httpOnly Secure SameSite=Strict cookie (rotating)
 Sahifa yangilandi ──▶ silent refresh ──▶ yangi access token
 401 ──▶ bir marta refresh ──▶ yana 401 ──▶ /login
-WebSocket ──▶ POST /api/v1/shop/ws-ticket ──▶ qisqa ticket ──▶ /ws?ticket=...
+Ikki tab bir vaqtda ──▶ Web Locks qulfi ──▶ bir vaqtda faqat bitta refresh (rotatsiya "qayta ishlatish" bo'lib qolmasin)
+WebSocket ──▶ POST /api/v1/auth/ws-ticket ──▶ qisqa ticket ──▶ /ws?ticket=...   (realtime moduli bilan)
 ```
 
-- `app.<platforma>.uz` va `api.<platforma>.uz` bitta site ostida (cookie SameSite uchun).
+- `app.<platforma>.uz` va `api.<platforma>.uz` bitta site ostida (cookie SameSite uchun). Lokalda hammasi `localhost` da.
+- Login va refresh so'rovida panel aniq beriladi (`audience: "shop" | "platform"`). Har panelning o'z refresh cookie'si bor (`cos_refresh_shop` / `cos_refresh_platform`), shuning uchun bitta brauzerda ikkala panel bir-biriga xalaqit bermaydi.
+- Sahifa ochilganda token yo'q — avval refresh, keyin `/auth/me`. Token tugashiga 30 soniya qolganda oldindan yangilanadi; 401 kelsa bir marta refresh qilib so'rov qayta yuboriladi.
 - `shop_id` hech qachon frontend'dan "ishonchli" qiymat sifatida yuborilmaydi. URL'dagi `[shop]` faqat navigatsiya uchun; backend a'zolikdan aniqlaydi va mos kelmasa 404 qaytaradi.
 - Rol bo'yicha tugma yashirish — UX; backend 403 qaytarsa, UI "Ruxsat yo'q" holatini ko'rsatadi.
 
@@ -204,7 +210,7 @@ Event'lar: message.created, conversation.updated (speaker_mode, speaker_version)
 |---|---|
 | Unit (Vitest) | Holat mapper'lari, xato kodi → holat, formatlash (pul: `amount_minor` + exponent → "3 840 000 so'm") |
 | Storybook / UI holatlari | Qoldiq to'qnashuvi, narx o'zgardi, AI'dan olingan suhbat, kanal uzilgan, limit tugagan |
-| E2E (Playwright) | Asosiy yo'l: login → katalog → chat → taklif → qoralama → tasdiqlash → topshirish; ruxsat (operator bekor qila olmaydi — TC-029); klaviatura navigatsiyasi |
+| E2E (Playwright) | 1-modul (bor): platforma shop ochadi → ega taklif orqali kiradi → filial, tekshiruvga yuborish → operator taklifi → operator faqat o'z bo'limlarini ko'radi → faollashtirish → operatorni o'chirish; bitta brauzerda ikki panel. Keyin: login → katalog → chat → taklif → qoralama → tasdiqlash → topshirish; ruxsat (operator bekor qila olmaydi — TC-029); klaviatura navigatsiyasi |
 | Kontrakt | Generatsiya qilingan client typecheck; mock'lar OpenAPI'dan |
 
 ---

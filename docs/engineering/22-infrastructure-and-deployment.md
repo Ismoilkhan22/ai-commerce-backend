@@ -79,11 +79,11 @@ services:
     image: postgres:16
     environment: { POSTGRES_DB: cos, POSTGRES_USER: app_migrator, POSTGRES_PASSWORD: dev }
     volumes: [ "./deploy/postgres/init:/docker-entrypoint-initdb.d" ]   # schemas.sql, app_runtime roli
-    ports: [ "5432:5432" ]
+    ports: [ "5433:5432" ]   # dasturchining o'z PostgreSQL'i bilan to'qnashmasin
   redis:
     image: redis:7
     command: [ "redis-server", "--appendonly", "yes", "--appendfsync", "everysec" ]
-    ports: [ "6379:6379" ]
+    ports: [ "6380:6379" ]
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"

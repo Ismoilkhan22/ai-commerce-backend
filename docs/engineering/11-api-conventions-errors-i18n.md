@@ -155,6 +155,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `BRANCH_CLOSED` | 409 | Yopiq filial tanlangan (UAT-M03, TC-026) | yo'q |
 | `SHOP_NOT_ACTIVE` | 409 | Shop `SUSPENDED`/`CLOSED` — yangi buyurtma qabul qilinmaydi (TC-023) | yo'q |
 | `LAST_OWNER_REQUIRED` | 409 | Oxirgi egani o'chirish yoki rolini olish (UAT-M02) | yo'q |
+| `LAST_ADMIN_REQUIRED` | 409 | Oxirgi faol platforma adminini o'chirish yoki rolini olish (business/15 §5) | yo'q |
 | `SPEAKER_CONFLICT` | 409 | Suhbatni boshqa operator olgan yoki `speaker_version` eskirgan (TC-009) | yangilab qayta |
 | `CHANNEL_UNAVAILABLE` | 409 | Kanal `DISCONNECTED`/`DEGRADED`, xabar yuborib bo'lmaydi (TC-011) | ulangach |
 | `PAYLOAD_TOO_LARGE` | 413 | Fayl yoki audio limiti | yo'q |
@@ -222,6 +223,7 @@ class ProductNotAvailableError(ConflictError):    code = "PRODUCT_NOT_AVAILABLE"
 class BranchClosedError(ConflictError):           code = "BRANCH_CLOSED"
 class ShopNotActiveError(ConflictError):          code = "SHOP_NOT_ACTIVE"
 class LastOwnerRequiredError(ConflictError):      code = "LAST_OWNER_REQUIRED"
+class LastAdminRequiredError(ConflictError):      code = "LAST_ADMIN_REQUIRED"
 class SpeakerConflictError(ConflictError):        code = "SPEAKER_CONFLICT"
 class ChannelUnavailableError(ConflictError):     code = "CHANNEL_UNAVAILABLE"
 
@@ -358,14 +360,16 @@ Prefiks `/api/v1/<surface>`. **Idem** — `Idempotency-Key` majburiy. **IfM** �
 
 | Metod va yo'l | Nima | Izoh |
 |---|---|---|
-| `POST /auth/login` | Kirish → access token + refresh cookie | Rate limit (IP + telefon); 5 xato → 15 daqiqa blok (`429 RATE_LIMITED`, `retry_after_seconds`) |
-| `POST /auth/refresh` | Token yangilash (rotatsiya) | Faqat `cos_refresh` cookie; eski token qayta kelsa — butun oila bekor |
+| `POST /auth/login` | Kirish → access token + refresh cookie. Tana: `phone`, `password`, `audience` (`shop` / `platform`) | Rate limit (IP + telefon); 5 xato → 15 daqiqa blok (`429 RATE_LIMITED`, `retry_after_seconds`). Bu panelga huquq yo'q — `401` (oddiy "noto'g'ri login") |
+| `POST /auth/refresh` | Token yangilash (rotatsiya). Tana: `audience` | Cookie: `cos_refresh_shop` yoki `cos_refresh_platform`; eski token qayta kelsa — butun oila bekor |
 | `POST /auth/logout`, `POST /auth/logout-all` | Joriy sessiyani yoki barcha sessiyalarni yopish | |
 | `GET /auth/me` | Kim, qaysi shop, rol, ruxsatlar, filiallar | Frontend menyuni shundan quradi |
 | `POST /auth/password/change` | Parolni o'zgartirish | Joriy parol so'raladi; boshqa sessiyalar bekor |
 | `GET /auth/sessions`, `DELETE /auth/sessions/{id}` | Faol qurilmalar va bittasini yopish | |
 | `POST /auth/invites/{token}/accept` | Taklifni qabul qilish: parol o'rnatiladi, darhol kiriladi | Token bir martalik — Idem kerak emas; `404` + `reason`: `invalid`, `used`, `revoked`, `expired` |
 | `POST /auth/password-reset/confirm` | Tiklash havolasi bilan yangi parol | Barcha sessiyalar bekor; `404` + `reason` xuddi yuqoridagidek |
+| `POST /auth/platform-invites/{token}/accept` | Platforma jamoasiga taklif: parol o'rnatiladi, platforma paneliga kiriladi (`audience: platform`, cookie `cos_refresh_platform`) | Havola `PLATFORM_APP_PUBLIC_URL/invite/...`; `404` + `reason` xuddi yuqoridagidek |
+| `POST /auth/platform-password-reset/confirm` | Platforma jamoasi a'zosining yangi paroli | Barcha sessiyalar bekor; `404` + `reason` |
 
 Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS provayder kerak; hozir havolani ega yoki platforma admini beradi), `POST /auth/switch-shop` (bir odam — bitta shop, DEC-131), `POST /auth/ws-ticket` (realtime moduli bilan qo'shiladi).
 
@@ -489,8 +493,20 @@ Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS pr
 |---|---|
 | `POST /webhooks/telegram/{account_ref}` | `X-Telegram-Bot-Api-Secret-Token` tekshiriladi |
 | `GET /webhooks/meta` (verify), `POST /webhooks/meta` | `X-Hub-Signature-256`; sahifa/akkaunt ID → `channel_accounts` |
-| `POST /platform/shops` | `platform.shop.create`; shop + ega taklifi bitta tranzaksiyada, javobda ega havolasi. Idem |
-| `GET /platform/shops`, `GET /platform/shops/{id}` | `platform.shop.view_meta` |
+| `POST /platform/shops` | `platform.shop.create`; shop + ega taklifi bitta tranzaksiyada, javobda ega havolasi. Idem. Tizim nomlari (`login`, `admin`, `api`, `www`, ...) slug sifatida band — `not_unique` |
+| `GET /platform/dashboard` | `platform.shop.view_meta` — bosh sahifa ([business/15](../business/15_PLATFORM_ADMIN_PANEL.md) §1): `counts_by_status`, `review_queue` (eng uzoq kutayotgan birinchi, `waiting_days`), `pending_owners` (`invite_state`: `expired` / `expiring` <24 soat / `valid`), `pilots` (`day`, `days_left`, `ending_soon` ≤7 kun), `new_shops_7d/30d`, `recent_activity` (oxirgi 10 ta platforma amali, `auth.*` siz) |
+| `GET /platform/shops` | `platform.shop.view_meta`. `q` (nomi, slug, STIR yoki ega telefoni istalgan ko'rinishda), `status` (bir nechta), `sort` (`created_desc` / `activated_desc` / `name`), `limit` ≤100, `offset`. Javob: `items[]` (+ `owner_name`, `owner_status`, `staff_count`, `branch_count`, `last_activity_at`) va `total` |
+| `GET /platform/shops/{id}` | `platform.shop.view_meta`, `ETag`. Kartochkada `owners[]` (ism, telefon, holat, `membership_id`) — ega bilan bog'lanish va parol tiklash uchun |
+| `PATCH /platform/shops/{id}` | `platform.shop.edit`, IfM. `name`, `legal_name`, `tin`, `default_locale` + `reason` (majburiy). Slug o'zgarmaydi. Audit'da o'zgargan maydonlar; STIR qiymati yozilmaydi |
+| `GET /platform/shops/{id}/members`, `…/branches`, `…/history`, `…/audit` | `platform.shop.view_meta` — kartochka bo'limlari: xodimlar (oxirgi kirish bilan), filiallar, holat tarixi (FSM-01, kim va nega), shop jurnali (`limit`/`offset`, `total`; qiymatlarsiz — faqat `changed_fields`) |
+| `GET /platform/shops/{id}/notes`, `POST /platform/shops/{id}/notes` | `platform.shop.view_meta` / `platform.shop.note` — ichki izoh, shop ko'rmaydi. `body` 1–2000 belgi; faqat qo'shiladi (tahrir/o'chirish yo'q); auditda matn yo'q. POST — Idem |
+| `GET /platform/staff` | `platform.staff.view` — jamoa: `id`, `full_name`, `phone`, `role`, `status` (`INVITED`/`ACTIVE`/`DISABLED`), `last_login_at`, `invited_by_name`, `version` |
+| `POST /platform/staff/invites` | `platform.staff.manage` — `{phone, full_name, role}` → `{member, invite}`; telefon band bo'lsa `phone/not_unique`; havola idempotency'da saqlanmaydi (takrorda yangisi). Idem |
+| `POST /platform/staff/{id}/invite`, `POST /platform/staff/{id}/password-reset` | `platform.staff.manage` — taklifni qayta berish (faqat `INVITED`) / parol tiklash havolasi (faqat `ACTIVE`, 24 soat); eskilari bekor. Idem |
+| `PUT /platform/staff/{id}/role` | `platform.staff.manage` — IfM; oxirgi faol admin rolini olib bo'lmaydi (`LAST_ADMIN_REQUIRED`) |
+| `POST /platform/staff/{id}/disable` | `platform.staff.manage` — platforma sessiyalari va havolalari darhol bekor; o'zini o'chirib bo'lmaydi (`FORBIDDEN`); oxirgi faol admin himoyalangan. Idem |
+| `GET /platform/audit` | `platform.shop.view_meta` — platforma jamoasi amallari jurnali. Filtr: `shop_id`, `actor_id`, `action` (boshlanishi), `date_from`, `date_to`; `limit`/`offset`, `total` |
+| `POST /platform/shops/{id}/members/{membership_id}/invite` | `platform.shop.create` — ega taklifini qayta berish (72 soat o'tgan bo'lsa). Har chaqiruv yangi havola, eskisi bekor. Idem |
 | `POST /platform/shops/{id}/activate`, `…/reactivate`, `…/suspend`, `…/close` | `platform.shop.activate` (activate, reactivate) / `.suspend` / `.close`; suspend, reactivate va close uchun sabab majburiy. Idem |
 | `POST /platform/shops/{id}/members/{membership_id}/password-reset` | `platform.member.password_reset` — faqat shop egasi uchun. Idem |
 | `GET/POST/PATCH /platform/hardware-specs` | `platform.spec.edit` |

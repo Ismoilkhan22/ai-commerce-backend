@@ -6,19 +6,20 @@
 
 ## 0. Amaldagi tartib va holat (2026-10-23, founder)
 
-Ish **modul-modul, har modul to'liq** qilinadi (baza loyihasi → founder tasdig'i → kod → testlar). Har modul bazasi avval `db/<domain>.dbml` da loyihalanadi va tasdiqlanadi. Quyidagi S-vazifalar shu modullarga taqsimlangan; fon ishlari (S0-06) birinchi haqiqiy ehtiyoj bilan — 5-modulda quriladi.
+Ish **modul-modul, har modul to'liq** qilinadi (baza loyihasi → founder tasdig'i → kod → testlar → founder ko'rib chiqadi → commit). Haqiqatda nima qilingani va qaysi faylda qanday kod borligi — [progress/](progress/README.md). Har modul bazasi avval `db/<domain>.dbml` da loyihalanadi va tasdiqlanadi. Quyidagi S-vazifalar shu modullarga taqsimlangan; fon ishlari (S0-06) birinchi haqiqiy ehtiyoj bilan — 5-modulda quriladi.
 
 | № | Modul | Ichidagi vazifalar | Holat |
 |---|---|---|---|
 | — | Texnik asos | S0-01, S0-02, S0-03, S0-07 | ✅ tayyor (testlar: unit + PostgreSQL) |
 | 1 | Auth, shop va xodimlar (to'liq auth) | S0-04 (+ CORS, rate limit; `get_db` actor dependency'ga aniq bog'lanadi — shop konteksti va RLS'siz tranzaksiya ochilmasligi uchun) | ✅ kod va testlar (2026-10-23): 33 endpoint, RLS (`memberships`, `sessions`), oxirgi ega trigger'i. Ataylab keyinga: xodim o'zi parol tiklashi (SMS), `switch-shop`, `ws-ticket` ([11](11-api-conventions-errors-i18n.md) §9.1) |
-| 2 | Katalog | S1-01…S1-05, S0-08 (fayllar) | Baza loyihasi kutilmoqda |
-| 3 | Savdo (commerce) | S1 ombor, S3 lead/taklif, S4 buyurtmalar | — |
+| 1b | Platforma paneli (founder, 2026-10-23: platforma → shop → sayt) | business/15, A bosqich | ✅ backend + frontend, to'liq ([progress/M01b](progress/M01b-platform-admin.md)) |
+| 2 | Katalog | S1-02, S1-03, S1-04, S0-08 (fayllar). S1-01 backend'i 1-modulda bitdi (UI — frontend bilan) | Baza loyihasi founder ko'rib chiqishida ([db/catalog.dbml](db/catalog.dbml)) |
+| 3 | Savdo (commerce) | S1-05 ombor, S3 lead/taklif, S4 buyurtmalar | — |
 | 4 | Shop sayti | S1 storefront | — |
-| 5 | Kanallar va inbox | S2, **S0-06** (outbox, arq, scheduler) | — |
+| 5 | Kanallar va inbox | S2, **S0-06** (outbox, arq, scheduler), S1-06 katalog importi (arq kerak) | — |
 | 6 | AI sotuvchi | S3 | — |
 | 7 | Xabarnomalar, kafolat, hisobotlar | S2/S5 | — |
-| — | Frontend | S0-09, keyin har modul bilan | 1-moduldan keyin |
+| — | Frontend | S0-09, keyin har modul bilan | ✅ 1-modul: shop paneli + platforma paneli, e2e (2026-10-23, [progress/M01](progress/M01-auth-shops-staff.md) §8) |
 | — | Monitoring, deploy | S0-05, S0-10 | Pilotdan oldin |
 
 **Muddati bor texnik qarzlar** (fon ishlari bilan birga qilinadi):

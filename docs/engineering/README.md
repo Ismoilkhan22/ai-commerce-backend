@@ -47,6 +47,7 @@
 | 27 | [27-roadmap-and-tasks.md](27-roadmap-and-tasks.md) | S0–S5 vazifalari | Founder, dasturchi |
 | 28 | [28-network-and-global-search.md](28-network-and-global-search.md) | Stage 2–3: shoplar tarmog'i, global qidiruv | Arxitektor |
 | 29 | [29-traceability.md](29-traceability.md) | Modul → domen → qoida → holat → sinov | Hamma |
+| — | [progress/](progress/README.md) | Bajarilgan ishlar: reja holati, har modul hisoboti (fayllar va kod) | Hamma |
 | ADR | [ADR/](ADR/) | Arxitektura qarorlari (har biri alohida fayl) | Backend |
 | Modullar | [../modules/](../modules/) | Har domen uchun README | Modul egasi |
 

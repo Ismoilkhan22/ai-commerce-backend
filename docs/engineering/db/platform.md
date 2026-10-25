@@ -219,10 +219,41 @@ Bu qarorlar har jadvalda takrorlanadi, shuning uchun bir marta tushuntiraman.
 | Maydon | Nega |
 |---|---|
 | `principal_id` | Oddiy foydalanuvchi akkaunti. `unique` — bir odam jamoada bir marta |
-| `role` | `PLATFORM_ADMIN` (shopni faollashtiradi), `PLATFORM_SUPPORT` (yordam), `SPEC_EDITOR` (PC texnik ma'lumotlari, DEC-120) |
-| `status` | `ACTIVE` / `DISABLED` |
+| `role` | `PLATFORM_ADMIN` (shopni faollashtiradi, jamoani boshqaradi), `PLATFORM_SUPPORT` (ko'radi va yordam beradi), `SPEC_EDITOR` (PC texnik ma'lumotlari, DEC-120) |
+| `status` | `INVITED` → `ACTIVE` → `DISABLED`. `INVITED` — panel orqali taklif qilingan, hali kirmagan (platform_0005) |
+| `invited_by` | Kim taklif qilgan (jamoa a'zosi). Birinchi admin CLI bilan yaratiladi — unda bo'sh |
+| `updated_at`, `version` | Ikki admin bir vaqtda rolni o'zgartirsa, ikkinchisi `VERSION_CONFLICT` oladi |
 
-**Muhim:** platforma jamoasi shopning suhbat va savdolarini **odatiy holatda ko'rmaydi** (`business/04`). Faqat shop egasi roziligi bilan, vaqtinchalik va yozib qo'yiladigan tarzda kiradi — buning jadvali (`support_grants`) keyingi bosqichda qo'shiladi.
+**Muhim:**
+- Oxirgi faol `PLATFORM_ADMIN` ni o'chirib yoki rolini olib bo'lmaydi (`LAST_ADMIN_REQUIRED`). O'zini o'chirib ham bo'lmaydi.
+- Platforma jamoasi shopning suhbat va savdolarini **odatiy holatda ko'rmaydi** (`business/04`). Faqat shop egasi roziligi bilan, vaqtinchalik va yozib qo'yiladigan tarzda kiradi — buning jadvali (`support_grants`) keyingi bosqichda qo'shiladi.
+
+## 9a. `platform_staff_invitations` — jamoaga bir martalik havolalar (platform_0005)
+
+**Nima uchun kerak:** yangi jamoa a'zosini panel orqali qo'shish va parolini tiklash — CLI'siz. Shop xodimi havolalari bilan bir xil ishlaydi.
+
+- **`platform_staff_id`** — kimga tegishli. A'zo o'chirilsa, havolalari ham o'chadi.
+- **`purpose`** — `INVITE` (72 soat) yoki `PASSWORD_RESET` (24 soat).
+- **`token_hash`** — havoladagi maxfiy kodning hash'i, kodning o'zi saqlanmaydi. `unique`.
+- **`expires_at`, `accepted_at`, `revoked_at`** — muddati, ishlatilgan yoki bekor qilingan. Yangi havola berilsa, eskilari bekor bo'ladi: faqat oxirgisi ishlaydi.
+- **`created_by`** — havolani bergan admin.
+
+**Nega `invitations` ga qo'shilmadi:** u shop a'zoligiga (`shop_id`, `membership_id`) bog'langan va RLS ostida. Platforma jamoasining shopi yo'q.
+**Havola manzili:** platforma paneli (`PLATFORM_APP_PUBLIC_URL`, masalan `admin.platforma.uz/invite/...`).
+
+## 9b. `shop_notes` — platformaning ichki izohi (platform_0005)
+
+**Nima uchun kerak:** jamoa shop haqida bir-biriga qayd qoldiradi: "kelishuv imzolangan", "aloqa uchun: Vali". Shop bu izohlarni ko'rmaydi (business/15 §3).
+
+- **`shop_id`** — qaysi shop haqida.
+- **`author_id`** — kim yozgan (jamoa a'zosi).
+- **`body`** — matn, 1–2000 belgi (bazada ham tekshiriladi).
+- **`created_at`** — qachon.
+
+**Qoidalar:**
+- Izoh faqat qo'shiladi — tahrirlash va o'chirish yo'q, kim nima yozgani tarix bo'lib qoladi.
+- Audit'ga "izoh qo'shildi" yoziladi, lekin **matnning o'zi emas** — unda shaxsiy ma'lumot bo'lishi mumkin.
+- RLS yo'q: faqat platforma panelidan o'qiladi. Yozish — admin va yordam roli (`platform.shop.note`).
 
 ---
 

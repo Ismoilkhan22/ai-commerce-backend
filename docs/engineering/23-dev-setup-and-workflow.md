@@ -48,24 +48,26 @@
 # 1. Backend
 git clone git@github.com:Ismoilkhan22/ai-commerce-backend.git && cd ai-commerce-backend
 cp .env.example .env                       # faqat lokal qiymatlar, haqiqiy kalitlar yo'q
-docker compose -f deploy/docker-compose.yml up -d postgres redis minio
+make up                                    # PostgreSQL :5433, Redis :6380 (o'z PostgreSQL/Redis'ingiz bilan to'qnashmaydi)
 uv sync
-make bootstrap                             # rollar (app_migrator, app_runtime) + app/db/schemas.sql
+make bootstrap                             # rollar (app_migrator, app_runtime) + app/db/schemas.sql; .env'dan o'qiydi
 make migrate                               # barcha schema env'lari (§4)
-uv run python -m app.db.seed.dev_seed          # A va B shoplar, rollar, sintetik katalog
+make seed                                  # demo: platforma jamoasi va 8 ta shop (ixtiyoriy)
+PLATFORM_ADMIN_PASSWORD='...' uv run python -m app.platform.staff.cli create-platform-admin \
+  --phone "+998900000001" --name "Platforma Admin"     # birinchi platforma admini
 
-# 2. Jarayonlar (alohida terminallarda)
-uv run uvicorn app.main:app --reload                      # API
-uv run python -m app.workers.outbox_worker                # outbox → subscriber'lar va arq
-uv run arq app.workers.task_worker.WorkerSettings         # arq task'lari
-uv run python -m app.workers.scheduler_worker             # APScheduler (advisory lock leader)
+# 2. Jarayonlar
+uv run uvicorn app.main:app --port 8000 --reload          # API; Swagger — http://localhost:8000/docs
+# Fon ishlari (outbox_worker, arq, scheduler) — 5-modulda qo'shiladi
 
-# 3. Frontend
+# 3. Frontend (ai-commerce-frontend/README.md)
 cd ../ai-commerce-frontend && pnpm install
-pnpm --filter api-client generate          # backend ishlab turgan bo'lsa, OpenAPI'dan
-pnpm --filter shop-dashboard dev
-pnpm --filter shop-storefront dev
+pnpm api:generate                          # backend ishlab turgan bo'lsa: /api/v1/openapi.json → turlar
+pnpm dev                                   # shop paneli :3000, platforma paneli :3001
+pnpm test:e2e                              # Playwright (backend va admin kerak)
 ```
+
+**Demo ma'lumot:** `make seed` — platforma jamoasi (admin, yordam, taklif qilingan a'zo) va 8 ta shop turli holatda (tekshiruvda, faol pilot, to'xtatilgan, egasi kirmagan). Servislar orqali yaratiladi — audit va jurnal haqiqiydagidek; qayta ishga tushirish xavfsiz. Kirish ma'lumotlari skript oxirida chiqadi. **Hozircha yo'q:** MinIO — obrazi (`minio/minio`) Docker Hub'dan endi yuklanmaydi; fayllar kerak bo'lganda (2-modul) boshqa manba tanlanadi.
 
 **Seed ma'lumot:** har doim ikkita shop (A va B) — izolyatsiyani lokalda ham ko'rish uchun (TC-ISO). Faqat sintetik ma'lumot; haqiqiy xaridor ma'lumoti lokal yoki staging'ga hech qachon yuklanmaydi.
 

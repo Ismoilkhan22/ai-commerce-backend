@@ -241,10 +241,46 @@ Table platform.platform_staff {
   id uuid [pk]
   principal_id uuid [not null, unique]
   role platform.platform_role [not null]
-  status text [not null, default: 'ACTIVE', note: 'ACTIVE | DISABLED']
+  status text [not null, default: 'ACTIVE', note: 'INVITED | ACTIVE | DISABLED. Kodda (platform_0005): panel orqali taklif qilinganda INVITED']
+  invited_by uuid [note: 'Kodda (platform_0005): kim taklif qilgan (platform_staff.id); CLI yoki seed bilan yaratilganda NULL']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`, note: 'Kodda (platform_0005)']
+  version bigint [not null, default: 1, note: 'Kodda (platform_0005): rolni ikki admin bir vaqtda o‘zgartirsa — VERSION_CONFLICT']
+
+  Note: 'Bizning jamoa. Shop ma’lumotini odatiy holatda ko‘rmaydi; faqat support grant bilan (keyinroq). Oxirgi faol PLATFORM_ADMIN’ni o‘chirib bo‘lmaydi.'
+}
+
+// Kodda (platform_0005, business/15 §5): platforma jamoasiga panel orqali taklif.
+// Nega `invitations` ga qo‘shilmaydi: u shop a’zoligiga (shop_id, membership_id) bog‘langan va RLS ostida.
+Table platform.platform_staff_invitations {
+  id uuid [pk]
+  platform_staff_id uuid [not null]
+  purpose text [not null, note: 'INVITE | PASSWORD_RESET']
+  token_hash text [not null, unique, note: 'Havolaning o‘zi saqlanmaydi']
+  expires_at timestamptz [not null, note: 'Taklif 72 soat, tiklash 24 soat']
+  accepted_at timestamptz
+  revoked_at timestamptz
+  created_by uuid [note: 'platform_staff.id']
   created_at timestamptz [not null, default: `now()`]
 
-  Note: 'Bizning jamoa. Shop ma’lumotini odatiy holatda ko‘rmaydi; faqat support grant bilan (keyinroq).'
+  indexes {
+    platform_staff_id
+  }
+  Note: 'Kodda (platform_0005). Shop xodimi taklifi bilan bir xil ishlaydi: bir martalik, muddatli, faqat oxirgisi amal qiladi.'
+}
+
+// Kodda (platform_0005, business/15 §3): platformaning ichki izohi — shop ko‘rmaydi.
+Table platform.shop_notes {
+  id uuid [pk]
+  shop_id uuid [not null]
+  author_id uuid [not null, note: 'platform_staff.id']
+  body text [not null, note: 'Ko‘pi bilan 2000 belgi. Shaxsiy ma’lumot yozmaslik tavsiya qilinadi']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, created_at)
+  }
+  Note: 'Kodda (platform_0005). Faqat qo‘shiladi (tahrir yo‘q) — kim nima yozgani tarix bo‘lib qoladi. RLS’siz: faqat platforma panelidan o‘qiladi.'
 }
 
 // ---------------------------------------------------------------------
@@ -309,6 +345,11 @@ Ref: platform.invitations.(shop_id, membership_id) > platform.memberships.(shop_
 Ref: platform.sessions.principal_id > platform.principals.id [delete: cascade]
 Ref: platform.sessions.shop_id > platform.shops.id
 Ref: platform.platform_staff.principal_id > platform.principals.id [delete: restrict]
+// Kodda (platform_0005)
+Ref: platform.platform_staff.invited_by > platform.platform_staff.id
+Ref: platform.platform_staff_invitations.platform_staff_id > platform.platform_staff.id [delete: cascade]
+Ref: platform.shop_notes.shop_id > platform.shops.id [delete: restrict]
+Ref: platform.shop_notes.author_id > platform.platform_staff.id [delete: restrict]
 
 // ---------------------------------------------------------------------
 // Diagrammada guruhlash
@@ -330,6 +371,8 @@ TableGroup foydalanuvchilar_va_rollar {
 
 TableGroup platforma_jamoasi {
   platform.platform_staff
+  platform.platform_staff_invitations
+  platform.shop_notes
 }
 
 TableGroup tayyor_texnik {
