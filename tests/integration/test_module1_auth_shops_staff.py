@@ -8,138 +8,26 @@ refresh rotatsiyasi va qayta ishlatishni aniqlash, parol tiklash, yopilgan shop,
 from __future__ import annotations
 
 import asyncio
-import secrets
-from collections.abc import Iterator
-from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
-from fastapi.testclient import TestClient
 
-from app.config.settings import Settings
-from app.main import create_app
-from app.platform.staff.cli import create_platform_admin
-from tests.conftest import FAST_TEST_SETTINGS
-from tests.integration.conftest import PgUrls
+from tests.integration.helpers import (
+    ADMIN_PASSWORD,
+    PASSWORD,
+    SHOP,
+    World,
+    _bearer,
+    _code,
+    _idem,
+    _phone,
+    _sql,
+    _tin,
+)
 
 pytestmark = pytest.mark.integration
-
-PASSWORD = "Kuchli-parol-2026"
-ADMIN_PASSWORD = "Admin-parol-2026!"
-
-
-def _phone() -> str:
-    return "+99890" + "".join(secrets.choice("0123456789") for _ in range(7))
-
-
-def _tin() -> str:
-    return "".join(secrets.choice("0123456789") for _ in range(9))
-
-
-def _idem() -> dict[str, str]:
-    return {"Idempotency-Key": f"key-{uuid4()}"}
-
-
-def _bearer(token: str, **extra: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}", **extra}
-
-
-def _sql(url: str, query: str, *args: Any) -> list[asyncpg.Record]:
-    async def run() -> list[asyncpg.Record]:
-        conn = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
-        try:
-            return list(await conn.fetch(query, *args))
-        finally:
-            await conn.close()
-
-    return asyncio.run(run())
-
-
-@dataclass
-class World:
-    client: TestClient
-    urls: PgUrls
-    settings: Settings
-    admin_token: str
-
-    def login(self, phone: str, password: str = PASSWORD) -> str:
-        response = self.client.post("/api/v1/auth/login", json={"phone": phone, "password": password})
-        assert response.status_code == 200, response.text
-        return str(response.json()["access_token"])
-
-    def accept(self, invite_url: str, password: str = PASSWORD) -> str:
-        token = invite_url.rsplit("/", 1)[1]
-        response = self.client.post(f"/api/v1/auth/invites/{token}/accept", json={"password": password})
-        assert response.status_code == 200, response.text
-        return str(response.json()["access_token"])
-
-    def create_shop(self) -> dict[str, Any]:
-        """Platforma shop yaratadi → ega taklifni qabul qiladi. Ega tokeni bilan qaytadi."""
-        owner_phone = _phone()
-        response = self.client.post(
-            "/api/v1/platform/shops",
-            json={
-                "slug": f"shop-{uuid4().hex[:8]}",
-                "name": "TechPC",
-                "tin": _tin(),
-                "owner_phone": owner_phone,
-                "owner_full_name": "Ali Valiyev",
-            },
-            headers=_bearer(self.admin_token, **_idem()),
-        )
-        assert response.status_code == 201, response.text
-        body = response.json()
-        owner_token = self.accept(body["owner_invite"]["url"])
-        return {
-            "shop": body["shop"],
-            "owner_phone": owner_phone,
-            "owner_token": owner_token,
-            "owner_membership_id": body["owner_membership_id"],
-        }
-
-    def invite(self, owner_token: str, role: str, **extra: Any) -> tuple[str, str, str]:
-        phone = _phone()
-        response = self.client.post(
-            "/api/v1/shop/members/invites",
-            json={"phone": phone, "full_name": "Vali Aliyev", "role": role, **extra},
-            headers=_bearer(owner_token, **_idem()),
-        )
-        assert response.status_code == 201, response.text
-        body = response.json()
-        return phone, body["member"]["id"], self.accept(body["invite"]["url"])
-
-    def branch(self, owner_token: str, name: str = "Chilonzor") -> dict[str, Any]:
-        response = self.client.post(
-            "/api/v1/shop/branches",
-            json={
-                "name": name,
-                "address": "Toshkent, Chilonzor 1",
-                "working_hours": {"mon": [["10:00", "20:00"]]},
-            },
-            headers=_bearer(owner_token, **_idem()),
-        )
-        assert response.status_code == 201, response.text
-        return dict(response.json())
-
-
-@pytest.fixture
-def world(migrated: PgUrls) -> Iterator[World]:
-    settings = Settings(**{**FAST_TEST_SETTINGS, "database_url": migrated.runtime})  # type: ignore[arg-type]
-    admin_phone = _phone()
-    asyncio.run(
-        create_platform_admin(settings, admin_phone, "Platforma Admin", ADMIN_PASSWORD, "PLATFORM_ADMIN")
-    )
-    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
-        response = client.post("/api/v1/auth/login", json={"phone": admin_phone, "password": ADMIN_PASSWORD})
-        assert response.status_code == 200, response.text
-        yield World(client, migrated, settings, response.json()["access_token"])
-
-
-def _code(response: Any) -> str:
-    return str(response.json()["error"]["code"])
-
 
 # ------------------------------------------------------------------ shop hayoti
 
@@ -200,7 +88,9 @@ def test_suspend_requires_reason_and_closed_shop_blocks_panel(world: World) -> N
     )
     blocked = c.get("/api/v1/shop/profile", headers=_bearer(s["owner_token"]))
     assert (blocked.status_code, _code(blocked)) == (409, "SHOP_NOT_ACTIVE")
-    login = c.post("/api/v1/auth/login", json={"phone": s["owner_phone"], "password": PASSWORD})
+    login = c.post(
+        "/api/v1/auth/login", json={"phone": s["owner_phone"], "password": PASSWORD, "audience": "shop"}
+    )
     assert _code(login) == "SHOP_NOT_ACTIVE"
 
 
@@ -318,7 +208,9 @@ def test_disabled_member_is_locked_out_immediately(world: World) -> None:  # TC-
     assert (
         c.get("/api/v1/auth/me", headers=_bearer(sales)).status_code == 401
     )  # access token hali "yangi", lekin
-    assert c.post("/api/v1/auth/refresh").status_code == 401  # cookie oxirgi kirgan xodimniki — u ham bekor
+    assert (
+        c.post("/api/v1/auth/refresh", json=SHOP).status_code == 401
+    )  # cookie oxirgi kirgan xodimniki — u ham bekor
 
 
 def test_last_owner_cannot_be_removed_or_demoted(world: World) -> None:  # UAT-M02
@@ -470,10 +362,13 @@ def test_rls_hides_memberships_and_sessions_without_context(world: World) -> Non
 def test_brute_force_locks_account(world: World) -> None:
     c, s = world.client, world.create_shop()
     for _ in range(5):
-        wrong = c.post("/api/v1/auth/login", json={"phone": s["owner_phone"], "password": "noto'g'ri-parol"})
+        wrong = c.post(
+            "/api/v1/auth/login",
+            json={"phone": s["owner_phone"], "password": "noto'g'ri-parol", "audience": "shop"},
+        )
         assert _code(wrong) == "UNAUTHENTICATED"
     locked = c.post(
-        "/api/v1/auth/login", json={"phone": s["owner_phone"], "password": PASSWORD}
+        "/api/v1/auth/login", json={"phone": s["owner_phone"], "password": PASSWORD, "audience": "shop"}
     )  # to'g'ri parol ham
     assert (locked.status_code, _code(locked)) == (429, "RATE_LIMITED")
     assert locked.json()["error"]["details"]["retry_after_seconds"] > 0
@@ -488,8 +383,11 @@ def test_brute_force_locks_account(world: World) -> None:
 
 def test_unknown_and_known_phone_get_same_error(world: World) -> None:
     c, s = world.client, world.create_shop()
-    unknown = c.post("/api/v1/auth/login", json={"phone": _phone(), "password": PASSWORD})
-    wrong = c.post("/api/v1/auth/login", json={"phone": s["owner_phone"], "password": "boshqa-parol-123"})
+    unknown = c.post("/api/v1/auth/login", json={"phone": _phone(), "password": PASSWORD, "audience": "shop"})
+    wrong = c.post(
+        "/api/v1/auth/login",
+        json={"phone": s["owner_phone"], "password": "boshqa-parol-123", "audience": "shop"},
+    )
     assert unknown.json()["error"]["message"] == wrong.json()["error"]["message"]
     assert unknown.status_code == wrong.status_code == 401
 
@@ -497,23 +395,30 @@ def test_unknown_and_known_phone_get_same_error(world: World) -> None:
 def test_login_rate_limited_per_ip_and_phone(world: World) -> None:
     c, phone = world.client, _phone()
     for _ in range(10):
-        assert c.post("/api/v1/auth/login", json={"phone": phone, "password": "x"}).status_code == 401
-    limited = c.post("/api/v1/auth/login", json={"phone": phone, "password": "x"})
+        assert (
+            c.post(
+                "/api/v1/auth/login", json={"phone": phone, "password": "x", "audience": "shop"}
+            ).status_code
+            == 401
+        )
+    limited = c.post("/api/v1/auth/login", json={"phone": phone, "password": "x", "audience": "shop"})
     assert (limited.status_code, _code(limited)) == (429, "RATE_LIMITED")
 
 
 def test_refresh_rotation_and_reuse_detection(world: World) -> None:
     c, s = world.client, world.create_shop()
-    login = c.post("/api/v1/auth/login", json={"phone": s["owner_phone"], "password": PASSWORD})
-    first_cookie = login.cookies["cos_refresh"]
-    rotated = c.post("/api/v1/auth/refresh")
+    login = c.post(
+        "/api/v1/auth/login", json={"phone": s["owner_phone"], "password": PASSWORD, "audience": "shop"}
+    )
+    first_cookie = login.cookies["cos_refresh_shop"]
+    rotated = c.post("/api/v1/auth/refresh", json=SHOP)
     assert rotated.status_code == 200
     new_access = rotated.json()["access_token"]
     assert c.get("/api/v1/auth/me", headers=_bearer(new_access)).status_code == 200
 
     c.cookies.clear()
-    c.cookies.set("cos_refresh", first_cookie)  # eski token qayta ishlatildi
-    stolen = c.post("/api/v1/auth/refresh")
+    c.cookies.set("cos_refresh_shop", first_cookie)  # eski token qayta ishlatildi
+    stolen = c.post("/api/v1/auth/refresh", json=SHOP)
     assert stolen.status_code == 401
     # Butun oila bekor: yangi access token ham ishlamaydi
     assert c.get("/api/v1/auth/me", headers=_bearer(new_access)).status_code == 401
@@ -608,3 +513,80 @@ def test_policies_require_if_match_and_detect_conflicts(world: World) -> None:
         "VERSION_CONFLICT",
         {"current_version": 2, "your_version": 1},
     )
+
+
+def test_shop_and_platform_panels_keep_separate_sessions_in_one_browser(world: World) -> None:
+    c, s = world.client, world.create_shop()
+    world.login(s["owner_phone"])  # admin allaqachon kirgan — endi shu brauzerda ega ham kirdi
+    platform = c.post("/api/v1/auth/refresh", json={"audience": "platform"})
+    shop = c.post("/api/v1/auth/refresh", json=SHOP)
+    assert (platform.status_code, platform.json()["audience"]) == (200, "platform")
+    assert (shop.status_code, shop.json()["audience"]) == (200, "shop")
+
+    # Boshqa panelga kirish huquqi yo'q — oddiy "noto'g'ri login", sessiya ochilmaydi
+    owner_to_platform = {"phone": s["owner_phone"], "password": PASSWORD, "audience": "platform"}
+    admin_to_shop = {"phone": world.admin_phone, "password": ADMIN_PASSWORD, "audience": "shop"}
+    for body in (owner_to_platform, admin_to_shop):
+        response = c.post("/api/v1/auth/login", json=body)
+        assert (response.status_code, _code(response)) == (401, "UNAUTHENTICATED")
+
+
+def test_platform_shop_card_lists_owners_and_reissues_expired_owner_invite(world: World) -> None:
+    c, admin = world.client, _bearer(world.admin_token)
+    owner_phone = _phone()
+    created = c.post(
+        "/api/v1/platform/shops",
+        json={
+            "slug": f"shop-{uuid4().hex[:8]}",
+            "name": "Kech qolgan shop",
+            "tin": _tin(),
+            "owner_phone": owner_phone,
+            "owner_full_name": "Sardor Ega",
+        },
+        headers={**admin, **_idem()},
+    ).json()
+    shop_id, owner_id = created["shop"]["id"], created["owner_membership_id"]
+
+    card = c.get(f"/api/v1/platform/shops/{shop_id}", headers=admin).json()
+    assert card["owners"] == [
+        {"membership_id": owner_id, "full_name": "Sardor Ega", "phone": owner_phone, "status": "INVITED"}
+    ]
+
+    # 72 soat o'tdi — ega havolani ochmadi. Platforma yangi havola beradi, eskisi ishlamaydi
+    _sql(
+        world.urls.admin,
+        "UPDATE platform.invitations SET expires_at = now() - interval '1 minute' WHERE membership_id = $1",
+        UUID(owner_id),
+    )
+    fresh = c.post(
+        f"/api/v1/platform/shops/{shop_id}/members/{owner_id}/invite", headers={**admin, **_idem()}
+    )
+    assert fresh.status_code == 200, fresh.text
+    world.accept(fresh.json()["url"])
+    card = c.get(f"/api/v1/platform/shops/{shop_id}", headers=admin).json()
+    assert card["owners"][0]["status"] == "ACTIVE"
+    # Faol egaga taklif qayta berilmaydi
+    again = c.post(
+        f"/api/v1/platform/shops/{shop_id}/members/{owner_id}/invite", headers={**admin, **_idem()}
+    )
+    assert (again.status_code, _code(again)) == (404, "NOT_FOUND")
+
+
+def test_reserved_slug_is_rejected(world: World) -> None:
+    response = world.client.post(
+        "/api/v1/platform/shops",
+        json={
+            "slug": "login",
+            "name": "Login shop",
+            "tin": _tin(),
+            "owner_phone": _phone(),
+            "owner_full_name": "Ega Ism",
+        },
+        headers=_bearer(world.admin_token, **_idem()),
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["details"]["fields"][0] == {
+        "field": "slug",
+        "code": "not_unique",
+        "params": {},
+    }

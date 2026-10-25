@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -10,22 +12,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.config import AuthConfig
-from app.platform.shops.models.orm import Branch, Shop, ShopPolicy
+from app.platform.shops.models.orm import Branch, Shop, ShopNote, ShopPolicy
+from app.platform.shops.platform_schemas import PlatformShopUpdate, ShopNoteIn, ShopNoteOut
 from app.platform.shops.schemas import (
     BranchIn,
     BranchOut,
+    PlatformShopOut,
     PolicyOut,
     PolicyUpdate,
     ShopCreatedOut,
     ShopCreateIn,
     ShopOut,
+    ShopOwnerOut,
     ShopProfileUpdate,
 )
 from app.platform.shops.state_machine import ENTITY as SHOP
-from app.platform.staff.models.orm import Membership, Principal
+from app.platform.staff.models.orm import Membership, PlatformStaff, Principal
 from app.platform.staff.schemas import LinkOut
 from app.platform.staff.services.links import issue_link
 from app.platform.staff.services.staff_service import StaffService
+from app.platform.staff.state_machine import ENTITY as MEMBERSHIP
 from app.platform.use.services.use_service import UseService
 from app.shared.clock import utcnow
 from app.shared.db.session import set_identity_context
@@ -39,6 +45,37 @@ def _not_unique(field: str) -> ValidationError:
     return ValidationError(
         f"{field} already used", fields=[{"field": field, "code": "not_unique", "params": {}}]
     )
+
+
+def _on_shop(actor: ActorContext, shop_id: UUID) -> ActorContext:
+    """Platforma shop ustida amal qilsa — o'tishlar jurnali va audit shu shopga bog'lanadi.
+    Shunda shop kartochkasidagi tarixda platforma amallari ham ko'rinadi (business/15 §4)."""
+    return replace(actor, shop_id=shop_id) if actor.shop_id is None else actor
+
+
+# Slug sayt subdomeni ({slug}.platforma.uz) va shop panelidagi yo'l (/{slug}/...) bo'ladi
+RESERVED_SLUGS = frozenset(
+    {
+        "admin",
+        "api",
+        "app",
+        "auth",
+        "cdn",
+        "dashboard",
+        "help",
+        "invite",
+        "login",
+        "logout",
+        "mail",
+        "platform",
+        "reset-password",
+        "shop",
+        "static",
+        "status",
+        "support",
+        "www",
+    }
+)
 
 
 class ShopService:
@@ -157,6 +194,8 @@ class ShopService:
 
     # --------------------------------------------------------------- platform
     async def create_shop(self, db: AsyncSession, actor: ActorContext, data: ShopCreateIn) -> ShopCreatedOut:
+        if data.slug in RESERVED_SLUGS:
+            raise _not_unique("slug")  # panel yo'llari va subdomenlar bilan to'qnashmasin
         owner_phone = normalize_phone(data.owner_phone, field="owner_phone")
         if (await db.execute(select(Principal.id).where(Principal.phone == owner_phone))).first():
             raise _not_unique("owner_phone")  # hozircha bir odam — bitta shop (DEC-131)
@@ -188,7 +227,11 @@ class ShopService:
             app_url=self.config.app_public_url,
         )
         await self.audit.record(
-            db, action="shops.shop.created", entity_type=SHOP, entity_id=shop.id, actor=actor
+            db,
+            action="shops.shop.created",
+            entity_type=SHOP,
+            entity_id=shop.id,
+            actor=_on_shop(actor, shop.id),
         )
         await db.refresh(shop)
         return ShopCreatedOut(
@@ -197,12 +240,20 @@ class ShopService:
             owner_invite=LinkOut(url=url, expires_at=expires_at),
         )
 
-    async def list_shops(self, db: AsyncSession, limit: int) -> list[ShopOut]:
-        rows = (await db.execute(select(Shop).order_by(Shop.created_at.desc()).limit(limit))).scalars()
-        return [ShopOut.model_validate(s) for s in rows]
-
-    async def get_shop(self, db: AsyncSession, shop_id: UUID) -> ShopOut:
-        return ShopOut.model_validate(await self._shop(db, shop_id))
+    async def get_shop(self, db: AsyncSession, shop_id: UUID) -> PlatformShopOut:
+        shop = await self._shop(db, shop_id)
+        await set_identity_context(db, shop_id=shop_id)
+        rows = await db.execute(
+            select(Membership, Principal)
+            .join(Principal, Principal.id == Membership.principal_id)
+            .where(Membership.shop_id == shop_id, Membership.role == "OWNER")
+            .order_by(Membership.created_at)
+        )
+        owners = [
+            ShopOwnerOut(membership_id=m.id, full_name=p.full_name, phone=p.phone, status=m.status)
+            for m, p in rows
+        ]
+        return PlatformShopOut(**ShopOut.model_validate(shop).model_dump(), owners=owners)
 
     async def platform_transition(
         self, db: AsyncSession, actor: ActorContext, shop_id: UUID, command: str, reason: str | None
@@ -211,7 +262,77 @@ class ShopService:
             command
         ]
         shop = await self._shop(db, shop_id, for_update=True)
-        return await self._transition(db, actor, shop, target, command, reason)
+        return await self._transition(db, _on_shop(actor, shop.id), shop, target, command, reason)
+
+    async def platform_update(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        shop_id: UUID,
+        expected_version: int,
+        data: PlatformShopUpdate,
+    ) -> PlatformShopOut:
+        """Platforma shop ma'lumotini tuzatadi: sabab majburiy, slug o'zgarmaydi (business/15 §3)."""
+        reason = data.reason.strip()
+        if not reason:
+            raise ValidationError(
+                "Reason required", fields=[{"field": "reason", "code": "required", "params": {}}]
+            )
+        shop = await self._shop(db, shop_id, for_update=True)
+        check_version(shop.version, expected_version)
+        wanted = data.model_dump(exclude={"reason"})
+        old = {key: getattr(shop, key) for key in wanted}
+        changed = {key: value for key, value in wanted.items() if old[key] != value}
+        if changed:
+            for key, value in changed.items():
+                setattr(shop, key, value)
+            await self._flush_unique(db, {"uq_shops_tin": "tin"})
+            # STIR qiymati audit'ga yozilmaydi (yakka tadbirkorda shaxsiy bo'lishi mumkin) — faqat "o'zgardi"
+            diff: dict[str, Any] = {
+                key: {"changed": True} if key == "tin" else {"old": old[key], "new": value}
+                for key, value in changed.items()
+            }
+            await self.audit.record(
+                db,
+                action="shops.shop.updated",
+                entity_type=SHOP,
+                entity_id=shop.id,
+                actor=_on_shop(actor, shop.id),
+                entity_version=shop.version,
+                reason=reason,
+                diff=diff,
+            )
+        return await self.get_shop(db, shop.id)
+
+    async def add_note(
+        self, db: AsyncSession, actor: ActorContext, shop_id: UUID, data: ShopNoteIn
+    ) -> ShopNoteOut:
+        """Ichki izoh faqat qo'shiladi. Matn auditga yozilmaydi (shaxsiy ma'lumot bo'lishi mumkin)."""
+        await self._shop(db, shop_id)
+        author = (
+            await db.execute(
+                select(PlatformStaff, Principal)
+                .join(Principal, Principal.id == PlatformStaff.principal_id)
+                .where(PlatformStaff.principal_id == actor.actor_id)
+            )
+        ).one_or_none()
+        if author is None:
+            raise NotFoundError("Platform team member not found")
+        staff, principal = author
+        note = ShopNote(shop_id=shop_id, author_id=staff.id, body=data.body)
+        db.add(note)
+        await db.flush()
+        await db.refresh(note)
+        await self.audit.record(
+            db,
+            action="platform.shop.note_added",
+            entity_type="platform.shop_note",
+            entity_id=note.id,
+            actor=_on_shop(actor, shop_id),
+        )
+        return ShopNoteOut(
+            id=note.id, body=note.body, author_name=principal.full_name, created_at=note.created_at
+        )
 
     async def member_password_reset(
         self, db: AsyncSession, actor: ActorContext, shop_id: UUID, membership_id: UUID
@@ -227,15 +348,16 @@ class ShopService:
         ).scalar_one_or_none()
         if membership is None:
             raise NotFoundError("Owner not found")
-        return await self.staff.password_reset_link(db, actor, membership)
+        return await self.staff.password_reset_link(db, _on_shop(actor, shop_id), membership)
 
     async def owner_invite_link(
         self, db: AsyncSession, actor: ActorContext, shop_id: UUID, membership_id: UUID
     ) -> LinkOut:
-        """Ega taklifini qayta berish (shop yaratish takrorlanganda). Eski havola bekor bo'ladi."""
+        """Ega taklifini qayta berish: shop yaratish takrorlanganda yoki 72 soat o'tib ketganda.
+        Eski havola bekor bo'ladi."""
         await set_identity_context(db, shop_id=shop_id)
         owner = await db.get(Membership, membership_id)
-        if owner is None or owner.shop_id != shop_id or owner.status != "INVITED":
+        if owner is None or owner.shop_id != shop_id or owner.role != "OWNER" or owner.status != "INVITED":
             raise NotFoundError("Pending owner invitation not found")
         url, expires_at = await issue_link(
             db,
@@ -244,6 +366,13 @@ class ShopService:
             purpose="INVITE",
             ttl=self.config.invite_ttl,
             app_url=self.config.app_public_url,
+        )
+        await self.audit.record(
+            db,
+            action="shops.owner.invite_reissued",
+            entity_type=MEMBERSHIP,
+            entity_id=owner.id,
+            actor=_on_shop(actor, shop_id),
         )
         return LinkOut(url=url, expires_at=expires_at)
 

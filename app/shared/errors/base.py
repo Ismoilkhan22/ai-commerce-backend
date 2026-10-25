@@ -112,6 +112,13 @@ class LastOwnerRequiredError(ConflictError):
     abstract = False
 
 
+class LastAdminRequiredError(ConflictError):
+    """Platformada kamida bitta faol PLATFORM_ADMIN qolishi shart (business/15 §5)."""
+
+    code = "LAST_ADMIN_REQUIRED"
+    abstract = False
+
+
 class SpeakerConflictError(ConflictError):
     code = "SPEAKER_CONFLICT"
     abstract = False

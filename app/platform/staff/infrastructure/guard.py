@@ -20,6 +20,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,12 +43,16 @@ class RequestContext:
     db: AsyncSession
 
 
-def _bearer(request: Request) -> str:
-    header = request.headers.get("authorization", "")
-    scheme, _, token = header.partition(" ")
-    if scheme.lower() != "bearer" or not token:
+# OpenAPI'da "Bearer" sxemasi (Swagger'dagi Authorize, frontend client). auto_error=False: token yo'q
+# bo'lsa xatoni o'zimiz K-07 formatida beramiz.
+_bearer_scheme = HTTPBearer(auto_error=False, description="POST /api/v1/auth/login javobidagi access_token")
+Bearer = Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)]
+
+
+def _token(credentials: HTTPAuthorizationCredentials | None) -> str:
+    if credentials is None or not credentials.credentials.strip():
         raise UnauthenticatedError("Bearer token required")
-    return token.strip()
+    return credentials.credentials.strip()
 
 
 def _bind(request: Request, actor: ActorContext) -> None:
@@ -143,9 +148,8 @@ async def resolve_platform_actor(db: AsyncSession, claims: AccessClaims) -> Acto
 
 
 @asynccontextmanager
-async def _context(request: Request, audience: Audience | None) -> AsyncIterator[RequestContext]:
+async def _context(request: Request, token: str, audience: Audience | None) -> AsyncIterator[RequestContext]:
     # asynccontextmanager: endpoint'dagi xato shu yerga yetib boradi → darhol ROLLBACK, ulanish bo'shaydi
-    token = _bearer(request)
     config: AuthConfig = request.app.state.auth_config
     aud = audience or audience_of(config, token)
     claims = decode_access_token(config, token, aud)
@@ -160,19 +164,19 @@ async def _context(request: Request, audience: Audience | None) -> AsyncIterator
         yield RequestContext(actor=actor, db=db)
 
 
-async def shop_context(request: Request) -> AsyncIterator[RequestContext]:
-    async with _context(request, "shop") as ctx:
+async def shop_context(request: Request, credentials: Bearer) -> AsyncIterator[RequestContext]:
+    async with _context(request, _token(credentials), "shop") as ctx:
         yield ctx
 
 
-async def platform_context(request: Request) -> AsyncIterator[RequestContext]:
-    async with _context(request, "platform") as ctx:
+async def platform_context(request: Request, credentials: Bearer) -> AsyncIterator[RequestContext]:
+    async with _context(request, _token(credentials), "platform") as ctx:
         yield ctx
 
 
-async def any_context(request: Request) -> AsyncIterator[RequestContext]:
+async def any_context(request: Request, credentials: Bearer) -> AsyncIterator[RequestContext]:
     """Ikkala panel uchun umumiy endpoint'lar (/auth/me, parol, sessiyalar)."""
-    async with _context(request, None) as ctx:
+    async with _context(request, _token(credentials), None) as ctx:
         yield ctx
 
 

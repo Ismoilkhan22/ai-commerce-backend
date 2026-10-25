@@ -17,6 +17,7 @@ class AuthConfig:
     invite_ttl: timedelta = timedelta(hours=72)
     password_reset_ttl: timedelta = timedelta(hours=24)
     app_public_url: str = "http://localhost:3000"  # taklif va tiklash havolalari shu manzilga
+    platform_app_public_url: str = "http://localhost:3001"  # platforma jamoasi havolalari
     cookie_secure: bool = True
     argon2_time_cost: int = 3
     argon2_memory_kib: int = 65_536

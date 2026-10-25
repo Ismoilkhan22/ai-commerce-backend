@@ -6,6 +6,7 @@ import asyncio
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pytest
 from alembic import command
@@ -13,6 +14,9 @@ from alembic.config import Config
 
 from app.db.bootstrap import bootstrap
 from app.db.schemas import SCHEMAS
+
+if TYPE_CHECKING:
+    from tests.integration.helpers import World
 
 # Ryuk (testcontainers tozalovchi konteyneri) ketma-ket yugurishlarda ba'zan port ololmaydi
 # ("Port mapping ... 8080 is not available") va hamma integratsiya testi yiqiladi. Konteynerni
@@ -77,3 +81,29 @@ def migrate_all(urls: PgUrls, revision: str = "head", *, down: bool = False) -> 
 def migrated(pg_urls: PgUrls) -> PgUrls:
     migrate_all(pg_urls)
     return pg_urls
+
+
+@pytest.fixture
+def world(migrated: PgUrls) -> Iterator[World]:
+    """Yangi ilova + CLI orqali yaratilgan platforma admini (tokeni bilan). Shop va xodimlar — World'da."""
+    # helpers.py shu fayldagi PgUrls'ni import qiladi — aylanma importni oldini olish uchun shu yerda
+    from fastapi.testclient import TestClient
+
+    from app.config.settings import Settings
+    from app.main import create_app
+    from app.platform.staff.cli import create_platform_admin
+    from tests.conftest import FAST_TEST_SETTINGS
+    from tests.integration.helpers import ADMIN_PASSWORD, World, _phone
+
+    settings = Settings(**{**FAST_TEST_SETTINGS, "database_url": migrated.runtime})  # type: ignore[arg-type]
+    admin_phone = _phone()
+    asyncio.run(
+        create_platform_admin(settings, admin_phone, "Platforma Admin", ADMIN_PASSWORD, "PLATFORM_ADMIN")
+    )
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"phone": admin_phone, "password": ADMIN_PASSWORD, "audience": "platform"},
+        )
+        assert response.status_code == 200, response.text
+        yield World(client, migrated, settings, response.json()["access_token"], admin_phone)

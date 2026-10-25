@@ -86,3 +86,15 @@ def test_real_app_discovers_manifests_without_error() -> None:
     from app.main import app
 
     assert app.title == "AI Commerce OS API"
+
+
+def test_openapi_describes_bearer_auth_for_frontend_client(settings: Settings) -> None:
+    with TestClient(create_app(settings)) as client:
+        spec = client.get("/api/v1/openapi.json").json()
+    assert spec["components"]["securitySchemes"]["HTTPBearer"]["scheme"] == "bearer"
+    operations = [op for path in spec["paths"].values() for op in path.values()]
+    ids = [op["operationId"] for op in operations]
+    assert len(ids) == len(set(ids)) and "auth_login" in ids and "staff_invite_member" in ids
+    me = spec["paths"]["/api/v1/auth/me"]["get"]
+    assert me["security"] == [{"HTTPBearer": []}]
+    assert "security" not in spec["paths"]["/api/v1/auth/login"]["post"]  # login ochiq

@@ -2,7 +2,7 @@
 SCHEMAS := platform audit catalog commerce messaging sales_ai storefront support reporting
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: install up down bootstrap lint format typecheck imports test check migrate
+.PHONY: install up down bootstrap lint format typecheck imports test check migrate seed
 
 install:
 	uv sync
@@ -40,3 +40,7 @@ check: lint typecheck imports test
 # Har schema o'z env'i bilan, platform → audit → qolganlari (ADR-035)
 migrate:
 	@for s in $(SCHEMAS); do uv run alembic -n $$s upgrade head; done
+
+# Lokal demo ma'lumotlari: platforma jamoasi va turli holatdagi 8 ta shop (qayta ishga tushirish xavfsiz)
+seed:
+	uv run python -m app.db.seed.dev_seed

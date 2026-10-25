@@ -33,6 +33,19 @@ class ShopOut(BaseModel):
     version: int
 
 
+class ShopOwnerOut(BaseModel):
+    membership_id: UUID
+    full_name: str
+    phone: str
+    status: Literal["INVITED", "ACTIVE", "DISABLED"]
+
+
+class PlatformShopOut(ShopOut):
+    """Platforma kartochkasi: shop holati va ega bilan bog'lanish (savdo ma'lumotisiz, 10 §9)."""
+
+    owners: list[ShopOwnerOut]
+
+
 class ShopProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -119,10 +132,6 @@ class ShopCreatedOut(BaseModel):
     shop: ShopOut
     owner_membership_id: UUID
     owner_invite: LinkOut
-
-
-class ShopList(BaseModel):
-    items: list[ShopOut]
 
 
 class ReasonIn(BaseModel):

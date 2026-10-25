@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from app.platform.auth.config import AuthConfig
 from app.platform.auth.schemas import (
@@ -13,6 +13,7 @@ from app.platform.auth.schemas import (
     LoginIn,
     MeOut,
     MeShop,
+    RefreshIn,
     ResetConfirmIn,
     SessionList,
     SessionOut,
@@ -20,8 +21,9 @@ from app.platform.auth.schemas import (
     TokenOut,
 )
 from app.platform.auth.services.auth_service import AuthService, IssuedTokens, Outcome
+from app.platform.auth.tokens import Audience
 from app.platform.shops.models.orm import Shop
-from app.platform.staff.infrastructure.guard import AnyContext
+from app.platform.staff.infrastructure.guard import AnyContext, RequestContext
 from app.platform.staff.infrastructure.providers import auth_service
 from app.platform.staff.models.orm import Principal
 from app.shared.db.session import Database
@@ -29,8 +31,10 @@ from app.shared.ratelimit import RateLimiter, enforce
 
 router = APIRouter(tags=["auth"])
 
-REFRESH_COOKIE = "cos_refresh"
-REFRESH_PATH = "/api/v1/auth/refresh"  # cookie faqat shu manzilga yuboriladi (10 §5.1)
+# Har panelning o'z cookie'si: bitta brauzerda shop paneli va platforma paneli bir-birining
+# sessiyasini almashtirib yubormaydi. Cookie faqat refresh manziliga yuboriladi (10 §5.1).
+REFRESH_COOKIES: dict[Audience, str] = {"shop": "cos_refresh_shop", "platform": "cos_refresh_platform"}
+REFRESH_PATH = "/api/v1/auth/refresh"
 
 Auth = Annotated[AuthService, Depends(auth_service)]
 
@@ -46,7 +50,7 @@ def _limiter(request: Request) -> RateLimiter:
 def _issue(response: Response, request: Request, tokens: IssuedTokens) -> TokenOut:
     config: AuthConfig = request.app.state.auth_config
     response.set_cookie(
-        REFRESH_COOKIE,
+        REFRESH_COOKIES[tokens.audience],
         tokens.refresh_token,
         max_age=int(config.refresh_token_ttl.total_seconds()),
         path=REFRESH_PATH,
@@ -58,11 +62,19 @@ def _issue(response: Response, request: Request, tokens: IssuedTokens) -> TokenO
     return TokenOut(access_token=tokens.access_token, expires_in=tokens.expires_in, audience=tokens.audience)
 
 
-def _clear_cookie(response: Response, request: Request) -> None:
+def _clear_cookie(response: Response, request: Request, audience: Audience) -> None:
     config: AuthConfig = request.app.state.auth_config
     response.delete_cookie(
-        REFRESH_COOKIE, path=REFRESH_PATH, secure=config.cookie_secure, httponly=True, samesite="strict"
+        REFRESH_COOKIES[audience],
+        path=REFRESH_PATH,
+        secure=config.cookie_secure,
+        httponly=True,
+        samesite="strict",
     )
+
+
+def _surface(ctx: RequestContext) -> Audience:
+    return "platform" if ctx.actor.actor_type == "PLATFORM" else "shop"
 
 
 def _raise_after_commit(outcome: Outcome) -> IssuedTokens:
@@ -79,38 +91,36 @@ async def login(body: LoginIn, request: Request, response: Response, svc: Auth) 
     await enforce(limiter, f"login:{_ip(request)}:{body.phone}", limit=10)
     database: Database = request.app.state.db
     async with database.transaction() as db:  # xato urinish hisoblagichi COMMIT bo'lishi uchun
-        outcome = await svc.login(db, body.phone, body.password, request.headers.get("user-agent"))
+        outcome = await svc.login(
+            db, body.phone, body.password, body.audience, request.headers.get("user-agent")
+        )
     return _issue(response, request, _raise_after_commit(outcome))
 
 
 @router.post("/refresh", response_model=TokenOut)
-async def refresh(
-    request: Request,
-    response: Response,
-    svc: Auth,
-    cos_refresh: Annotated[str | None, Cookie()] = None,
-) -> TokenOut:
+async def refresh(body: RefreshIn, request: Request, response: Response, svc: Auth) -> TokenOut:
     await enforce(_limiter(request), f"refresh:{_ip(request)}", limit=60)
     database: Database = request.app.state.db
     async with (
         database.transaction() as db
     ):  # qayta ishlatish aniqlansa — oila bekor qilinishi COMMIT bo'ladi
-        outcome = await svc.refresh(db, cos_refresh, request.headers.get("user-agent"))
+        refresh_token = request.cookies.get(REFRESH_COOKIES[body.audience])
+        outcome = await svc.refresh(db, refresh_token, body.audience, request.headers.get("user-agent"))
     if outcome.error is not None:
-        _clear_cookie(response, request)
+        _clear_cookie(response, request, body.audience)
     return _issue(response, request, _raise_after_commit(outcome))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request, response: Response, ctx: AnyContext, svc: Auth) -> None:
     await svc.logout(ctx.db, ctx.actor, request.state.session_id)
-    _clear_cookie(response, request)
+    _clear_cookie(response, request, _surface(ctx))
 
 
 @router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
 async def logout_all(request: Request, response: Response, ctx: AnyContext, svc: Auth) -> None:
     await svc.logout_all(ctx.db, ctx.actor)
-    _clear_cookie(response, request)
+    _clear_cookie(response, request, _surface(ctx))
 
 
 @router.get("/me", response_model=MeOut)
@@ -156,6 +166,26 @@ async def confirm_password_reset(body: ResetConfirmIn, request: Request, svc: Au
     database: Database = request.app.state.db
     async with database.transaction() as db:
         await svc.confirm_password_reset(db, body.token, body.password)
+
+
+@router.post("/platform-invites/{token}/accept", response_model=TokenOut)
+async def accept_platform_invite(
+    token: str, body: SetPasswordIn, request: Request, response: Response, svc: Auth
+) -> TokenOut:
+    """Platforma jamoasiga taklif (business/15 §5): parol o'rnatiladi, platforma paneliga kiriladi."""
+    await enforce(_limiter(request), f"link:{_ip(request)}", limit=10)
+    database: Database = request.app.state.db
+    async with database.transaction() as db:
+        tokens = await svc.accept_platform_invite(db, token, body.password, request.headers.get("user-agent"))
+    return _issue(response, request, tokens)
+
+
+@router.post("/platform-password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def confirm_platform_password_reset(body: ResetConfirmIn, request: Request, svc: Auth) -> None:
+    await enforce(_limiter(request), f"link:{_ip(request)}", limit=10)
+    database: Database = request.app.state.db
+    async with database.transaction() as db:
+        await svc.confirm_platform_password_reset(db, body.token, body.password)
 
 
 @router.get("/sessions", response_model=SessionList)

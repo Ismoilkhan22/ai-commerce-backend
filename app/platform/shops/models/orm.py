@@ -1,4 +1,4 @@
-"""platform.shops, branches, shop_policies — db/platform.dbml §shop_va_filiallar (DEC-131)."""
+"""platform.shops, branches, shop_policies, shop_notes — db/platform.dbml (DEC-131, business/15)."""
 
 from __future__ import annotations
 
@@ -101,3 +101,22 @@ class ShopPolicy(VersionMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ShopNote(IdMixin, Base):
+    """Platformaning ichki izohi — shop ko'rmaydi (business/15 §3). Faqat qo'shiladi, tahrir yo'q.
+
+    RLS'siz: faqat platforma panelidan o'qiladi.
+    """
+
+    __tablename__ = "shop_notes"
+    __table_args__ = (
+        Index("ix_shop_notes_shop_id_created_at", "shop_id", "created_at"),
+        CheckConstraint("char_length(body) BETWEEN 1 AND 2000", name="body_length"),
+        {"schema": "platform"},
+    )
+
+    shop_id: Mapped[UUID] = mapped_column(ForeignKey("platform.shops.id", ondelete="RESTRICT"))
+    author_id: Mapped[UUID] = mapped_column(ForeignKey("platform.platform_staff.id", ondelete="RESTRICT"))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

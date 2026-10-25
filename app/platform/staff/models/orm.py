@@ -1,4 +1,5 @@
-"""platform.principals, memberships, membership_branches, invitations, platform_staff
+"""platform.principals, memberships, membership_branches, invitations, platform_staff,
+platform_staff_invitations
 — db/platform.dbml §foydalanuvchilar_va_rollar (DEC-131)."""
 
 from __future__ import annotations
@@ -21,12 +22,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db.base import Base
-from app.shared.db.ids import uuid7
 from app.shared.db.mixins import IdMixin, TimestampMixin, VersionMixin
 
 ROLES = ("OWNER", "MANAGER", "SALES", "WAREHOUSE")  # Stage 1 (DEC-131)
 MEMBERSHIP_STATUSES = ("INVITED", "ACTIVE", "DISABLED")
 PLATFORM_ROLES = ("PLATFORM_ADMIN", "PLATFORM_SUPPORT", "SPEC_EDITOR")
+PLATFORM_STAFF_STATUSES = ("INVITED", "ACTIVE", "DISABLED")
 
 
 class Principal(IdMixin, TimestampMixin, VersionMixin, Base):
@@ -131,19 +132,47 @@ class Invitation(IdMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class PlatformStaff(Base):
-    """Platforma jamoasi. Shop xodimi emas — shop ma'lumotini odatiy holatda ko'rmaydi."""
+class PlatformStaff(IdMixin, TimestampMixin, VersionMixin, Base):
+    """Platforma jamoasi. Shop xodimi emas — shop ma'lumotini odatiy holatda ko'rmaydi.
+
+    Panel orqali taklif qilinganda INVITED, havolani qabul qilgach ACTIVE (business/15 §5).
+    """
 
     __tablename__ = "platform_staff"
     __table_args__ = (
         UniqueConstraint("principal_id"),
         CheckConstraint(f"role IN {PLATFORM_ROLES}", name="role"),
-        CheckConstraint("status IN ('ACTIVE', 'DISABLED')", name="status"),
+        CheckConstraint(f"status IN {PLATFORM_STAFF_STATUSES}", name="status"),
         {"schema": "platform"},
     )
 
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     principal_id: Mapped[UUID] = mapped_column(ForeignKey("platform.principals.id", ondelete="RESTRICT"))
     role: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default="ACTIVE")
+    invited_by: Mapped[UUID | None] = mapped_column(ForeignKey("platform.platform_staff.id"))
+
+
+class PlatformStaffInvitation(IdMixin, Base):
+    """Platforma jamoasiga bir martalik havola: taklif yoki parol tiklash. Faqat token hash'i saqlanadi.
+
+    `invitations` dan alohida: u shop a'zoligiga bog'langan va RLS ostida.
+    """
+
+    __tablename__ = "platform_staff_invitations"
+    __table_args__ = (
+        UniqueConstraint("token_hash"),
+        Index("ix_platform_staff_invitations_platform_staff_id", "platform_staff_id"),
+        CheckConstraint("purpose IN ('INVITE', 'PASSWORD_RESET')", name="purpose"),
+        {"schema": "platform"},
+    )
+
+    platform_staff_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform.platform_staff.id", ondelete="CASCADE")
+    )
+    purpose: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[UUID | None]  # platform_staff.id; CLI yoki seed bo'lsa NULL
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

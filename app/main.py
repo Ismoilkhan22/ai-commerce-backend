@@ -23,8 +23,10 @@ from app.config.settings import Settings, get_settings
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
+from app.platform.shops.services.platform_queries import PlatformQueryService
 from app.platform.shops.services.shop_service import ShopService
 from app.platform.staff.permissions import PermissionRegistry
+from app.platform.staff.services.platform_team_service import PlatformTeamService
 from app.platform.staff.services.staff_service import StaffService
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
@@ -135,6 +137,9 @@ def create_app(
         lifespan=lifespan,
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None,
+        # Frontend client shu fayldan generatsiya qilinadi (21 §4)
+        openapi_url=None if settings.is_production else "/api/v1/openapi.json",
+        generate_unique_id_function=_operation_id,
     )
     register_exception_handlers(app)
     app.include_router(health_router)
@@ -163,6 +168,11 @@ def create_app(
     return app
 
 
+def _operation_id(route: APIRoute) -> str:
+    """OpenAPI operationId (`auth_login`, `staff_invite_member`) — Swagger va frontend client uchun."""
+    return f"{route.tags[0]}_{route.name}" if route.tags else route.name
+
+
 def _wire_platform_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainManifest]) -> None:
     """Platform servislari bir marta yaratiladi (stateless) va app.state'da turadi."""
     auth_config = settings.auth_config()
@@ -178,6 +188,8 @@ def _wire_platform_services(app: FastAPI, settings: Settings, manifests: Sequenc
     app.state.auth_service = AuthService(auth_config, hasher, audit, use)
     app.state.staff_service = staff
     app.state.shop_service = ShopService(use, audit, auth_config, staff)
+    app.state.platform_queries = PlatformQueryService()
+    app.state.platform_team = PlatformTeamService(audit, auth_config)
 
 
 app = create_app()

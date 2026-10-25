@@ -29,6 +29,7 @@ from app.platform.auth.tokens import (
 from app.platform.shops.models.orm import Shop
 from app.platform.staff.models.orm import Membership, PlatformStaff, Principal
 from app.platform.staff.services.links import find_valid_link
+from app.platform.staff.services.platform_links import find_valid_platform_link
 from app.platform.staff.state_machine import ENTITY as MEMBERSHIP
 from app.platform.use.services.use_service import UseService
 from app.shared.clock import utcnow
@@ -85,7 +86,9 @@ class AuthService:
         self.use = use
 
     # ------------------------------------------------------------------ login
-    async def login(self, db: AsyncSession, phone: str, password: str, user_agent: str | None) -> Outcome:
+    async def login(
+        self, db: AsyncSession, phone: str, password: str, audience: Audience, user_agent: str | None
+    ) -> Outcome:
         try:
             normalized = normalize_phone(phone)
         except ValidationError:
@@ -112,30 +115,28 @@ class AuthService:
                 action="auth.login.failed",
                 entity_type="platform.principal",
                 entity_id=principal.id,
-                actor=_actor(principal.id, None, "shop"),
+                actor=_actor(principal.id, None, audience),
             )
             return Outcome(error=UnauthenticatedError(INVALID_CREDENTIALS))
 
         await set_identity_context(db, principal_id=principal.id)
-        membership = (
-            await db.execute(select(Membership).where(Membership.principal_id == principal.id))
-        ).scalar_one_or_none()
-        audience: Audience
         shop_id: UUID | None = None
-        if membership is not None:
-            if membership.status != "ACTIVE":
+        if audience == "shop":
+            membership = (
+                await db.execute(select(Membership).where(Membership.principal_id == principal.id))
+            ).scalar_one_or_none()
+            if membership is None or membership.status != "ACTIVE":
                 return Outcome(error=UnauthenticatedError(INVALID_CREDENTIALS))
             shop = await db.get(Shop, membership.shop_id)
             if shop is None or shop.status == "CLOSED":
                 return Outcome(error=ShopNotActiveError("Shop is closed"))
-            audience, shop_id = "shop", membership.shop_id
+            shop_id = membership.shop_id
         else:
             staff = (
                 await db.execute(select(PlatformStaff).where(PlatformStaff.principal_id == principal.id))
             ).scalar_one_or_none()
             if staff is None or staff.status != "ACTIVE":
                 return Outcome(error=UnauthenticatedError(INVALID_CREDENTIALS))
-            audience = "platform"
 
         principal.failed_login_attempts = 0
         principal.locked_until = None
@@ -153,7 +154,9 @@ class AuthService:
         return Outcome(tokens=tokens)
 
     # ---------------------------------------------------------------- refresh
-    async def refresh(self, db: AsyncSession, refresh_token: str | None, user_agent: str | None) -> Outcome:
+    async def refresh(
+        self, db: AsyncSession, refresh_token: str | None, audience: Audience, user_agent: str | None
+    ) -> Outcome:
         if not refresh_token:
             return Outcome(error=UnauthenticatedError("Refresh token required"))
         try:
@@ -164,7 +167,7 @@ class AuthService:
         session = (
             await db.execute(select(AuthSession).where(AuthSession.id == session_id).with_for_update())
         ).scalar_one_or_none()
-        if session is None or session.refresh_token_hash != secret_hash:
+        if session is None or session.refresh_token_hash != secret_hash or session.audience != audience:
             return Outcome(error=UnauthenticatedError("Invalid refresh token"))
         now = utcnow()
         await set_identity_context(db, principal_id=session.principal_id)
@@ -177,7 +180,7 @@ class AuthService:
                     action="auth.refresh.reuse_detected",
                     entity_type="platform.session",
                     entity_id=session.family_id,
-                    actor=_actor(session.principal_id, session.shop_id, session.audience),  # type: ignore[arg-type]
+                    actor=_actor(session.principal_id, session.shop_id, session.audience),
                 )
                 logger.warning("auth.refresh_reuse_detected", family_id=str(session.family_id))
             return Outcome(error=UnauthenticatedError("Refresh token is no longer valid"))
@@ -188,7 +191,6 @@ class AuthService:
             return Outcome(error=UnauthenticatedError("Access revoked"))
 
         session.revoked_at, session.revoked_reason, session.last_used_at = now, "ROTATED", now
-        audience: Audience = "platform" if session.audience == "platform" else "shop"
         tokens = await self._open_session(
             db, session.principal_id, session.shop_id, audience, session.family_id, user_agent, now
         )
@@ -288,6 +290,7 @@ class AuthService:
         now = utcnow()
         principal.password_hash = await self.hasher.hash(password)
         principal.phone_verified_at = now  # havola shu telefonga berilgan
+        principal.last_login_at = now  # taklifni qabul qilish — birinchi kirish
         principal.failed_login_attempts, principal.locked_until = 0, None
         membership.status, membership.activated_at = "ACTIVE", now
         invitation.accepted_at = now
@@ -322,6 +325,59 @@ class AuthService:
             entity_type="platform.principal",
             entity_id=principal.id,
             actor=_actor(principal.id, membership.shop_id, "shop"),
+        )
+
+    # ------------------------------------------------- platforma jamoasi havolalari
+    async def accept_platform_invite(
+        self, db: AsyncSession, token: str, password: str, user_agent: str | None
+    ) -> IssuedTokens:
+        """Platforma jamoasiga taklif: parol o'rnatiladi, a'zo ACTIVE bo'ladi va platforma paneliga kiradi."""
+        invitation = await find_valid_platform_link(db, token, "INVITE")
+        staff = await db.get(PlatformStaff, invitation.platform_staff_id, with_for_update=True)
+        if staff is None or staff.status != "INVITED":
+            raise NotFoundError("Invitation is no longer valid", reason="used")
+        principal = await db.get(Principal, staff.principal_id, with_for_update=True)
+        assert principal is not None
+        validate_new_password(password, principal.phone)
+        now = utcnow()
+        principal.password_hash = await self.hasher.hash(password)
+        principal.phone_verified_at = now  # havola shu telefonga berilgan
+        principal.last_login_at = now  # taklifni qabul qilish — birinchi kirish
+        principal.failed_login_attempts, principal.locked_until = 0, None
+        staff.status = "ACTIVE"
+        invitation.accepted_at = now
+        actor = _actor(principal.id, None, "platform")
+        await self.audit.record(
+            db,
+            action="platform.staff.joined",
+            entity_type="platform.platform_staff",
+            entity_id=staff.id,
+            actor=actor,
+        )
+        await set_identity_context(db, principal_id=principal.id)
+        return await self._open_session(db, principal.id, None, "platform", uuid7(), user_agent, now)
+
+    async def confirm_platform_password_reset(self, db: AsyncSession, token: str, password: str) -> None:
+        invitation = await find_valid_platform_link(db, token, "PASSWORD_RESET")
+        staff = await db.get(PlatformStaff, invitation.platform_staff_id)
+        if staff is None or staff.status != "ACTIVE":
+            raise NotFoundError("Reset link is no longer valid", reason="used")
+        principal = await db.get(Principal, staff.principal_id, with_for_update=True)
+        assert principal is not None
+        validate_new_password(password, principal.phone)
+        now = utcnow()
+        principal.password_hash = await self.hasher.hash(password)
+        principal.password_changed_at = now
+        principal.failed_login_attempts, principal.locked_until = 0, None
+        invitation.accepted_at = now
+        await set_identity_context(db, principal_id=principal.id)
+        await self._revoke(db, AuthSession.principal_id == principal.id, "PASSWORD_RESET", now)
+        await self.audit.record(
+            db,
+            action="auth.password.reset",
+            entity_type="platform.principal",
+            entity_id=principal.id,
+            actor=_actor(principal.id, None, "platform"),
         )
 
     # ---------------------------------------------------------------- helpers

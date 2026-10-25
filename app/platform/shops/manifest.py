@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
-from app.platform.shops.api.platform_routes import router as platform_router
+from fastapi import APIRouter
+
+from app.platform.shops.api.platform_overview_routes import router as platform_overview_router
+from app.platform.shops.api.platform_routes import router as platform_shops_router
 from app.platform.shops.api.shop_routes import router as shop_router
 from app.platform.shops.state_machine import SHOP_RULES
 from app.shared.types.manifest import DomainManifest
+
+# Platforma surface'i: /platform/shops/* va /platform/dashboard, /platform/audit
+platform_router = APIRouter()
+platform_router.include_router(platform_shops_router)
+platform_router.include_router(platform_overview_router)
 
 MODULE_MANIFEST = DomainManifest(
     name="shops",

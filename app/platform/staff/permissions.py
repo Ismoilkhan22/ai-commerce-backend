@@ -14,7 +14,11 @@ PLATFORM_ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = {
     "PLATFORM_ADMIN": frozenset(
         {
             "platform.shop.view_meta",
+            "platform.shop.note",
+            "platform.staff.view",
+            "platform.staff.manage",
             "platform.shop.create",
+            "platform.shop.edit",
             "platform.shop.activate",
             "platform.shop.suspend",
             "platform.shop.close",
@@ -23,7 +27,7 @@ PLATFORM_ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = {
             "platform.spec.edit",
         }
     ),
-    "PLATFORM_SUPPORT": frozenset({"platform.shop.view_meta"}),
+    "PLATFORM_SUPPORT": frozenset({"platform.shop.view_meta", "platform.shop.note", "platform.staff.view"}),
     "SPEC_EDITOR": frozenset({"platform.spec.edit"}),
 }
 

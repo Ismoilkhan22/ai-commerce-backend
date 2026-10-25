@@ -14,6 +14,16 @@ class LoginIn(BaseModel):
 
     phone: str = Field(min_length=9, max_length=20)
     password: str = Field(min_length=1, max_length=128)
+    # Qaysi panelga kirilyapti. Odamda bu panelga kirish huquqi bo'lmasa — oddiy "noto'g'ri login"
+    audience: Literal["shop", "platform"]
+
+
+class RefreshIn(BaseModel):
+    """Har panelning o'z refresh cookie'si bor — bitta brauzerda ikkala panel bir-biriga xalaqit bermaydi."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    audience: Literal["shop", "platform"]
 
 
 class TokenOut(BaseModel):

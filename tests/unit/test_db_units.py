@@ -34,6 +34,12 @@ def test_migration_env_exists_for_every_schema() -> None:
         assert (root / f"app/db/migrations/{schema}/env.py").exists()
 
 
+PUBLIC_URLS = {
+    "app_public_url": "https://app.example.uz",
+    "platform_app_public_url": "https://admin.example.uz",
+}
+
+
 @pytest.mark.parametrize(
     "url",
     [
@@ -50,6 +56,7 @@ def test_unsafe_db_urls_rejected_in_production(url: str) -> None:
             database_url=url,
             database_migrator_url="postgresql+asyncpg://app_migrator:s3cret-long@db.internal:5432/cos",
             jwt_secret="x" * 40,
+            **PUBLIC_URLS,
         )
 
 
@@ -61,6 +68,7 @@ def test_local_db_defaults_rejected_in_production() -> None:
         database_url="postgresql+asyncpg://app_runtime:r4nd0m-runtime-pw@db.internal:5432/cos",
         database_migrator_url="postgresql+asyncpg://app_migrator:r4nd0m-migrator-pw@db.internal:5432/cos",
         jwt_secret="x" * 40,
+        **PUBLIC_URLS,
     )
 
 
@@ -73,3 +81,11 @@ def test_production_requires_strong_jwt_secret_and_secure_cookie() -> None:
         Settings(app_env="production", **urls)  # standart dev kaliti
     with pytest.raises(ValidationError, match="cookie_secure"):
         Settings(app_env="production", jwt_secret="x" * 40, cookie_secure=False, **urls)
+    with pytest.raises(ValidationError, match="platform_app_public_url"):
+        Settings(
+            app_env="production",
+            jwt_secret="x" * 40,
+            app_public_url="https://app.example.uz",
+            **urls,
+        )
+    Settings(app_env="production", jwt_secret="x" * 40, **urls, **PUBLIC_URLS)
