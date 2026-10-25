@@ -194,6 +194,7 @@ Table commerce.stock_receipts {
   indexes {
     (shop_id, id) [unique]
     (shop_id, branch_id, created_at) [note: 'Kirimlar ro‘yxati']
+    (shop_id, created_at) [note: 'Hamma filiallar bo‘yicha ro‘yxat']
   }
   Note: '''
   Kirim hujjati (sarlavha). Qatorlari — stock_ledger’da: reason RECEIPT, ref_type RECEIPT, ref_id = shu id; bir SKU bir marta.
@@ -209,7 +210,7 @@ Table commerce.stock_adjustments {
   sku_id uuid [not null]
   kind commerce.adjustment_kind [not null, default: 'ADJUSTMENT']
   delta int [not null, note: 'ADJUSTMENT da ± (CHECK <> 0); qolgan turlarda miqdor (CHECK > 0)']
-  reason text [not null, note: 'Majburiy (BL-022): "sanoqda 1 ta kam chiqdi", "qutisi ezilgan"']
+  reason text [not null, note: 'Majburiy (BL-022), CHECK ≥ 3 belgi: "sanoqda 1 ta kam chiqdi", "qutisi ezilgan"']
   evidence_file_id uuid [note: 'platform.stored_files.id — rasm yoki dalolatnoma, ixtiyoriy. file_purpose’ga STOCK_EVIDENCE qo‘shiladi']
   status commerce.adjustment_status [not null, default: 'PENDING']
   requested_by uuid [not null, note: 'platform.memberships.id']
@@ -251,6 +252,7 @@ Table commerce.quick_sales {
     (shop_id, id) [unique]
     (shop_id, branch_id, created_at) [note: 'Hisobot: offline sotuvlar alohida']
     (shop_id, sold_by, created_at)
+    (shop_id, created_at)
   }
   Note: '''
   Peshtaxtadan sotuv: mahsulot + miqdor → qoldiq darhol kamayadi. Xaridor ma’lumoti yo‘q (DEC-123).
@@ -318,6 +320,7 @@ Table commerce.orders {
   confirmed_by uuid [note: 'platform.memberships.id']
   processing_at timestamptz
   ready_at timestamptz [note: '"Olib ketishga tayyor" — holat PROCESSING qoladi, xaridorga xabar']
+  ready_by uuid [note: 'Kim bosdi (a\'zolik). transition_log da MARK_READY ham yoziladi (QA U3)']
   completed_at timestamptz
   completed_by uuid
   cancelled_at timestamptz
@@ -338,6 +341,7 @@ Table commerce.orders {
     (shop_id, number) [unique]
     (shop_id, source, source_request_id) [unique, note: 'Faqat source_request_id NULL bo‘lmaganlar (partial). Takror so‘rovga birinchi buyurtma qaytadi']
     (shop_id, status, created_at) [note: 'Ro‘yxat: holat bo‘yicha, yangisi birinchi (DESC)']
+    (shop_id, created_at) [note: 'Hamma holatlar ro‘yxati']
     (shop_id, assigned_membership_id, status) [note: '"Mening buyurtmalarim"']
     (shop_id, customer_phone_hmac) [note: 'Telefon bo‘yicha qidirish']
     tracking_token_hash [unique]
@@ -369,7 +373,7 @@ Table commerce.order_lines {
   sku_code_snapshot text [not null]
   qty int [not null, note: 'CHECK > 0']
   price_version_id uuid [not null, note: 'catalog.price_versions.id — tasdiqlashda joriy narx bilan solishtiriladi (DEC-127)']
-  unit_price_minor bigint [not null, note: 'Narx asl valyutada (price_versions.amount_minor)']
+  unit_price_minor bigint [not null, note: 'Narx asl valyutada (price_versions.amount_minor). CHECK > 0 (so‘mdagisi ham)']
   currency commerce.currency [not null, note: 'Narxning asl valyutasi: UZS yoki USD (DEC-121)']
   exchange_rate_id uuid [note: 'catalog.exchange_rates.id — USD bo‘lsa']
   exchange_rate_snapshot numeric(18,6) [note: 'USD bo‘lsa majburiy (CHECK): 12800.000000']
@@ -448,7 +452,7 @@ Table commerce.reservations {
     (shop_id, id) [unique]
     (shop_id, order_line_id) [unique, note: 'Bir qatorga bitta band']
     (shop_id, order_id)
-    review_at [note: 'Partial: WHERE status IN (ACTIVE, ALLOCATED) — DEC-134']
+    (shop_id, review_at) [note: 'Partial: WHERE status IN (ACTIVE, ALLOCATED) — DEC-134']
   }
   Note: '''
   Buyurtma qatori uchun band (FSM-07). Tasdiqlashda yaratiladi; har o‘tish balans va ledger bilan bitta tranzaksiyada.

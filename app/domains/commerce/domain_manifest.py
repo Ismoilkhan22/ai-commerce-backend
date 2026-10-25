@@ -1,0 +1,32 @@
+"""commerce domeni: shop paneli — ombor, tez sotuv, buyurtmalar (3-modul).
+
+Saytdan buyurtma so'rovi (`storefront` surface) — 4-modul; lead va PC taklifi — 6-modul.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from app.domains.commerce.inventory.api.routes import router as inventory_router
+from app.domains.commerce.orders.api.routes import router as orders_router
+from app.domains.commerce.orders.services.privacy import erase_customer_handler
+from app.domains.commerce.permissions import COMMERCE_PERMISSIONS, COMMERCE_ROLE_GRANTS
+from app.domains.commerce.quick_sales.api.routes import router as quick_sales_router
+from app.domains.commerce.state_machine import NON_FORCEABLE, ORDER_RULES, RESERVATION_RULES
+from app.shared.types.manifest import DomainManifest
+
+shop_router = APIRouter()
+shop_router.include_router(inventory_router)
+shop_router.include_router(quick_sales_router)
+shop_router.include_router(orders_router)
+
+DOMAIN_MANIFEST = DomainManifest(
+    name="commerce",
+    schema_name="commerce",
+    routers={"shop": shop_router},
+    state_machine_rules=[*ORDER_RULES, *RESERVATION_RULES],
+    permissions=COMMERCE_PERMISSIONS,
+    role_grants=COMMERCE_ROLE_GRANTS,
+    privacy_handlers=[erase_customer_handler],
+    non_forceable_states=NON_FORCEABLE,
+)

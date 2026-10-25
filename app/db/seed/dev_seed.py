@@ -1,4 +1,4 @@
-"""Lokal demo ma'lumotlari: platforma jamoasi, turli holatdagi 8 ta shop va katalog (23 §3).
+"""Lokal demo ma'lumotlari: platforma jamoasi, turli holatdagi 8 ta shop, katalog va savdo (23 §3).
 
     make seed          # yoki: uv run python -m app.db.seed.dev_seed
 
@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import Settings
 from app.db.seed.catalog_seed import run_catalog_seed
+from app.db.seed.commerce_seed import run_commerce_seed
+from app.dependencies import get_order_query
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
@@ -189,6 +191,8 @@ class SeedReport:
     created_team: list[str] = field(default_factory=list)
     catalog_products: int = 0
     catalog_specs: int = 0
+    commerce_orders: int = 0
+    commerce_receipts: int = 0
 
 
 @dataclass(frozen=True)
@@ -208,7 +212,7 @@ def _services(settings: Settings) -> _Services:
     staff = StaffService(use, audit, config)
     return _Services(
         auth=AuthService(config, hasher, audit, use),
-        shops=ShopService(use, audit, config, staff),
+        shops=ShopService(use, audit, config, staff, get_order_query()),
         staff=staff,
         team=PlatformTeamService(audit, config),
         permissions=PermissionRegistry.from_manifests([SHOPS_MANIFEST, STAFF_MANIFEST]),
@@ -443,6 +447,8 @@ async def run_seed(settings: Settings) -> SeedReport:
         await database.dispose()
     catalog = await run_catalog_seed(settings, ADMIN_PHONE, TEAM[2].phone)
     report.catalog_products, report.catalog_specs = catalog.products, catalog.specs
+    commerce = await run_commerce_seed(settings)
+    report.commerce_orders, report.commerce_receipts = commerce.orders, commerce.receipts
     return report
 
 
@@ -451,6 +457,7 @@ def main() -> None:
     lines = [
         f"Yaratildi: shoplar {len(report.created_shops)}, jamoa {len(report.created_team)}, "
         f"katalog: mahsulotlar {report.catalog_products}, kutubxona modellari {report.catalog_specs}; "
+        f"savdo: kirimlar {report.commerce_receipts}, buyurtmalar {report.commerce_orders}; "
         f"o'tkazib yuborildi: {len(report.skipped_shops)}",
         "",
         "Platforma paneli (http://localhost:3001):",

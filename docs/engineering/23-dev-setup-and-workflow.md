@@ -52,12 +52,13 @@ make up                                    # PostgreSQL :5433, Redis :6380 (o'z 
 uv sync
 make bootstrap                             # rollar (app_migrator, app_runtime) + app/db/schemas.sql; .env'dan o'qiydi
 make migrate                               # barcha schema env'lari (§4)
-make seed                                  # demo: platforma jamoasi va 8 ta shop (ixtiyoriy)
+make seed                                  # demo: platforma jamoasi, 8 ta shop, katalog va savdo (ixtiyoriy)
 PLATFORM_ADMIN_PASSWORD='...' uv run python -m app.platform.staff.cli create-platform-admin \
   --phone "+998900000001" --name "Platforma Admin"     # birinchi platforma admini
 
 # 2. Jarayonlar
-uv run uvicorn app.main:app --port 8000 --reload          # API; Swagger — http://localhost:8000/docs
+uv run uvicorn app.main:app --port 8000 --reload --no-access-log   # API; Swagger — http://localhost:8000/docs
+# kirish logi — ilovaning o'zida (`http.request`, query qiymatlarisiz; 09 §4.2)
 # Fon ishlari (outbox_worker, arq, scheduler) — 5-modulda qo'shiladi
 
 # 3. Frontend (ai-commerce-frontend/README.md)
@@ -67,7 +68,7 @@ pnpm dev                                   # shop paneli :3000, platforma paneli
 pnpm test:e2e                              # Playwright (backend va admin kerak)
 ```
 
-**Demo ma'lumot:** `make seed` — platforma jamoasi (admin, yordam, taklif qilingan a'zo) va 8 ta shop turli holatda (tekshiruvda, faol pilot, to'xtatilgan, egasi kirmagan). Servislar orqali yaratiladi — audit va jurnal haqiqiydagidek; qayta ishga tushirish xavfsiz. Kirish ma'lumotlari skript oxirida chiqadi. **Fayllar:** lokal va testda diskda (`STORAGE_LOCAL_DIR`, standart `var/storage`, git'ga kirmaydi) — `FileStorage` portining disk adapteri (2-modul). MinIO ishlatilmaydi: obrazi Docker Hub'dan endi yuklanmaydi. Production uchun S3-mos adapter deploy bilan qo'shiladi (S0-10, TD-03).
+**Demo ma'lumot:** `make seed` — platforma jamoasi (admin, yordam, taklif qilingan a'zo) va 8 ta shop turli holatda (tekshiruvda, faol pilot, to'xtatilgan, egasi kirmagan); katalog (2-modul) va savdo (3-modul: TechPC va NoutbukUz'da qoldiq, tez sotuv, har holatdagi buyurtma). Servislar orqali yaratiladi — audit va jurnal haqiqiydagidek; qayta ishga tushirish xavfsiz. Kirish ma'lumotlari skript oxirida chiqadi. **Fayllar:** lokal va testda diskda (`STORAGE_LOCAL_DIR`, standart `var/storage`, git'ga kirmaydi) — `FileStorage` portining disk adapteri (2-modul). MinIO ishlatilmaydi: obrazi Docker Hub'dan endi yuklanmaydi. Production uchun S3-mos adapter deploy bilan qo'shiladi (S0-10, TD-03). **Xaridor ma'lumoti** (telefon, manzil) shifrlanadi — `.env` dagi `PII_*` kalitlari faqat lokal uchun (26 §4).
 
 **Seed ma'lumot:** har doim ikkita shop (A va B) — izolyatsiyani lokalda ham ko'rish uchun (TC-ISO). Faqat sintetik ma'lumot; haqiqiy xaridor ma'lumoti lokal yoki staging'ga hech qachon yuklanmaydi.
 

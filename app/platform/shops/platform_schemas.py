@@ -22,7 +22,7 @@ ShopSort = Literal["created_desc", "activated_desc", "name"]
 # ------------------------------------------------------------------ bosh sahifa
 
 
-class ReviewQueueItem(BaseModel):
+class VerificationQueueItem(BaseModel):
     shop_id: UUID
     name: str
     slug: str
@@ -79,7 +79,7 @@ class ActivityList(BaseModel):
 
 class PlatformDashboard(BaseModel):
     counts_by_status: dict[ShopStatus, int]
-    review_queue: list[ReviewQueueItem]
+    review_queue: list[VerificationQueueItem]
     pending_owners: list[PendingOwnerItem]
     pilots: list[PilotItem]
     new_shops_7d: int

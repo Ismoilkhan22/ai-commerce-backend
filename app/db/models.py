@@ -26,7 +26,11 @@ MODEL_MODULES: dict[str, tuple[str, ...]] = {
         "app.domains.catalog.pricing.models.orm",
         "app.domains.catalog.pc_specs.models.orm",
     ),
-    "commerce": (),
+    "commerce": (
+        "app.domains.commerce.inventory.models.orm",
+        "app.domains.commerce.quick_sales.models.orm",
+        "app.domains.commerce.orders.models.orm",
+    ),
     "messaging": (),
     "sales_ai": (),
     "storefront": (),

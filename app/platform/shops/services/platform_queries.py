@@ -28,7 +28,6 @@ from app.platform.shops.platform_schemas import (
     PendingOwnerItem,
     PilotItem,
     PlatformDashboard,
-    ReviewQueueItem,
     ShopList,
     ShopListItem,
     ShopMemberList,
@@ -38,6 +37,7 @@ from app.platform.shops.platform_schemas import (
     ShopSort,
     TransitionList,
     TransitionOut,
+    VerificationQueueItem,
 )
 from app.platform.shops.schemas import BranchList, BranchOut, ShopOut
 from app.platform.shops.state_machine import ENTITY as SHOP
@@ -54,7 +54,7 @@ INVITE_EXPIRING_WITHIN = timedelta(hours=24)
 RECENT_ACTIVITY_LIMIT = 10
 STATUSES = ("DRAFT", "PENDING_VERIFICATION", "ACTIVE", "SUSPENDED", "CLOSED")
 _ROLE_ORDER = {"OWNER": 0, "MANAGER": 1, "SALES": 2, "WAREHOUSE": 3}
-_PHONE_LIKE = re.compile(r"[\d\s+()\-]+")
+_PHONE_LIKE = re.compile(r"[0-9 +()\-]+")
 
 
 @dataclass(frozen=True)
@@ -111,7 +111,7 @@ class PlatformQueryService:
             recent_activity=await self._activity(db, recent),
         )
 
-    async def _review_queue(self, db: AsyncSession, now: datetime) -> list[ReviewQueueItem]:
+    async def _review_queue(self, db: AsyncSession, now: datetime) -> list[VerificationQueueItem]:
         shops = (await db.execute(select(Shop).where(Shop.status == "PENDING_VERIFICATION"))).scalars().all()
         if not shops:
             return []
@@ -135,7 +135,7 @@ class PlatformQueryService:
         for shop in shops:
             since = submitted.get(shop.id) or shop.created_at
             items.append(
-                ReviewQueueItem(
+                VerificationQueueItem(
                     shop_id=shop.id,
                     name=shop.name,
                     slug=shop.slug,
@@ -279,7 +279,7 @@ class PlatformQueryService:
         return ShopList(items=items, total=total)
 
     async def _shops_by_owner_phone(self, db: AsyncSession, text: str) -> list[UUID]:
-        if not _PHONE_LIKE.fullmatch(text) or len(re.sub(r"\D", "", text)) < 9:
+        if not _PHONE_LIKE.fullmatch(text) or len(re.sub(r"[^0-9]", "", text)) < 9:
             return []
         try:
             phone = normalize_phone(text)

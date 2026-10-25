@@ -126,6 +126,13 @@ class FileInUseError(ConflictError):
     abstract = False
 
 
+class ShopHasOpenOrdersError(ConflictError):
+    """Shopni yopib bo'lmaydi: ochiq buyurtmalar bor — avval yakunlanadi yoki bekor qilinadi (TC-023)."""
+
+    code = "SHOP_HAS_OPEN_ORDERS"
+    abstract = False
+
+
 class SpeakerConflictError(ConflictError):
     code = "SPEAKER_CONFLICT"
     abstract = False

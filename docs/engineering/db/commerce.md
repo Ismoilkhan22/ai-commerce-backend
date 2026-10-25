@@ -195,9 +195,9 @@ Bu oxirgi himoya. Asosiy himoya — qulf va amaldan oldingi tekshiruv.
 - **`currency`** — doim `UZS`: xaridor so'mda to'laydi (DEC-121).
 - **`total_minor`** — qatorlar yig'indisi. Yetkazish narxi kirmaydi (DEC-100h).
 
-**Vaqtlar va kim qildi:** `submitted_at`, `confirmed_at` + `confirmed_by`, `processing_at`, `ready_at`, `completed_at` + `completed_by`, `cancelled_at` + `cancelled_by`. Bular `transition_log` da ham bor, lekin ro'yxat, eslatma va hisobot uchun shu yerda turgani tezroq.
+**Vaqtlar va kim qildi:** `submitted_at`, `confirmed_at` + `confirmed_by`, `processing_at`, `ready_at` + `ready_by`, `completed_at` + `completed_by`, `cancelled_at` + `cancelled_by`. Bular `transition_log` da ham bor, lekin ro'yxat, eslatma va hisobot uchun shu yerda turgani tezroq.
 - **`submitted_at`** — 24 soatlik "tasdiqlanmagan" eslatmasi shundan hisoblanadi (DEC-104).
-- **`ready_at`** — "olib ketishga tayyor" bosilgan vaqt. Holat o'zgarmaydi, xaridorga xabar ketadi.
+- **`ready_at`**, **`ready_by`** — "olib ketishga tayyor" bosilgan vaqt va kim bosgani. Holat o'zgarmaydi (FSM-08 dagi `MARK_READY` o'tishi `transition_log` ga yoziladi), xaridorga xabar ketadi.
 - **`cancel_reason`** — tasdiq kutilayotgan, tasdiqlangan yoki muammoli buyurtmani bekor qilishda **majburiy** (BL-049).
 - **`exception_reason`** — "muammoli" holat sababi: "mahsulot shikastlangan", "xaridor bosh tortdi".
 
@@ -286,7 +286,7 @@ Bu oxirgi himoya. Asosiy himoya — qulf va amaldan oldingi tekshiruv.
   ```
 
   Har o'tish qoldiq va daftar bilan **bitta tranzaksiyada**.
-- **`review_at`** — shu vaqtdan keyin menejerga "bekor qilinsinmi?" vazifasi tushadi (tasdiqdan 72 soat, DEC-104). Avtomatik bekor qilinmaydi. Menejer "kutamiz" desa, vaqt suriladi. "Bekor" desa, buyurtma bekor qilinadi, band `EXPIRED` bo'ladi (oddiy bekor qilishdan farqlash uchun). Band va ajratilgan bandlarga tegishli (DEC-134).
+- **`review_at`** — shu vaqtdan keyin menejerga "bekor qilinsinmi?" vazifasi tushadi (tasdiqdan 72 soat, DEC-104). Avtomatik bekor qilinmaydi. Menejer "kutamiz" desa, vaqt suriladi. "Bekor" desa, buyurtma bekor qilinadi, band `EXPIRED` bo'ladi (oddiy bekor qilishdan farqlash uchun). Band va ajratilgan bandlarga tegishli (DEC-134). Muammoli (`EXCEPTION`) buyurtma ham ajratilgan mahsulotni ushlab turadi, shuning uchun u ham ko'rib chiqiladi (3-modul QA).
 - **`allocated_at`**, **`closed_at`** — qachon ajratildi va qachon yopildi (ishlatildi, bo'shatildi yoki muddati o'tdi).
 - **`version`** — bitta bandni ikki amal bir vaqtda yopa olmaydi.
 

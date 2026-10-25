@@ -36,9 +36,9 @@ from app.domains.catalog.pc_specs.schemas import (
     HardwareSpecList,
     PlatformSpecRequestList,
     PlatformSpecRequestOut,
-    ReviewQueue,
-    ReviewQueueItem,
     SpecRequestOut,
+    SpecReviewQueue,
+    SpecReviewQueueItem,
     SpecVersionIn,
     SpecVersionOut,
 )
@@ -153,7 +153,7 @@ class SpecLibraryService:
             ],
         )
 
-    async def review_queue(self, db: AsyncSession) -> ReviewQueue:
+    async def review_queue(self, db: AsyncSession) -> SpecReviewQueue:
         rows = list(
             (
                 await db.execute(
@@ -168,9 +168,9 @@ class SpecLibraryService:
             ).all()
         )
         names = await self._names(db, [v.proposed_by for v, _ in rows])
-        return ReviewQueue(
+        return SpecReviewQueue(
             items=[
-                ReviewQueueItem(
+                SpecReviewQueueItem(
                     spec_id=spec.id,
                     category=spec.category,
                     brand=version.brand,

@@ -84,7 +84,7 @@ class HardwareSpecDetail(HardwareSpecOut):
     versions: list[SpecVersionOut]
 
 
-class ReviewQueueItem(BaseModel):
+class SpecReviewQueueItem(BaseModel):
     spec_id: UUID
     category: SpecCategory
     brand: str
@@ -97,11 +97,11 @@ class ReviewQueueItem(BaseModel):
     proposed_at: datetime
 
 
-class ReviewQueue(BaseModel):
-    items: list[ReviewQueueItem]
+class SpecReviewQueue(BaseModel):
+    items: list[SpecReviewQueueItem]
 
 
-class NoteIn(BaseModel):
+class SpecNoteIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     note: Text = Field(min_length=3, max_length=500)

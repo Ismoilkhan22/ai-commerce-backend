@@ -359,6 +359,30 @@ def test_dev_seed_builds_demo_data_and_is_idempotent(seed_urls: PgUrls) -> None:
         "(SELECT count(*) FROM platform.stored_files) AS files",
     )[0]
     assert dict(catalog) == {"products": 18, "approved": 12, "links": 13, "requests": 1, "files": 4}
+    # 3-modul: qoldiq, har holatdagi buyurtma, 24/72 soatlik navbat; qayta yugurish hech narsa qo'shmaydi
+    assert (first.commerce_receipts, first.commerce_orders) == (5, 12)
+    assert (second.commerce_receipts, second.commerce_orders) == (0, 0)
+    statuses = {
+        r["status"]: r["n"]
+        for r in _sql(seed_urls.admin, "SELECT status, count(*) AS n FROM commerce.orders GROUP BY status")
+    }
+    assert statuses == {
+        "DRAFT": 1,
+        "PENDING_CONFIRMATION": 5,
+        "CONFIRMED": 3,
+        "PROCESSING": 1,
+        "COMPLETED": 1,
+        "CANCELLED": 1,
+        "EXCEPTION": 1,
+    }
+    overdue = _sql(
+        seed_urls.admin,
+        "SELECT count(*) AS n FROM commerce.reservations WHERE status IN ('ACTIVE', 'ALLOCATED') "
+        "AND review_at < now()",
+    )
+    assert overdue[0]["n"] == 1
+    phones = _sql(seed_urls.admin, "SELECT customer_phone_enc AS p FROM commerce.orders")
+    assert all(r["p"].startswith("v1.") for r in phones)  # telefon shifrlangan holda yozilgan
 
     shops = {
         r["slug"]: r

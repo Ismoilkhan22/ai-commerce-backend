@@ -129,7 +129,7 @@ class AuthService:
                 return Outcome(error=UnauthenticatedError(INVALID_CREDENTIALS))
             shop = await db.get(Shop, membership.shop_id)
             if shop is None or shop.status == "CLOSED":
-                return Outcome(error=ShopNotActiveError("Shop is closed"))
+                return Outcome(error=ShopNotActiveError("Shop is closed", shop_status="CLOSED"))
             shop_id = membership.shop_id
         else:
             staff = (
@@ -184,7 +184,7 @@ class AuthService:
                 )
                 logger.warning("auth.refresh_reuse_detected", family_id=str(session.family_id))
             if session.revoked_reason == "SHOP_CLOSED":
-                return Outcome(error=ShopNotActiveError("Shop is closed"))
+                return Outcome(error=ShopNotActiveError("Shop is closed", shop_status="CLOSED"))
             return Outcome(error=UnauthenticatedError("Refresh token is no longer valid"))
         if session.expires_at <= now:
             return Outcome(error=UnauthenticatedError("Refresh token expired"))

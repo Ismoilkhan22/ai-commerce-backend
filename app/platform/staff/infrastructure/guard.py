@@ -77,7 +77,7 @@ async def _active_session(db: AsyncSession, claims: AccessClaims) -> tuple[AuthS
     session, principal = row
     if session.revoked_reason == "SHOP_CLOSED":
         # Shop yopilganda sessiyalar tugatiladi — klient oddiy "chiqib ketdi" emas, sababini ko'rsatadi
-        raise ShopNotActiveError("Shop is closed")
+        raise ShopNotActiveError("Shop is closed", shop_status="CLOSED")
     if (
         session.revoked_at is not None
         or session.expires_at <= utcnow()
@@ -108,7 +108,7 @@ async def resolve_shop_actor(
         raise UnauthenticatedError("Membership is not active")  # TC-025: o'chirilgan xodim darhol
     membership, shop = row
     if shop.status == "CLOSED":
-        raise ShopNotActiveError("Shop is closed")
+        raise ShopNotActiveError("Shop is closed", shop_status="CLOSED")
     branch_ids: frozenset[UUID] | None = None
     if membership.branch_scope == "SELECTED":
         branch_ids = frozenset(

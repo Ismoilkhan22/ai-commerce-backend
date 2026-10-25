@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 from pathlib import Path
 
@@ -39,6 +40,12 @@ PUBLIC_URLS = {
     "platform_app_public_url": "https://admin.example.uz",
     "public_files_url": "https://cdn.example.uz/files",
 }
+# Production'da lokal PII kalitlari rad etiladi (26 §9) — testlarda alohida kalitlar
+PROD_PII = {
+    "pii_encryption_keys": "k1:" + base64.b64encode(b"p" * 32).decode(),
+    "pii_active_key_id": "k1",
+    "pii_hmac_key": base64.b64encode(b"h" * 32).decode(),
+}
 
 
 @pytest.mark.parametrize(
@@ -70,6 +77,7 @@ def test_local_db_defaults_rejected_in_production() -> None:
         database_migrator_url="postgresql+asyncpg://app_migrator:r4nd0m-migrator-pw@db.internal:5432/cos",
         jwt_secret="x" * 40,
         **PUBLIC_URLS,
+        **PROD_PII,
     )
 
 
@@ -89,4 +97,6 @@ def test_production_requires_strong_jwt_secret_and_secure_cookie() -> None:
             app_public_url="https://app.example.uz",
             **urls,
         )
-    Settings(app_env="production", jwt_secret="x" * 40, **urls, **PUBLIC_URLS)
+    with pytest.raises(ValidationError, match="PII"):
+        Settings(app_env="production", jwt_secret="x" * 40, **urls, **PUBLIC_URLS)  # lokal PII kalitlari
+    Settings(app_env="production", jwt_secret="x" * 40, **urls, **PUBLIC_URLS, **PROD_PII)

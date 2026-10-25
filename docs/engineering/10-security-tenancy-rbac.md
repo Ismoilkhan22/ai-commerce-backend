@@ -190,7 +190,7 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | Kod | OWN | MGR | SAL | WH | FIN | CAT | ANL | AIE | AI | `business/04` qatori |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `commerce.stock.view` | ✓ | ✓ br | ✓ | ✓ br | ✓ | — | agg | — | ✓ (faqat "bor/yo'q" va son) | Stok kirimi (Ko'radi) |
-| `commerce.stock.receive` | ✓ | ✓ br | — | ✓ br | — | — | — | — | — | Stok kirimi (Omborchi Ha, Menejer Tasdiqlaydi) |
+| `commerce.stock.receive` | ✓ | ✓ br | — | ✓ br | — | — | — | — | — | Stok kirimi — tasdiqsiz (DEC-136) |
 | `commerce.stock.adjust_request` | ✓ | ✓ br | — | ✓ br | — | — | — | — | — | Stok tuzatish (So'raydi) |
 | `commerce.stock.adjust_approve` | ✓ | ✓ br | — | — | — | — | — | — | — | Stok tuzatish (Tasdiqlaydi) |
 | `commerce.quick_sale.create` | ✓ | ✓ br | ✓ | ✓ br | — | — | — | — | — | "Tez sotuv" (DEC-123) |
@@ -205,7 +205,8 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `commerce.order.confirm` | ✓ | ✓ | own | — | — | — | — | — | — | Buyurtmani tasdiqlash (DEC-108) |
 | `commerce.order.process` | ✓ | ✓ | own | ✓ br | — | — | — | — | — | Tayyorlash (start, "tayyor" belgisi) |
 | `commerce.order.complete` | ✓ | ✓ | own | — | — | — | — | — | — | Topshirish |
-| `commerce.order.cancel` | ✓ | ✓ | — | — | — | — | — | — | — | Bekor qilish (sabab bilan) |
+| `commerce.order.cancel` | ✓ | ✓ | — | — | — | — | — | — | — | Bekor qilish (sabab bilan); qoralamani operator o'zi bekor qila oladi (FSM-08) |
+| `commerce.order.assign` | ✓ | ✓ | — | — | — | — | — | — | — | Mas'ul operatorni biriktirish/almashtirish (DEC-108); operator biriktirilmaganini o'zi oladi (`take`, `commerce.order.confirm` bilan) |
 | `commerce.order.paid_mark` | ✓ | ✓ | own | — | ✓ | — | — | — | — | "To'landi" belgisi (DEC-100a) |
 | `commerce.order.note` | ✓ | ✓ | own | br | ✓ | — | — | — | — | Buyurtma izohi |
 | `commerce.discount.apply` | ✓ (cheksiz) | ≤5% | — | — | — | — | — | — | — | Chegirma (DEC-110) |
@@ -274,7 +275,12 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 
 - Bir xodimda bir nechta rol bo'lsa — ruxsatlar birlashadi. "Kichik shop" shabloni egaga hamma rolni beradi (DEC-100f).
 - **own** tekshiruvi service'da: `order.assigned_membership_id == actor.membership_id` (yoki suhbat/lead egasi). Aks holda — `FORBIDDEN` (o'z shopida) — lekin boshqa shop obyekti — `NOT_FOUND`.
+  Buyurtmani **ko'rish**da operator biriktirilmagan navbatni ham ko'radi (o'ziga olishi uchun); omborchi (`br`) — faqat tasdiqlangandan keyingi buyurtmalarni (`commerce/orders/access.py`, 3-modul). `FORBIDDEN` da `details.reason` (`other_operator`, `not_confirmed`, `other_branch`, `not_assigned`) — klient aniq sababni ko'rsatadi; bu faqat o'z shopi ichida.
 - **br** (filial doirasi): `actor.branch_ids` `None` bo'lmasa, obyektning `branch_id` shu to'plamda bo'lishi shart — repository filtri.
+  Buyurtmani biriktirishda (`assign`) mas'ul xodimning filial doirasi buyurtma filialini qamrashi shart — aks holda 422 `membership_id / invalid_choice` (xodim buyurtmani ko'ra olmay qolardi). Biriktirilgan buyurtmaning filiali almashsa ham xuddi shunday tekshiriladi — 422 `branch_id / out_of_scope`.
+- **Maydon darajasidagi qoida (xaridor ma'lumoti):** omborchi buyurtma kartochkasida xaridor ismini va **yashirilgan** telefonni ko'radi (`+998 90 *** ** 67`); manzil — faqat yetkazish (`DELIVERY`) buyurtmasida. To'liq telefon — ega, menejer va operator. Ro'yxatlarda telefon hamma uchun yashirilgan (`commerce/orders/services/views.py`).
+- **Ruxsatsiz o'qiladigan ma'lumotnoma:** `GET /shop/branches/options` (id, nom, holat, olib ketish joyi) — har shop xodimiga, filial doirasi bilan. To'liq filial ro'yxati (manzil, telefon) — `shops.settings.view`.
+- **Yangi savdo va shop holati** (FSM-01, DEC-136): `SUSPENDED` / `CLOSED` shopda buyurtma yaratish va tez sotuv — `409 SHOP_NOT_ACTIVE` (`details.shop_status`); mavjud buyurtmalar yakunlanadi. `app/platform/shops/services/sales_gate.py` — 4-modul (saytdan so'rov) ham shuni chaqiradi.
 - **AI agent** hech qachon olmaydi: `commerce.order.confirm`, `commerce.order.cancel`, `commerce.order.complete`, `catalog.price.change`, `commerce.discount.*`, `commerce.stock.receive/adjust_*`, `commerce.quote.approve`, har qanday `*.edit` sozlama, `reporting.*`, `audit.*`. Bu CI testida tekshiriladi.
 - **Nomlash eslatmasi:** domen kodlari doim 3 qismli. Bir martalik nomlar birlashtirildi: `commerce.stock.adjust` → `commerce.stock.adjust_request` + `commerce.stock.adjust_approve` (tasdiq oqimi tufayli); `reporting.export` → `reporting.export.run`.
 - **Hisobot yordamchisi** har doim so'rayotgan foydalanuvchining `ActorContext`i bilan ishlaydi (TC-013).
@@ -287,7 +293,7 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 |---|---|---|---|
 | PC taklifi (DEC-102, DEC-109) | Operator yoki AI (qoralama) | Menejer (limit ichida) yoki ega | `approved_by != created_by`; yangi revision eski tasdiqni bekor qiladi; "faqat xavfli holatlarda" rejimida avtomatik o'tish qoidasi `shop_policies.quote_approval_mode` |
 | Chegirma (DEC-110) | Operator | ≤5% — menejer; >5% — ega | Limitlar `shop_policies`; oshsa `DISCOUNT_LIMIT_EXCEEDED` (422) va `details.approver_role` |
-| Stok tuzatish | Omborchi | Limitdan katta bo'lsa menejer/ega | `stock_adjustment_requests`; tasdiqdan keyin ledger qatori |
+| Stok tuzatish | Omborchi | Har doim menejer/ega (DEC-134); ega/menejer o'zi to'g'ridan | `commerce.stock_adjustments` (PENDING → APPROVED/REJECTED); tasdiqda qoldiq qayta tekshiriladi, keyin ledger qatori |
 | Buyurtmani bekor qilish | — | Menejer yoki ega | `cancel_reason` majburiy |
 | AI bilim bazasi | AI muharriri | Ega | `prompt_versions`/`knowledge_items` `APPROVED → ACTIVE`; xato bo'lsa oldingi versiyaga qaytish |
 

@@ -54,6 +54,8 @@ O'zbekiston "Shaxsga doir ma'lumotlar to'g'risida"gi qonuni (https://lex.uz/docs
 
 Ustun darajasida shifrlash kaliti — secret manager'da, rotatsiya bilan; `shared/db` dagi `EncryptedString` turi.
 
+**Amalda (3-modul, `app/shared/db/encryption.py`):** AES-256-GCM, qiymat `v1.<kalit_id>.<nonce+shifr>` ko'rinishida — kalit identifikatori har qiymatda. Sozlamalar: `PII_ENCRYPTION_KEYS` (`id:base64`, vergul bilan bir nechta), `PII_ACTIVE_KEY_ID` (yangi yozuvlar shu kalit bilan), `PII_HMAC_KEY` (telefon bo'yicha qidirish — kalitli HMAC-SHA256, `orders.customer_phone_hmac`). Rotatsiya: yangi kalit ro'yxatga qo'shiladi va faol qilinadi, eski kalit eski yozuvlarni o'qish uchun qoladi (qayta shifrlash — alohida fon ishi, keyin). Lokal standart kalitlar staging va production'da ishga tushirishda rad etiladi. Takroriy so'rov himoyasi (`idempotency_keys`) buyurtma javobini emas, faqat ID'sini saqlaydi — telefon va manzil boshqa jadvalga ochiq holda tushmaydi.
+
 ## 5. Saqlash muddatlari (takliflar)
 
 | Turi | Taklif | Muddat tugagach | Kim tozalaydi | Huquqshunosga savol |

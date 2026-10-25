@@ -114,6 +114,21 @@ class BranchList(BaseModel):
     items: list[BranchOut]
 
 
+class BranchOption(BaseModel):
+    """Filial tanlash ro'yxati uchun — har xodimga ochiq (manzil va telefonsiz)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    status: Literal["ACTIVE", "CLOSED"]
+    is_pickup_point: bool
+
+
+class BranchOptionList(BaseModel):
+    items: list[BranchOption]
+
+
 class ShopCreateIn(BaseModel):
     """Platforma admini shop yaratadi va egani taklif qiladi (DEC-122)."""
 

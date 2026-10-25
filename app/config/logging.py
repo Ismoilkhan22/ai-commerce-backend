@@ -22,3 +22,6 @@ def configure_logging(level: str = "INFO", *, json: bool = True) -> None:
         wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelNamesMapping()[level]),
         cache_logger_on_first_use=True,
     )
+    # Uvicorn kirish logi to'liq URL'ni yozadi (query bilan — telefon, 26 §4). Uning o'rniga
+    # RequestContextMiddleware'dagi `http.request` (query qiymatlarisiz). `--no-access-log` ham shu ish.
+    logging.getLogger("uvicorn.access").disabled = True

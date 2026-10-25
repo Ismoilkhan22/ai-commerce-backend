@@ -56,7 +56,7 @@ def test_models_match_migrations(migrated: PgUrls, schema: str) -> None:
 
 
 async def test_no_cross_schema_foreign_keys(migrated: PgUrls) -> None:  # TC-DB-05
-    engine = create_async_engine(migrated.migrator)
+    engine = create_async_engine(migrated.migrator, hide_parameters=True)
     async with engine.connect() as conn:
         assert await cross_schema_foreign_keys(conn) == []
     await engine.dispose()

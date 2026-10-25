@@ -11,12 +11,12 @@ from app.domains.catalog.pc_specs.schemas import (
     HardwareSpecDetail,
     HardwareSpecIn,
     HardwareSpecList,
-    NoteIn,
     PlatformSpecRequestList,
     ResolveIn,
-    ReviewQueue,
+    SpecNoteIn,
     SpecRequestOut,
     SpecRequestStatus,
+    SpecReviewQueue,
     SpecStatus,
     SpecVersionIn,
 )
@@ -57,8 +57,8 @@ async def list_hardware_specs(
     )
 
 
-@router.get("/hardware-specs/review-queue", response_model=ReviewQueue)
-async def hardware_spec_review_queue(ctx: CanView, svc: Catalog) -> ReviewQueue:
+@router.get("/hardware-specs/review-queue", response_model=SpecReviewQueue)
+async def hardware_spec_review_queue(ctx: CanView, svc: Catalog) -> SpecReviewQueue:
     """Tasdiq kutayotgan takliflar — eng uzoq kutayotgan birinchi. O'z taklifini tasdiqlab bo'lmaydi."""
     return await svc.specs.review_queue(ctx.db)
 
@@ -130,7 +130,7 @@ async def approve_hardware_spec_version(
 
 @router.post("/hardware-specs/{spec_id}/versions/{version}/reject", response_model=HardwareSpecDetail)
 async def reject_hardware_spec_version(
-    spec_id: UUID, version: VersionNo, body: NoteIn, ctx: CanEdit, svc: Catalog, key: IdemKey
+    spec_id: UUID, version: VersionNo, body: SpecNoteIn, ctx: CanEdit, svc: Catalog, key: IdemKey
 ) -> Any:
     return await run_idempotent(
         ctx.db,
@@ -143,7 +143,9 @@ async def reject_hardware_spec_version(
 
 
 @router.post("/hardware-specs/{spec_id}/retire", response_model=HardwareSpecDetail)
-async def retire_hardware_spec(spec_id: UUID, body: NoteIn, ctx: CanEdit, svc: Catalog, key: IdemKey) -> Any:
+async def retire_hardware_spec(
+    spec_id: UUID, body: SpecNoteIn, ctx: CanEdit, svc: Catalog, key: IdemKey
+) -> Any:
     """Eskirgan model: yangi bog'lanish yo'q, mavjud bog'lanishlar qoladi."""
     return await run_idempotent(
         ctx.db,
@@ -187,7 +189,7 @@ async def resolve_spec_request(
 
 @router.post("/hardware-spec-requests/{request_id}/reject", response_model=SpecRequestOut)
 async def reject_spec_request(
-    request_id: UUID, body: NoteIn, ctx: CanEdit, svc: Catalog, key: IdemKey
+    request_id: UUID, body: SpecNoteIn, ctx: CanEdit, svc: Catalog, key: IdemKey
 ) -> Any:
     return await run_idempotent(
         ctx.db,

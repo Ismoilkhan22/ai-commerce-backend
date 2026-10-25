@@ -138,7 +138,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `VALIDATION_FAILED` | 422 | Pydantic / maydon validatsiyasi, noto'g'ri filtr yoki saralash | yo'q |
 | `INVALID_REQUEST` | 400 | Noto'g'ri JSON, kerakli header yo'q (`Idempotency-Key`, `If-Match`) | yo'q |
 | `UNAUTHENTICATED` | 401 | Token yo'q, eskirgan yoki yaroqsiz | refresh'dan keyin |
-| `FORBIDDEN` | 403 | O'z shopida ruxsat yo'q (rol, "own", filial) | yo'q |
+| `FORBIDDEN` | 403 | O'z shopida ruxsat yo'q (rol, "own", filial). Buyurtmada `details.reason`: `other_operator`, `not_confirmed` (omborchi — hali tasdiqlanmagan), `other_branch`, `not_assigned` | yo'q |
 | `SELF_APPROVAL_NOT_ALLOWED` | 403 | O'zi tuzgan taklif/so'rovni o'zi tasdiqlamoqchi (DEC-109) | yo'q |
 | `NOT_FOUND` | 404 | Resurs yo'q **yoki boshqa shopniki** — doim 404, hech qachon 403 (TC-001) | yo'q |
 | `METHOD_NOT_ALLOWED` | 405 | Yo'l bor, metod yo'q | yo'q |
@@ -153,10 +153,11 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `EXCHANGE_RATE_STALE` | 409 | Dollar kursi eskirgan (UAT-M05) — yangi taklif berilmaydi | kurs yangilangach |
 | `PRODUCT_NOT_AVAILABLE` | 409 | Mahsulot chiqarilmagan, yashirilgan yoki arxivda (UAT-M07) | yo'q |
 | `BRANCH_CLOSED` | 409 | Yopiq filial tanlangan (UAT-M03, TC-026) | yo'q |
-| `SHOP_NOT_ACTIVE` | 409 | Shop `SUSPENDED`/`CLOSED` — yangi buyurtma qabul qilinmaydi (TC-023) | yo'q |
+| `SHOP_NOT_ACTIVE` | 409 | Shop `SUSPENDED`/`CLOSED` — yangi buyurtma va tez sotuv qabul qilinmaydi, mavjudlari yakunlanadi (TC-023, DEC-136). `details.shop_status`: `CLOSED` — klient sessiyani tugatadi; `SUSPENDED` — faqat shu amal rad etiladi | yo'q |
 | `LAST_OWNER_REQUIRED` | 409 | Oxirgi egani o'chirish yoki rolini olish (UAT-M02) | yo'q |
 | `LAST_ADMIN_REQUIRED` | 409 | Oxirgi faol platforma adminini o'chirish yoki rolini olish (business/15 §5) | yo'q |
 | `FILE_IN_USE` | 409 | Fayl allaqachon boshqa mahsulot rasmi — bitta fayl bitta mahsulotda (`details.product_id`) | yo'q (faylni qayta yuklash) |
+| `SHOP_HAS_OPEN_ORDERS` | 409 | Shopni yopib bo'lmaydi: tasdiq kutayotgan, tasdiqlangan, tayyorlanayotgan yoki muammoli buyurtmalar bor — avval yakunlanadi yoki bekor qilinadi (FSM-01, TC-023) | yo'q |
 | `SPEAKER_CONFLICT` | 409 | Suhbatni boshqa operator olgan yoki `speaker_version` eskirgan (TC-009) | yangilab qayta |
 | `CHANNEL_UNAVAILABLE` | 409 | Kanal `DISCONNECTED`/`DEGRADED`, xabar yuborib bo'lmaydi (TC-011) | ulangach |
 | `PAYLOAD_TOO_LARGE` | 413 | Fayl yoki audio limiti | yo'q |
@@ -175,13 +176,16 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 
 | Code | `details` |
 |---|---|
-| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak, invalid, same_as_current` (`too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi; `invalid` — qiymat tekshiruvdan o'tmadi, masalan joriy parol noto'g'ri; `same_as_current` — yangi parol joriysi bilan bir xil). Qat'iy chegara (`> 0`): butun sonda `min` — eng kichik **ruxsat etilgan** qiymat (`{"min": 1}`), kasrda — chegaraning o'zi va `"exclusive": true`. NUL belgisi (`\u0000`) yoki `NaN`/`Infinity` bor maydon — `invalid_format` (so'rov darajasida ushlanadi; yo'lda NUL — 404) |
+| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak, invalid, same_as_current, out_of_scope` (`out_of_scope` — buyurtma filiali almashganda mas'ul xodim yangi filialda ishlamaydi, `params.membership_id`; `too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi; `invalid` — qiymat tekshiruvdan o'tmadi, masalan joriy parol noto'g'ri; `same_as_current` — yangi parol joriysi bilan bir xil). Qat'iy chegara (`> 0`): butun sonda `min` — eng kichik **ruxsat etilgan** qiymat (`{"min": 1}`), kasrda — chegaraning o'zi va `"exclusive": true`. NUL belgisi (`\u0000`) yoki `NaN`/`Infinity` bor maydon — `invalid_format` (so'rov darajasida ushlanadi; yo'lda NUL — 404) |
 | `VERSION_CONFLICT` | `{"current_version": 5, "your_version": 4}` |
 | `INVALID_STATE_TRANSITION` | `{"entity": "commerce.order", "from": "DRAFT", "command": "COMPLETE"}` |
-| `INSUFFICIENT_AVAILABLE_STOCK` | `{"lines": [{"sku_id", "branch_id", "requested", "available"}]}` |
-| `PRICE_CHANGED` | `{"lines": [{"sku_id", "old": {money}, "new": {money}}]}` |
+| `INSUFFICIENT_AVAILABLE_STOCK` | `{"lines": [{"sku_id", "branch_id", "requested", "available", "reserved"}]}` — `reserved > 0` bo'lsa mahsulot buyurtmaga band (BL-109: "online buyurtma uchun band qilingan") |
+| `PRICE_CHANGED` | `{"lines": [{"line_id", "sku_id", "old": {money}, "new": {money}}]}` — so'mdagi narx (DEC-134) |
+| `PRODUCT_NOT_AVAILABLE` | `{"lines": [{"sku_id", "product_status", "sku_status"}]}` (tasdiq va narx yangilashda + `line_id`; kirim va oshiruvchi tuzatishda arxivdagi SKU) yoki tez sotuvda narx yo'qligida `{"lines": [{"sku_id", "reason": "NO_PRICE" \| "NO_RATE"}]}`. Tez sotuv — faqat `PUBLISHED`/`HIDDEN` mahsulot va faol SKU |
+| `SHOP_NOT_ACTIVE` | `{"shop_status": "SUSPENDED" \| "CLOSED"}` |
+| `SHOP_HAS_OPEN_ORDERS` | `{"open_orders": {"CONFIRMED": 3, "PROCESSING": 2}, "total": 5}` — faqat noldan kattalari |
 | `QUOTE_EXPIRED` | `{"expired_at"}` |
-| `APPROVAL_REQUIRED` | `{"reason": "COMPATIBILITY_REVIEW" \| "QUOTE_REVIEW" \| "DISCOUNT", "approver_roles": ["MANAGER", "OWNER"]}` |
+| `APPROVAL_REQUIRED` | `{"reason": "COMPATIBILITY_REVIEW" \| "QUOTE_REVIEW" \| "DISCOUNT", "approver_roles": ["MANAGER", "OWNER"]}`; chegirmada + `line_ids` |
 | `EXCHANGE_RATE_STALE` | `{"rate_effective_at", "max_age_hours"}` |
 | `RULE_BLOCK` | `{"ruleset_version", "findings": [{"rule_id", "severity"}]}` |
 | `DISCOUNT_LIMIT_EXCEEDED` | `{"requested_percent": 8, "allowed_percent": 5, "approver_role": "OWNER"}` |
@@ -226,6 +230,7 @@ class ShopNotActiveError(ConflictError):          code = "SHOP_NOT_ACTIVE"
 class LastOwnerRequiredError(ConflictError):      code = "LAST_OWNER_REQUIRED"
 class LastAdminRequiredError(ConflictError):      code = "LAST_ADMIN_REQUIRED"
 class FileInUseError(ConflictError):              code = "FILE_IN_USE"
+class ShopHasOpenOrdersError(ConflictError):      code = "SHOP_HAS_OPEN_ORDERS"
 class SpeakerConflictError(ConflictError):        code = "SPEAKER_CONFLICT"
 class ChannelUnavailableError(ConflictError):     code = "CHANNEL_UNAVAILABLE"
 
@@ -383,6 +388,7 @@ Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS pr
 | `POST /shop/profile/submit-for-verification` | `shops.settings.edit` | Idem |
 | `GET /shop/policies`, `PATCH /shop/policies` | `shops.settings.view` / `shops.policy.edit` | — / IfM |
 | `GET /shop/branches`, `POST /shop/branches`, `PATCH /shop/branches/{id}` | `shops.settings.view` / `shops.branch.edit` | — / Idem / IfM |
+| `GET /shop/branches/options` — filial tanlash uchun: `id`, `name`, `status`, `is_pickup_point` (manzil va telefonsiz) | har shop xodimi (filial doirasi bilan) | — |
 | `POST /shop/branches/{id}/close` | `shops.branch.edit` | Idem |
 | `GET /shop/members` | `staff.member.view` | — |
 | `POST /shop/members/invites` | `staff.member.invite` | Idem (takror so'rovda havola qayta beriladi — havola bazada saqlanmaydi) |
@@ -422,28 +428,38 @@ Holat: 2-modul backend'i qurilgan (2026-10-25, [progress/M02](progress/M02-catal
 
 ### 9.4 `commerce`
 
+Holat: 3-modul backend'i qurilgan (2026-10-26, [progress/M03](progress/M03-commerce.md)): ombor, tez sotuv, buyurtmalar. Lead va PC taklifi — 6-modul.
+
 | Metod va yo'l | Ruxsat | Idem / IfM |
 |---|---|---|
-| `GET /shop/stock` | `commerce.stock.view` | — |
-| `POST /shop/stock/receipts` | `commerce.stock.receive` | Idem |
-| `POST /shop/stock/adjustment-requests`, `POST …/{id}/approve`, `POST …/{id}/reject` | `commerce.stock.adjust_request` / `commerce.stock.adjust_approve` | Idem |
-| `POST /shop/quick-sales` | `commerce.quick_sale.create` | Idem |
+| `GET /shop/stock` (`branch_id`, `sku_id`, `q`, `low_only`, cursor), `GET /shop/stock/history?sku_id=&branch_id=` | `commerce.stock.view` (filial doirasi) | — |
+| `GET /shop/skus` (`q`, `branch_id`, `limit` ≤ 50) — SKU tanlash: nom, kod, holat, joriy narx, `orderable` / `quick_sellable`, `branch_id` berilsa — sotuvga mavjud son | `catalog.product.view` | — |
+| `POST /shop/stock/receipts` (`Location`), `GET /shop/stock/receipts`, `GET …/{id}` | `commerce.stock.receive` / `commerce.stock.view` | Idem / — |
+| `POST /shop/stock/adjustments` (`Location`; omborchida PENDING, ega/menejerda darhol APPROVED — DEC-134; arxivdagi SKU — faqat kamaytiruvchi: `ADJUSTMENT` < 0, `QUARANTINE_IN`, `WRITE_OFF`), `GET /shop/stock/adjustments` (`status`, `branch_id`), `GET …/{id}` | `commerce.stock.adjust_request` | Idem / — (takror so'rovda yangi imzoli havola; havola bazada saqlanmaydi) |
+| `POST /shop/stock/adjustments/{id}/approve` (qoldiq qayta tekshiriladi), `POST …/{id}/reject` (`note` majburiy) | `commerce.stock.adjust_approve` | Idem + IfM |
+| `POST /shop/quick-sales` (`Location`), `GET /shop/quick-sales` (`branch_id`, `mine`), `GET …/{id}` | `commerce.quick_sale.create` | Idem / — |
 | `GET /shop/leads`, `POST /shop/leads`, `PATCH /shop/leads/{id}` | `commerce.lead.view` / `commerce.lead.edit` | — / Idem / IfM |
 | `GET /shop/quotes`, `GET /shop/quotes/{id}` | `commerce.quote.view` | — |
 | `POST /shop/quotes`, `POST /shop/quotes/{id}/revisions`, `POST …/{id}/submit` | `commerce.quote.draft` | Idem |
 | `POST /shop/quotes/{id}/approve`, `POST …/{id}/return-to-draft` | `commerce.quote.approve` | Idem + IfM |
 | `POST /shop/quotes/{id}/send` | `commerce.quote.send` | Idem |
-| `GET /shop/orders`, `GET /shop/orders/{id}` | `commerce.order.view` | — |
-| `POST /shop/orders` (`DRAFT`) | `commerce.order.create_draft` | Idem |
-| `POST /shop/orders/{id}/submit` (→ `PENDING_CONFIRMATION`) | `commerce.order.create_draft` | Idem + IfM |
-| `POST /shop/orders/{id}/confirm` | `commerce.order.confirm` | Idem + IfM |
-| `POST /shop/orders/{id}/start-processing`, `POST …/{id}/mark-ready` (holat o'zgarmaydi, `ready_at`) | `commerce.order.process` | Idem + IfM |
+| `GET /shop/orders` (`status=A,B`, `branch_id`, `assigned=me\|unassigned\|<membership_id>`, `q` — raqam/telefon/ism, `needs_review`, `sort`, cursor), `GET /shop/orders/counts`, `GET /shop/orders/review-queue` (24/72 soat), `GET /shop/orders/{id}` (`ETag`, `allowed_actions`) | `commerce.order.view` (operator — o'ziniki + biriktirilmagan; omborchi — tasdiqlanganlar) | — |
+| `POST /shop/orders` (`DRAFT`, `Location`), `PATCH /shop/orders/{id}` (filial almashsa — mas'ul xodim yangi filialda ham ishlashi shart, aks holda `branch_id/out_of_scope`) | `commerce.order.create_draft` | Idem / IfM |
+| `POST /shop/orders/{id}/lines` (`Location` — buyurtma), `PATCH …/lines/{line_id}`, `DELETE …/lines/{line_id}` — faqat `DRAFT`/`PENDING_CONFIRMATION` (DEC-134) | `commerce.order.create_draft` | Idem + IfM (buyurtma versiyasi) / IfM / IfM |
+| `PUT /shop/orders/{id}/lines/{line_id}/discount` (`discount_pct`; limitgacha — darhol, undan ko'pi — so'rov) | `commerce.discount.apply` yoki `commerce.discount.request` | IfM |
+| `POST /shop/orders/{id}/lines/{line_id}/discount/approve`, `…/reject` | `commerce.discount.approve` (limit — `DISCOUNT_LIMIT_EXCEEDED`) | Idem + IfM |
+| `POST /shop/orders/{id}/submit` (→ `PENDING_CONFIRMATION`), `POST …/{id}/refresh-prices` (`note` → qo'ng'iroq natijasi izohi) | `commerce.order.create_draft` | Idem + IfM |
+| `POST /shop/orders/{id}/confirm` (qoldiq + narx qayta tekshiriladi, band qilinadi) | `commerce.order.confirm` (operator — o'ziniki) | Idem + IfM |
+| `POST /shop/orders/{id}/start-processing`, `POST …/{id}/mark-ready` (holat o'zgarmaydi; `ready_at`, `ready_by` va `transition_log` da `MARK_READY` — tarixda kim bosgani ko'rinadi), `POST …/{id}/exception` (`reason`) | `commerce.order.process` | Idem + IfM |
 | `POST /shop/orders/{id}/complete` | `commerce.order.complete` | Idem + IfM |
-| `POST /shop/orders/{id}/cancel` (`reason` majburiy) | `commerce.order.cancel` | Idem + IfM |
-| `POST /shop/orders/{id}/exception`, `POST …/{id}/resolve-exception` | `commerce.order.process` / `commerce.order.cancel` | Idem + IfM |
-| `POST /shop/orders/{id}/paid-mark` | `commerce.order.paid_mark` | Idem |
-| `POST /shop/orders/{id}/notes` | `commerce.order.note` | Idem |
-| `POST /shop/discount-requests`, `POST …/{id}/approve`, `POST …/{id}/reject` | `commerce.discount.request` / `commerce.discount.approve` | Idem |
+| `POST /shop/orders/{id}/cancel` (`reason` — qoralamadan tashqari majburiy) | `commerce.order.cancel`; qoralamani — `create_draft` egasi ham | Idem + IfM |
+| `POST /shop/orders/{id}/resolve-exception` (`resolution`: `PROCESSING`/`CANCELLED`), `POST …/{id}/review-decision` (`decision`: `WAIT`/`CANCEL`, 72 soat — DEC-134) | `commerce.order.cancel` | Idem + IfM |
+| `POST /shop/orders/{id}/take` (biriktirilmaganini o'ziga olish), `POST …/{id}/assign` (`membership_id` yoki `null`; xodimning filial doirasi buyurtma filialini qamrashi shart — aks holda 422 `invalid_choice`) | `commerce.order.confirm` / `commerce.order.assign` | Idem + IfM |
+| `POST /shop/orders/{id}/paid-mark` (bir marta) | `commerce.order.paid_mark` | Idem |
+| `POST /shop/orders/{id}/notes` (`Location` — buyurtma kartochkasi) | `commerce.order.note` | Idem |
+| `GET /shop/orders/{id}/history` — holat tarixi: kim (ism), qachon, `command`, `from_status → to_status`, sabab (xaridor ma'lumotisiz) | `commerce.order.view` | — |
+
+Buyurtma javobida xaridor telefoni va manzili bor — takroriy so'rov himoyasi faqat ID'ni saqlaydi, takror kelgan so'rov buyurtmaning **joriy** holatini qaytaradi (26 §4). Omborchiga telefon yashirilgan holda, manzil faqat yetkazishda (10 §6.8). Telefon: harf bo'lsa yoki `+998` bilan 12 raqam bo'lmasa — `invalid_format`; 9 raqam — faqat mamlakat kodisiz.
 
 ### 9.5 `messaging`
 
@@ -517,7 +533,7 @@ Holat: 2-modul backend'i qurilgan (2026-10-25, [progress/M02](progress/M02-catal
 | `POST /platform/staff/{id}/disable` | `platform.staff.manage` — platforma sessiyalari va havolalari darhol bekor; o'zini o'chirib bo'lmaydi (`FORBIDDEN`); oxirgi faol admin himoyalangan. Idem |
 | `GET /platform/audit` | `platform.shop.view_meta` — platforma jamoasi amallari jurnali. Filtr: `shop_id`, `actor_id`, `action` (boshlanishi), `date_from`, `date_to`; `limit`/`offset`, `total` |
 | `POST /platform/shops/{id}/members/{membership_id}/invite` | `platform.shop.create` — ega taklifini qayta berish (72 soat o'tgan bo'lsa). Har chaqiruv yangi havola, eskisi bekor. Idem |
-| `POST /platform/shops/{id}/activate`, `…/reactivate`, `…/suspend`, `…/close` | `platform.shop.activate` (activate, reactivate) / `.suspend` / `.close`; suspend, reactivate va close uchun sabab majburiy. Idem |
+| `POST /platform/shops/{id}/activate`, `…/reactivate`, `…/suspend`, `…/close` | `platform.shop.activate` (activate, reactivate) / `.suspend` / `.close`; suspend, reactivate va close uchun sabab majburiy. Ochiq buyurtmali shop yopilmaydi — `SHOP_HAS_OPEN_ORDERS` (TC-023). Idem |
 | `POST /platform/shops/{id}/members/{membership_id}/password-reset` | `platform.member.password_reset` — faqat shop egasi uchun. Idem |
 | `GET /platform/hardware-specs`, `GET …/review-queue`, `GET …/{id}` (versiyalar bilan), `GET /platform/hardware-spec-requests` | `platform.spec.view` |
 | `POST /platform/hardware-specs` (qoralama + 1-taklif), `POST …/{id}/versions` (o'zgarish taklifi), `POST …/{id}/versions/{n}/approve` / `reject`, `POST …/{id}/retire`, `POST /platform/hardware-spec-requests/{id}/resolve` / `reject` | `platform.spec.edit`. O'z taklifini tasdiqlab bo'lmaydi — `SELF_APPROVAL_NOT_ALLOWED` (17 §10). Hal qilishda SKU hozir ham faol va turi model turi bilan bir xil bo'lishi shart (navbatda `sku_spec_category`). Ro'yxatlar hozircha `offset` bilan (§4.1 dan chetlanish, M02). Idem |

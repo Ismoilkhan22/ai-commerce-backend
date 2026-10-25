@@ -31,13 +31,14 @@ from app.shared.errors.base import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
+from app.shared.text import strip_invisible
 from app.shared.types.actor import ActorContext
 
 ENTITY = "platform.stored_file"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-# Boshqaruv belgilari va matn yo'nalishini almashtiruvchi belgilar (U+202A–U+202E, U+2066–U+2069):
+# Boshqaruv belgilari; ko'rinmas va yo'nalish almashtiruvchi belgilar — `strip_invisible` (shared/text.py):
 # "rasm\u202egnp.exe" ekranda "rasmexe.png" bo'lib ko'rinmasin
-_NAME_UNSAFE = re.compile(r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]")
+_NAME_UNSAFE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,7 @@ def shop_id_from_key(object_key: str) -> UUID | None:
 def _clean_name(name: str | None) -> str | None:
     if not name:
         return None
-    base = _NAME_UNSAFE.sub("", name.replace("\\", "/").rsplit("/", 1)[-1]).strip()
+    base = str(strip_invisible(_NAME_UNSAFE.sub("", name.replace("\\", "/").rsplit("/", 1)[-1]))).strip()
     return base[:200] or None
 
 

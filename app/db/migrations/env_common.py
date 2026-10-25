@@ -76,7 +76,7 @@ def _run_sync(connection: Connection, schema: str) -> None:
 
 
 async def _run_online(schema: str) -> None:
-    engine = create_async_engine(_url(), poolclass=pool.NullPool)
+    engine = create_async_engine(_url(), poolclass=pool.NullPool, hide_parameters=True)
     async with engine.connect() as connection:
         await connection.run_sync(_run_sync, schema)
     await engine.dispose()

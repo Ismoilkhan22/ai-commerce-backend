@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Response, status
 from app.platform.shops.schemas import (
     BranchIn,
     BranchList,
+    BranchOptionList,
     BranchOut,
     PolicyOut,
     PolicyUpdate,
@@ -17,7 +18,7 @@ from app.platform.shops.schemas import (
     ShopProfileUpdate,
 )
 from app.platform.shops.services.shop_service import ShopService
-from app.platform.staff.infrastructure.guard import RequestContext, require_permission
+from app.platform.staff.infrastructure.guard import RequestContext, ShopContext, require_permission
 from app.platform.staff.infrastructure.providers import shop_service
 from app.shared.http import etag, require_if_match
 from app.shared.idempotency.dependency import get_idempotency_key
@@ -83,6 +84,13 @@ async def update_policies(
 @router.get("/branches", response_model=BranchList)
 async def list_branches(ctx: SettingsView, svc: Shops) -> BranchList:
     return BranchList(items=await svc.branches(ctx.db, ctx.actor))
+
+
+@router.get("/branches/options", response_model=BranchOptionList)
+async def list_branch_options(ctx: ShopContext, svc: Shops) -> BranchOptionList:
+    """Filial tanlash uchun (kirim, tez sotuv, buyurtma): har shop xodimiga ochiq — id, nom, holat,
+    olib ketish joyi. Manzil va telefon yo'q (to'liq ro'yxat — `GET /branches`, sozlamalar ruxsati bilan)."""
+    return BranchOptionList(items=await svc.branch_options(ctx.db, ctx.actor))
 
 
 @router.post("/branches", response_model=BranchOut, status_code=status.HTTP_201_CREATED)

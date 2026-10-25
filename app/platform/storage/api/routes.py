@@ -89,6 +89,11 @@ async def upload_file(
         "filename": filename,
         "sha256": hashlib.sha256(upload.data).hexdigest(),
     }
+
+    async def replay(body: Any) -> StoredFileOut:
+        # Imzoli havola 5 daqiqada eskiradi — takroriy so'rovda yangisi beriladi (QA N4)
+        return await svc.get(ctx.db, ctx.actor, UUID(str(body["id"])))
+
     stored = await run_idempotent(
         ctx.db,
         ctx.actor.shop_id,
@@ -96,6 +101,8 @@ async def upload_file(
         key,
         fingerprint,
         lambda: svc.upload(ctx.db, ctx.actor, upload.purpose, upload.data, filename),
+        stored=lambda out: {"id": str(out.id)},  # imzoli havola bazaga yozilmaydi
+        on_replay=replay,
         status=201,
     )
     set_location(request, response, "get_file", file_id=result_field(stored))

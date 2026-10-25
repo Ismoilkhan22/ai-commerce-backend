@@ -22,7 +22,9 @@ from redis.asyncio import Redis
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
+from app.dependencies import get_catalog_query, get_order_query
 from app.domains.catalog.providers import build_catalog_services
+from app.domains.commerce.providers import build_commerce_services
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
@@ -36,6 +38,7 @@ from app.platform.storage.services.file_service import FileService
 from app.platform.storage.signing import UrlSigner
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
+from app.shared.db.encryption import configure_pii
 from app.shared.db.session import Database
 from app.shared.errors.handlers import register_exception_handlers
 from app.shared.i18n.middleware import I18nMiddleware
@@ -118,6 +121,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level, json=settings.app_env != "local")
+    configure_pii(settings.pii_keyring())  # xaridor telefoni va manzili kalitlari (26 §4)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -195,7 +199,7 @@ def _wire_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainM
     app.state.use = use
     app.state.auth_service = AuthService(auth_config, hasher, audit, use)
     app.state.staff_service = staff
-    app.state.shop_service = ShopService(use, audit, auth_config, staff)
+    app.state.shop_service = ShopService(use, audit, auth_config, staff, get_order_query())
     app.state.platform_queries = PlatformQueryService()
     app.state.platform_team = PlatformTeamService(audit, auth_config)
     files = FileService(
@@ -207,6 +211,7 @@ def _wire_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainM
     )
     app.state.file_service = files
     app.state.catalog = build_catalog_services(use, audit, files)
+    app.state.commerce = build_commerce_services(use, audit, files, get_catalog_query())
 
 
 app = create_app()

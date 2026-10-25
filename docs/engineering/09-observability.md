@@ -98,6 +98,12 @@ Har qatorda:
 ### 4.2 Taqiqlangan (hech qachon logga yozilmaydi)
 Xabar yoki chat matni, telefon, email, manzil, ism, karta, chek rasmi, signed URL, access/refresh token, bot token, Meta token, parol, prompt matni, LLM javob matni, audio, STT transkripti, xaridorning izohi. `shared/logging/filters.py` kalit nomlari va regex (telefon, email, token shakllari) bo'yicha maskalaydi — bu **ikkinchi qavat**; birinchi qavat — bunday narsani logga umuman uzatmaslik.
 
+**Kirish logi va query string** (3-modul QA, 2026-10-26): qidiruv parametri xaridor telefonini olib kelishi mumkin (`GET /shop/orders?q=+998…`). Shuning uchun:
+- uvicorn'ning o'z kirish logi o'chirilgan (`app/config/logging.py`; ishga tushirishda `--no-access-log` ham); uning o'rniga `RequestContextMiddleware` bitta `http.request` qatorini yozadi: metod, yo'l, holat, davomiylik va query parametrlarining **faqat nomlari** (`query_keys`), qiymatlarsiz;
+- **proksi (nginx) va har qanday oldingi qatlam yo'lni query string'siz yozadi** (`$uri`, `$request_uri` emas); span'da `http.url` o'rniga route template.
+- `path` maydonida haqiqiy yo'l emas, **route shabloni** yoziladi (`/api/v1/auth/invites/{token}/accept`, `/api/v1/shop/orders/{order_id}`): bir martalik havola tokeni va ID'lar logga tushmaydi (QA 2-tur N3). Route topilmagan so'rov (404) — yo'l bo'laklari niqoblanadi (`/api/v1/x/{seg}`);
+- SQLAlchemy engine'lari `hide_parameters=True` bilan: DB xatosi matnida (`IntegrityError` va h.k.) SQL parametrlari — telefon, ism — ko'rinmaydi, faqat "parameters hidden" (QA 2-tur N1).
+
 ---
 
 ## 5. Span'lar

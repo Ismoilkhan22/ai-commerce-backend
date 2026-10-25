@@ -22,6 +22,7 @@ errors:
   LAST_OWNER_REQUIRED: "Shopda kamida bitta ega qolishi kerak"
   LAST_ADMIN_REQUIRED: "Platformada kamida bitta faol admin qolishi kerak"
   FILE_IN_USE: "Bu rasm boshqa mahsulotga biriktirilgan. Rasmni qaytadan yuklang"
+  SHOP_HAS_OPEN_ORDERS: "Shopda ochiq buyurtmalar bor — avval ularni yakunlang yoki bekor qiling"
   SPEAKER_CONFLICT: "Suhbatni boshqa operator oldi"
   CHANNEL_UNAVAILABLE: "Kanal ulanmagan yoki ishlamayapti"
   PAYLOAD_TOO_LARGE: "Fayl juda katta"

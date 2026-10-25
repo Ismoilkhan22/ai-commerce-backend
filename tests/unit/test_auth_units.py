@@ -32,7 +32,23 @@ def test_phone_normalized_to_e164(raw: str) -> None:
     assert normalize_phone(raw) == "+998901234567"
 
 
-@pytest.mark.parametrize("raw", ["", "12345", "+7 900 123 45 67", "99890123456789"])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",
+        "12345",
+        "+7 900 123 45 67",
+        "99890123456789",
+        # QA (3-modul F6): to'liq bo'lmagan +998 raqam boshqa raqamga aylanmasin; harflar — rad
+        "+998 99 1234",
+        "+998 33 1234 x",
+        "abc+998901234567def",
+        "+901234567",
+        "90 123 45 67 ext 5",
+        "998 90 123 45 6",
+        "+998 90 123 45 67 +",
+    ],
+)
 def test_invalid_phone_rejected(raw: str) -> None:
     with pytest.raises(ValidationError):
         normalize_phone(raw)

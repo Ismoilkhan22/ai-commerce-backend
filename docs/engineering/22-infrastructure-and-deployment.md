@@ -66,6 +66,7 @@ Internet (xaridorlar, xodimlar, Telegram, Meta)
 ```
 
 - Tashqariga faqat nginx ochiq (80/443). PostgreSQL, Redis, MinIO konsoli, worker'lar — faqat ichki tarmoqda.
+- nginx kirish logi yo'lni **query string'siz** yozadi (`log_format` da `$uri`, `$request_uri` emas): qidiruvda xaridor telefoni bo'lishi mumkin (09 §4.2).
 - Bitta VM — bitta nosozlik nuqtasi. Pilot uchun ongli qaror; 99.5% maqsad (`00` §4), 99.9% va'da qilinmaydi.
 - Fayllar (MinIO) va DB — O'zbekistonda (DEC-013, ADR-030). LLM'ga faqat redaction'dan o'tgan matn.
 

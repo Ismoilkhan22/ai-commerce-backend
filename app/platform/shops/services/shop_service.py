@@ -18,6 +18,7 @@ from app.platform.shops.models.orm import Branch, Shop, ShopNote, ShopPolicy
 from app.platform.shops.platform_schemas import PlatformShopUpdate, ShopNoteIn, ShopNoteOut
 from app.platform.shops.schemas import (
     BranchIn,
+    BranchOption,
     BranchOut,
     PlatformShopOut,
     PolicyOut,
@@ -36,8 +37,14 @@ from app.platform.staff.services.staff_service import StaffService
 from app.platform.staff.state_machine import ENTITY as MEMBERSHIP
 from app.platform.use.services.use_service import UseService
 from app.shared.clock import utcnow
+from app.shared.contracts.commerce import OrderQueryPort
 from app.shared.db.session import set_identity_context
-from app.shared.errors.base import BranchClosedError, NotFoundError, ValidationError
+from app.shared.errors.base import (
+    BranchClosedError,
+    NotFoundError,
+    ShopHasOpenOrdersError,
+    ValidationError,
+)
 from app.shared.http import check_version
 from app.shared.phone import normalize_phone
 from app.shared.types.actor import ActorContext
@@ -85,11 +92,20 @@ RESERVED_SLUGS = frozenset(
 
 
 class ShopService:
-    def __init__(self, use: UseService, audit: AuditService, config: AuthConfig, staff: StaffService) -> None:
+    def __init__(
+        self,
+        use: UseService,
+        audit: AuditService,
+        config: AuthConfig,
+        staff: StaffService,
+        orders: OrderQueryPort,
+    ) -> None:
         self.use = use
         self.audit = audit
         self.config = config
         self.staff = staff
+        # Yopishdan oldin ochiq buyurtmalar tekshiruvi (TC-023)
+        self.orders = orders
 
     # ------------------------------------------------------------- shop panel
     async def profile(self, db: AsyncSession, actor: ActorContext) -> ShopOut:
@@ -166,6 +182,14 @@ class ShopService:
         if actor.branch_ids is not None:  # filialga biriktirilgan xodim faqat o'z filiallarini ko'radi
             query = query.where(Branch.id.in_(actor.branch_ids))
         return [BranchOut.model_validate(b) for b in (await db.execute(query)).scalars()]
+
+    async def branch_options(self, db: AsyncSession, actor: ActorContext) -> list[BranchOption]:
+        """Har shop xodimi uchun (operator, omborchi ham): filial tanlash. Biriktirilgan xodim — faqat
+        o'z filiallari."""
+        query = select(Branch).where(Branch.shop_id == actor.shop_id).order_by(Branch.created_at)
+        if actor.branch_ids is not None:
+            query = query.where(Branch.id.in_(actor.branch_ids))
+        return [BranchOption.model_validate(b) for b in (await db.execute(query)).scalars()]
 
     async def create_branch(self, db: AsyncSession, actor: ActorContext, data: BranchIn) -> BranchOut:
         values = data.model_dump()
@@ -285,6 +309,13 @@ class ShopService:
             command
         ]
         shop = await self._shop(db, shop_id, for_update=True)
+        if target == "CLOSED":
+            # Mavjud buyurtmalar oxiriga yetkaziladi (FSM-01, TC-023): ochiq buyurtmali shop yopilmaydi
+            counts = await self.orders.open_order_counts(db, shop.id)
+            if counts:
+                raise ShopHasOpenOrdersError(
+                    "Shop has open orders", open_orders=counts, total=sum(counts.values())
+                )
         result = await self._transition(db, _on_shop(actor, shop.id), shop, target, command, reason)
         if target == "CLOSED":
             # Yopilgan shopda hech kim ishlamaydi: barcha sessiyalar darhol tugaydi.

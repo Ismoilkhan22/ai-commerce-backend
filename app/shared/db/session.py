@@ -38,6 +38,8 @@ def _engine(url: str, config: DatabaseConfig) -> AsyncEngine:
         max_overflow=config.max_overflow,
         pool_timeout=config.pool_timeout_s,
         pool_pre_ping=True,
+        # Xato matniga SQL parametrlari (telefon, ism) qo'shilmaydi — log va Sentry'ga PII tushmasin (26 §4)
+        hide_parameters=True,
         connect_args={
             "server_settings": {
                 "application_name": config.application_name,

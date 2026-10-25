@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 from app.platform.auth.config import AuthConfig
+from app.shared.db.encryption import PiiKeyring, parse_keys
 from app.shared.db.session import DatabaseConfig
 from app.shared.i18n.locale import Locale
 
@@ -24,6 +25,9 @@ _WEAK_PASSWORDS = frozenset({"postgres", "password", "admin", "secret", "app_run
 MIN_DB_PASSWORD_LENGTH = 12
 _DEV_JWT_SECRET = "dev-only-insecure-jwt-secret-change-me"  # noqa: S105 — faqat lokal, prod'da rad etiladi
 MIN_JWT_SECRET_LENGTH = 32
+# Xaridor telefoni va manzili kalitlari (26 §4). Faqat lokal — staging/production'da rad etiladi
+_DEV_PII_KEYS = "dev1:ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDAwMDA="
+_DEV_PII_HMAC_KEY = "ZGV2LW9ubHktcGlpLWhtYWMta2V5LWNoYW5nZS1tZSE="
 
 
 def _unsafe_db_url_reason(url: str) -> str | None:
@@ -83,6 +87,12 @@ class Settings(BaseSettings):
     public_files_url: str = "http://localhost:8000/api/v1/public/files"
     signed_url_ttl_seconds: int = 300  # yopiq fayl havolasi 5 daqiqa amal qiladi
 
+    # Xaridor ma'lumoti shifrlash (26 §4, §9): "id:base64(32 bayt),id2:...". Yangi kalit — ro'yxat oxiriga,
+    # keyin `pii_active_key_id` unga o'tkaziladi; eski kalit eski yozuvlarni o'qish uchun qoladi.
+    pii_encryption_keys: SecretStr = SecretStr(_DEV_PII_KEYS)
+    pii_active_key_id: str = "dev1"
+    pii_hmac_key: SecretStr = SecretStr(_DEV_PII_HMAC_KEY)  # telefon bo'yicha qidirish (base64)
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
@@ -106,7 +116,20 @@ class Settings(BaseSettings):
                     raise ValueError(
                         f"{name} {self.app_env} muhitida lokal manzil bo'lmasin (havolalar ishlamaydi)"
                     )
+            if (
+                self.pii_encryption_keys.get_secret_value() == _DEV_PII_KEYS
+                or self.pii_hmac_key.get_secret_value() == _DEV_PII_HMAC_KEY
+            ):
+                raise ValueError(f"PII kalitlari {self.app_env} muhitida lokal standart bo'lmasin")
+        self.pii_keyring()  # kalit formati noto'g'ri bo'lsa — ishga tushishda xato
         return self
+
+    def pii_keyring(self) -> PiiKeyring:
+        return PiiKeyring(
+            keys=parse_keys(self.pii_encryption_keys.get_secret_value()),
+            active_key_id=self.pii_active_key_id,
+            hmac_key=parse_keys(f"hmac:{self.pii_hmac_key.get_secret_value()}")["hmac"],
+        )
 
     def auth_config(self) -> AuthConfig:
         return AuthConfig(

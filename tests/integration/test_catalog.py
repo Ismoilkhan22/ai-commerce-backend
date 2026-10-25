@@ -417,10 +417,11 @@ def test_upload_detects_type_from_content_and_limits_size(world: World) -> None:
     assert (fake.status_code, _code(fake)) == (415, "UNSUPPORTED_MEDIA_TYPE")  # nomi .jpg, ichi HTML
     big = _upload(world, owner, PNG + b"\x00" * (5 * 1024 * 1024))
     assert (big.status_code, _code(big)) == (413, "PAYLOAD_TOO_LARGE")
-    evidence = _upload(world, owner, purpose="STOCK_EVIDENCE")
-    assert evidence.status_code == 403  # 3-modulgacha hech kimda ruxsat yo'q
+    evidence = _upload(world, owner, purpose="STOCK_EVIDENCE")  # 3-modul: tuzatish dalili — yopiq fayl
+    assert evidence.status_code == 201 and evidence.json()["is_public"] is False
     _, _, sales = world.invite(owner, "SALES")
     assert _upload(world, sales).status_code == 403
+    assert _upload(world, sales, purpose="STOCK_EVIDENCE").status_code == 403  # operatorda tuzatish yo'q
     assert c.get("/api/v1/public/files/shops/not-a-uuid/x/y").status_code == 404
 
 
