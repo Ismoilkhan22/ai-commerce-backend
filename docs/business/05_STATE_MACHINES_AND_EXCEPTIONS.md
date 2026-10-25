@@ -137,7 +137,10 @@ Tasdiq kutilmoqda yoki Tasdiqlandi ──(menejer yoki ega bekor qildi, sabab bi
 
 Tayyorlanmoqda ──(muammo: mahsulot shikastlangan, xaridor bosh tortdi...)──▶ Muammoli (EXCEPTION)
 Muammoli ──(menejer hal qildi)──▶ Tayyorlanmoqda yoki Bekor qilindi
+Tayyorlanmoqda ──(72 soatlik vazifa: menejer "bekor" dedi)──▶ Bekor qilindi   [band "muddati o'tdi", mahsulot sotuvga qaytadi; DEC-134]
 ```
+
+**Tasdiqlangan buyurtma o'zgartirilmaydi** (DEC-134): xaridor fikrini o'zgartirsa, buyurtma bekor qilinadi va yangisi ochiladi. **Bir buyurtma — bitta filial.**
 
 **Har bir o'tish batafsil:**
 
@@ -188,12 +191,12 @@ Muammoli ──(menejer hal qildi)──▶ Tayyorlanmoqda yoki Bekor qilindi
 Faol ──(buyurtma tayyorlanmoqda)──▶ Ajratilgan (ALLOCATED)   [band −1, ajratilgan +1]
 Ajratilgan ──(buyurtma topshirildi)──▶ Ishlatildi (CONSUMED)   [ajratilgan −1, qoldiq −1]
 Faol yoki Ajratilgan ──(buyurtma bekor qilindi)──▶ Bo'shatildi (RELEASED)   [band yoki ajratilgan −1]
-Faol ──(menejer "muddati o'tdi" deb bekor qildi)──▶ Muddati o'tdi (EXPIRED)
+Faol yoki Ajratilgan ──(menejer "muddati o'tdi" deb bekor qildi)──▶ Muddati o'tdi (EXPIRED)
 ```
 
 **Qoidalar:**
 - Sotuvga mavjud son hech qachon noldan kam bo'lmaydi.
-- Rezerv **avtomatik bekor bo'lmaydi.** Mahsulot 72 soatdan ko'p band turib qolsa (xaridor olib ketmasa), menejerga "bekor qilinsinmi?" degan vazifa tushadi. Qarorni odam qabul qiladi (DEC-104).
+- Rezerv **avtomatik bekor bo'lmaydi.** Buyurtma tasdiqlanganidan 72 soat o'tib, mahsulot hali band yoki ajratilgan bo'lsa (xaridor olib ketmasa), menejerga "bekor qilinsinmi?" degan vazifa tushadi. Qarorni odam qabul qiladi (DEC-104, DEC-134).
 - Do'kondagi oddiy sotuv ("tez sotuv" tugmasi) qoldiqni darhol kamaytiradi. Agar mahsulot band qilingan bo'lsa, tizim uni sotishga ruxsat bermaydi (DEC-123).
 
 ---
@@ -225,14 +228,15 @@ Oxirgi egani o'chirib bo'lmaydi: avval boshqa ega tayinlanadi.
 ## Mahsulotni saytga chiqarish (FSM-02)
 
 ```
-Qoralama (DRAFT) ──(katalog xodimi tekshiruvga yubordi)──▶ Tekshiruvda (IN_REVIEW)   [majburiy maydonlar tekshiriladi]
-Tekshiruvda ──(menejer tasdiqladi)──▶ Chiqarilgan (PUBLISHED)   [sayt va AI ko'radi]
+Qoralama (DRAFT) ──(ega yoki menejer chiqardi)──▶ Chiqarilgan (PUBLISHED)   [majburiy maydonlar va narx tekshiriladi; sayt va AI ko'radi]
+Qoralama ──(katalog xodimi tekshiruvga yubordi)──▶ Tekshiruvda (IN_REVIEW)   [keyin: katalog xodimi roli qo'shilganda]
+Tekshiruvda ──(menejer tasdiqladi)──▶ Chiqarilgan
 Chiqarilgan ──(menejer yashirdi)──▶ Yashirilgan (HIDDEN)   [yangi buyurtmaga kirmaydi]
 Yashirilgan ──(qayta chiqarildi)──▶ Chiqarilgan   [narx va qoldiq qayta tekshiriladi]
-Chiqarilgan ──(ega arxivladi)──▶ Arxivda (ARCHIVED)   [eski buyurtmalardagi ma'lumot saqlanadi]
+Qoralama / Chiqarilgan / Yashirilgan ──(ega arxivladi)──▶ Arxivda (ARCHIVED)   [eski buyurtmalardagi ma'lumot saqlanadi]
 ```
 
-Narxi yo'q mahsulot saytga chiqmaydi.
+Narxi yo'q mahsulot saytga chiqmaydi. Stage 1 da katalog xodimi roli yo'q, shuning uchun ega yoki menejer qoralamani to'g'ridan chiqaradi; arxivlashni faqat ega qiladi (DEC-133).
 
 ## Kanal ulanishi — Telegram, Instagram (FSM-03)
 

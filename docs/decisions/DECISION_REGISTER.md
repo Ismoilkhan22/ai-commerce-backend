@@ -578,6 +578,31 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | STIR | **Majburiy va unikal** | Pilot kelishuvi, bitta korxona ikki marta ro'yxatdan o'tmasin |
 | Login | Telefon (majburiy) + parol; parolni terib topishdan himoya (5 xato → 15 daqiqa blok) | SMS kod (OTP) keyinroq |
 
+### DEC-133 — Katalog bazasi (2-modul) — `APPROVED (2026-10-25, founder)`
+**Nima:** `catalog` diagrammasini ko'rib chiqishda qabul qilingan qarorlar.
+**Qayerda:** `engineering/db/catalog.dbml`, `engineering/db/catalog.md`, `business/05` (FSM-02), `business/02` M04/M05.
+
+| Savol | Qaror | Nega |
+|---|---|---|
+| Saytga chiqarish | Ega yoki menejer qoralamani **to'g'ridan** chiqaradi; "Tekshiruvda" — keyin katalog xodimi qo'shilganda | Stage 1 da katalog xodimi roli yo'q (DEC-131); ortiqcha bosqich foydasiz |
+| Arxivlash | **Faqat ega**, qoralama / chiqarilgan / yashirilgan holatdan | `business/05` dagidek ega qaroridir |
+| Toifalar | **Platforma ro'yxati** (3 tilda), shop faqat tanlaydi | AI qidiruv, texnik kutubxonaga bog'lash va Stage 2 umumiy qidiruv uchun tartib |
+| So'm narxini yaxlitlash | **Yaxlitlanmaydi**, aniq so'mgacha | Founder tanlovi |
+| Mahsulot rasmlari | **Ochiq** (taxmin qilib bo'lmaydigan manzil); import va eksport fayllari yopiq | Sayt tezligi, kesh, Telegram/Instagram'da ochilishi |
+| "Aksiya" (`discount_rules`) | **Stage 1 da yo'q** | Chegirma limitlari `shop_policies` da, aniq chegirma taklif va buyurtmada (3-modul) |
+
+### DEC-134 — Ombor va buyurtmalar bazasi (3-modul) — `APPROVED (2026-10-25, founder)`
+**Nima:** `commerce` diagrammasini ko'rib chiqishda qabul qilingan qarorlar.
+**Qayerda:** `engineering/db/commerce.dbml`, `engineering/db/commerce.md`, `business/05` (FSM-07, FSM-08).
+
+| Savol | Qaror | Nega |
+|---|---|---|
+| 72 soatlik "bekor qilinsinmi?" | **Band va ajratilgan** bandlarga; tayyorlanayotgan buyurtma ham shu vazifadan bekor qilinishi mumkin | Xaridor kelmagan tayyor buyurtma unutilmaydi, mahsulot bekorga turmaydi |
+| Filial | **Bir buyurtma — bitta filial** | Xaridor bitta joydan oladi; qoldiq va band sodda |
+| Tasdiqlangandan keyin o'zgartirish | **Yo'q** — bekor qilib yangisi ochiladi | Band, daftar va narx tarixi toza |
+| Stok tuzatish tasdig'i | Omborchiniki **har doim** tasdiq bilan; ega/menejer to'g'ridan | Sozlama yo'q, kamomadni jim yashirib bo'lmaydi |
+| Kurs o'zgarsa | Tasdiqlashda **so'm narxi qayta hisoblanadi**; farq bo'lsa "narx o'zgardi" va xaridor roziligi | Xaridor ko'rgan summa jim o'zgarmaydi (BL-047), farqni shop ham ko'tarmaydi |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

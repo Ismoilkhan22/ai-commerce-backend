@@ -19,4 +19,5 @@ Har domen jadvallari shu papkada, [DBML](https://dbml.dbdiagram.io/docs/) format
 | Fayl | Domen | Holat |
 |---|---|---|
 | `platform.dbml` + [`platform.md`](platform.md) (har jadval va maydon izohi) | Shop, filiallar, foydalanuvchilar, rollar, sessiyalar | ✅ Tasdiqlangan (DEC-131), kodda — 1-modul |
-| `catalog.dbml` + [`catalog.md`](catalog.md) | Toifalar, mahsulot va SKU, narx va kurs, texnik kutubxona, fayllar | Qoralama — founder ko'rib chiqmoqda (2-modul) |
+| `catalog.dbml` + [`catalog.md`](catalog.md) | Toifalar, mahsulot va SKU, narx va kurs, texnik kutubxona, fayllar | ✅ Tasdiqlangan (DEC-133) — 2-modul |
+| `commerce.dbml` + [`commerce.md`](commerce.md) | Ombor (qoldiq, daftar, kirim, tuzatish), tez sotuv, buyurtmalar, band qilish, saytdan buyurtma so'rovi | ✅ Tasdiqlangan (DEC-134) — 3-modul |

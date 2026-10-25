@@ -1,0 +1,450 @@
+// =====================================================================
+// AI Commerce OS — `catalog` schemasi: Katalog (2-modul)
+// Holat: TASDIQLANGAN — founder qarorlari DEC-133 (2026-10-25)
+// Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
+// Izohlar: db/catalog.md (har jadval va maydon nega kerak)
+// Manba hujjatlar: business/02 M04, M05; business/03 BL-011…BL-018; business/05 FSM-02;
+//                  engineering/07 §4.3, engineering/17 §4–5, §10; DEC-011, DEC-120, DEC-121
+// =====================================================================
+
+Project ai_commerce_os_catalog {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Umumiy qoidalar (07 §2)** — platform schemasidagi bilan bir xil:
+  - id — UUIDv7, ilovada yaratiladi. Vaqt — timestamptz (UTC).
+  - Shopga tegishli jadvalda `shop_id NOT NULL`; ichki FK’lar (shop_id, id) juftligi bilan — boshqa shop obyektiga bog‘lab bo‘lmaydi.
+  - Holatlar — TEXT + CHECK (diagrammada Enum).
+  - Pul — `*_minor bigint` (tiyin / sent) + valyuta. Float yo‘q.
+  - Boshqa schemadagi obyekt (platform.shops, platform.memberships, platform.stored_files) — faqat uuid, FK’siz.
+  - Biznes obyektlari o‘chirilmaydi — ARCHIVED / RETIRED.
+
+  **Ikki xil jadval bor:**
+  - Shop jadvallari (shop_id bor): mahsulot, SKU, rasm, narx, kurs, spec bog‘lanishi, spec so‘rovi.
+  - Platforma ma’lumotnomalari (shop_id yo‘q, shoplar faqat o‘qiydi): toifalar, texnik ma’lumotlar kutubxonasi.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum)
+// ---------------------------------------------------------------------
+
+Enum catalog.product_status {
+  DRAFT [note: 'Qoralama — saytda va AI’da ko‘rinmaydi']
+  IN_REVIEW [note: 'Tekshiruvda — keyin qo‘shiladigan "katalog xodimi" roli uchun. Stage 1 da ega/menejer qoralamani to‘g‘ridan chiqaradi (DEC-133)']
+  PUBLISHED [note: 'Saytda va AI javoblarida ko‘rinadi']
+  HIDDEN [note: 'Yashirilgan — yangi buyurtmaga kirmaydi']
+  ARCHIVED [note: 'Arxivda — eski buyurtmalarda ma’lumoti qoladi (BL-014). Faqat ega arxivlaydi; qoralama, chiqarilgan va yashirilgandan (DEC-133)']
+}
+
+Enum catalog.sku_status {
+  ACTIVE
+  ARCHIVED [note: 'Bu variant endi sotilmaydi']
+}
+
+Enum catalog.sku_condition {
+  NEW [note: 'Yangi']
+  USED [note: 'Ishlatilgan']
+  REFURBISHED [note: 'Qayta tiklangan']
+}
+
+Enum catalog.currency {
+  UZS [note: 'So‘m; minor = tiyin (1 so‘m = 100)']
+  USD [note: 'Dollar; minor = sent. Xaridorga shop kursi bo‘yicha so‘mda ko‘rsatiladi (DEC-121)']
+}
+
+Enum catalog.price_source {
+  MANUAL [note: 'Xodim qo‘lda kiritdi']
+  IMPORT [note: 'Fayldan yuklandi (import — 5-modul)']
+}
+
+Enum catalog.rate_source {
+  MANUAL [note: 'Shop o‘zi kiritdi']
+  CBU [note: 'Markaziy bank kursi (avtomatik olish — fon ishlari bilan, 5-modul)']
+}
+
+Enum catalog.spec_category {
+  CPU
+  MOTHERBOARD
+  GPU
+  RAM
+  PSU
+  CASE
+  CPU_COOLER
+  STORAGE
+}
+
+Enum catalog.spec_status {
+  DRAFT [note: 'Hali tasdiqlanmagan — SKU’larga bog‘lanmaydi']
+  APPROVED [note: 'Ikkinchi odam tasdiqlagan — moslik tekshiruvi ishlatadi']
+  RETIRED [note: 'Eskirgan — yangi bog‘lanish yo‘q, eskilari qoladi']
+}
+
+Enum catalog.spec_version_status {
+  PENDING [note: 'Taklif qilingan o‘zgarish, tasdiq kutilmoqda']
+  APPROVED [note: 'Tasdiqlandi — asosiy yozuvga ko‘chirildi']
+  REJECTED [note: 'Rad etildi (sabab bilan)']
+}
+
+Enum catalog.link_method {
+  AUTO_MPN [note: 'Ishlab chiqaruvchi kodi (MPN) aniq mos keldi']
+  AUTO_MODEL [note: 'Brend + model nomi aniq mos keldi']
+  MANUAL [note: 'Xodim ro‘yxatdan o‘zi tanladi']
+}
+
+Enum catalog.spec_request_status {
+  OPEN [note: 'Platforma navbatida (maqsad — 2 ish kuni)']
+  RESOLVED [note: 'Spec qo‘shildi, SKU bog‘landi']
+  REJECTED [note: 'Rad etildi (masalan, PC qismi emas)']
+}
+
+Enum platform.file_purpose {
+  PRODUCT_IMAGE [note: '2-modul']
+  IMPORT_FILE [note: 'Keyin — 5-modul']
+  EXPORT_FILE [note: 'Keyin — hisobotlar']
+}
+
+Enum platform.file_status {
+  ACTIVE
+  DELETED [note: 'Ishlatilmaydi; fayl keyin omboridan o‘chiriladi']
+}
+
+// ---------------------------------------------------------------------
+// Platforma ma’lumotnomasi: toifalar (shop_id yo‘q)
+// ---------------------------------------------------------------------
+
+Table catalog.categories {
+  code text [pk, note: 'CPU, GPU, LAPTOP, MONITOR... (UPPER_SNAKE). Kodda va API’da shu ishlatiladi']
+  parent_code text [note: 'Ichma-ich toifa uchun (masalan PC_PARTS → CPU). Ildiz uchun NULL']
+  name_uz text [not null]
+  name_ru text [not null]
+  name_en text [not null]
+  spec_category catalog.spec_category [note: 'PC qismi bo‘lsa — texnik kutubxonaning qaysi turi. Boshqa toifalar uchun NULL (moslik tekshirilmaydi)']
+  position int [not null, default: 0, note: 'Menyudagi tartib']
+  is_active boolean [not null, default: true, note: 'O‘chirilgan toifaga yangi mahsulot qo‘shilmaydi']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  Hamma shop uchun bitta ro‘yxat. Platforma jamoasi yuritadi, shop faqat tanlaydi (DEC-133).
+  Boshlang‘ich ro‘yxat migratsiya bilan qo‘shiladi.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Mahsulot va variantlar
+// ---------------------------------------------------------------------
+
+Table catalog.products {
+  id uuid [pk]
+  shop_id uuid [not null]
+  category_code text [not null]
+  brand text [note: 'Masalan "MSI". Spec bilan avtomatik bog‘lashda ishlatiladi']
+  title text [not null, note: 'Masalan "MSI GeForce RTX 4060 Ventus 2X"']
+  description text
+  status catalog.product_status [not null, default: 'DRAFT', note: 'FSM-02']
+  published_at timestamptz [note: 'Oxirgi marta saytga chiqarilgan vaqt']
+  archived_at timestamptz
+  created_by uuid [note: 'platform.memberships.id — kim qo‘shgan']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique, note: 'SKU, rasm FK’lari uchun']
+    (shop_id, status) [note: 'Ro‘yxat: "chiqarilganlar", "qoralamalar"']
+    (shop_id, category_code)
+  }
+  Note: '''
+  Shop sotadigan mahsulot (kartochka). Narx va qoldiq mahsulotda emas — variantda (SKU).
+  Saytga chiqish sharti (BL-012): toifa va nom bor, kamida bitta ACTIVE SKU va uning narxi bor.
+  Narx so‘mga o‘girilganda yaxlitlanmaydi — aniq so‘mgacha (DEC-133). "Aksiya" jadvali Stage 1 da yo‘q (DEC-133).
+  '''
+}
+
+Table catalog.skus {
+  id uuid [pk]
+  shop_id uuid [not null]
+  product_id uuid [not null]
+  sku_code text [not null, note: 'Shop ichidagi kod (BL-011). Odam kiritadi yoki avtomatik']
+  variant_name text [note: 'Masalan "8 GB, qora". Bitta variant bo‘lsa — bo‘sh']
+  condition catalog.sku_condition [not null, default: 'NEW']
+  mpn text [note: 'Ishlab chiqaruvchi kodi, kiritilganicha']
+  mpn_normalized text [note: 'Katta harf, bo‘shliq va chiziqchasiz — spec bilan solishtirish uchun']
+  model_name text [note: 'Model nomi, kiritilganicha (AUTO_MODEL bog‘lash uchun)']
+  attributes jsonb [not null, default: '{}', note: 'Variant xususiyatlari: {"rang": "qora", "xotira_gb": 8}']
+  warranty_months int [note: 'Kafolat muddati, oy (CHECK >= 0). Sotilganda buyurtmaga nusxa olinadi']
+  status catalog.sku_status [not null, default: 'ACTIVE']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, sku_code) [unique, note: 'BL-011: takror kod qabul qilinmaydi']
+    (shop_id, id) [unique]
+    (shop_id, product_id)
+  }
+  Note: '''
+  Sotiladigan aniq variant. Narx, qoldiq (3-modul), buyurtma qatori — shu darajada.
+  Holati (yangi/ishlatilgan) variantning bir qismi: "RTX 4060 yangi" va "RTX 4060 ishlatilgan" — ikki SKU.
+  '''
+}
+
+Table catalog.product_media {
+  id uuid [pk]
+  shop_id uuid [not null]
+  product_id uuid [not null]
+  file_id uuid [not null, note: 'platform.stored_files.id — FK’siz (boshqa schema). Shu shopniki ekani service’da tekshiriladi (TC-ISO-05)']
+  position int [not null, default: 0, note: '0 — asosiy rasm']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, product_id, position)
+  }
+  Note: 'Mahsulot rasmlari. Bitta mahsulotga ko‘pi bilan 10 ta (kodda).'
+}
+
+// ---------------------------------------------------------------------
+// Narx va kurs
+// ---------------------------------------------------------------------
+
+Table catalog.price_versions {
+  id uuid [pk]
+  shop_id uuid [not null]
+  sku_id uuid [not null]
+  amount_minor bigint [not null, note: 'CHECK > 0 (BL-015: nol va manfiy narx yo‘q). 4 500 000 so‘m = 450000000']
+  currency catalog.currency [not null]
+  source catalog.price_source [not null, default: 'MANUAL']
+  reason text [note: 'Nega o‘zgardi (ixtiyoriy)']
+  created_by uuid [note: 'platform.memberships.id']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, sku_id, id) [unique, note: 'current_prices FK’i narx aynan shu SKU’niki ekanini kafolatlaydi']
+    (shop_id, sku_id, created_at) [note: 'Narx tarixi']
+  }
+  Note: '''
+  Narx tarixi. Yozuv hech qachon o‘zgarmaydi va o‘chirilmaydi: yangi narx = yangi qator (ilova roli UPDATE/DELETE qila olmaydi).
+  RLS (FORCE) — shop konteksti bo‘yicha (engineering/10 §4).
+  '''
+}
+
+Table catalog.current_prices {
+  shop_id uuid [not null]
+  sku_id uuid [not null]
+  price_version_id uuid [not null]
+  version bigint [not null, default: 1, note: 'Ikki kishi bir vaqtda narx o‘zgartirsa — ikkinchisi VERSION_CONFLICT']
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, sku_id) [pk]
+  }
+  Note: '''
+  Har SKU’ning hozirgi narxi — price_versions’dagi bitta qatorga ko‘rsatkich.
+  Alohida jadval: narx o‘zgarishi SKU’ni tahrirlash bilan to‘qnashmaydi (har birining o‘z version’i).
+  RLS (FORCE).
+  '''
+}
+
+Table catalog.exchange_rates {
+  id uuid [pk]
+  shop_id uuid [not null]
+  base text [not null, default: 'USD', note: 'Stage 1 da faqat USD']
+  quote text [not null, default: 'UZS']
+  rate numeric(18,6) [not null, note: '1 dollar necha so‘m: 12800.000000. CHECK > 0']
+  source catalog.rate_source [not null, default: 'MANUAL']
+  effective_at timestamptz [not null, note: 'Qachondan amal qiladi']
+  created_by uuid [note: 'platform.memberships.id; CBU bo‘lsa NULL']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, effective_at) [note: 'Joriy kurs — eng oxirgi effective_at']
+  }
+  Note: '''
+  Shop kursi tarixi (DEC-121). O‘zgarmaydi: yangi kurs = yangi qator.
+  Kurs 3 kundan eski bo‘lsa — "eskirgan" (yangi taklif berilmaydi, BL-018 — 3-modul).
+  Taklif va buyurtma qatorida kurs nusxasi saqlanadi (commerce).
+  RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Texnik ma’lumotlar kutubxonasi (platforma, shop_id yo‘q)
+// ---------------------------------------------------------------------
+
+Table catalog.reference_hardware_specs {
+  id uuid [pk]
+  category catalog.spec_category [not null]
+  brand text [not null]
+  model_name text [not null, note: 'Masalan "GeForce RTX 4060 Ti"']
+  model_normalized text [not null, note: 'Solishtirish uchun: "GEFORCERTX4060TI"']
+  variant_key text [not null, default: '', note: 'Bir model ichidagi farq: "8GB" / "16GB". Yo‘q bo‘lsa — bo‘sh']
+  mpn text
+  mpn_normalized text [note: 'Bo‘lsa — kutubxonada yagona (qisman unikal indeks)']
+  attributes jsonb [not null, note: 'Toifa bo‘yicha sxema (engineering/17 §4.1): socket, memory_types, length_mm... Yo‘q atribut = noma’lum']
+  source_url text [not null, note: 'Ishlab chiqaruvchi sahifasi yoki datasheet — majburiy (DEC-120)']
+  status catalog.spec_status [not null, default: 'DRAFT']
+  version int [not null, default: 1, note: 'Tasdiqlangan ma’lumot versiyasi']
+  created_by uuid [note: 'platform.principals.id (platforma xodimi)']
+  approved_by uuid
+  approved_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (category, brand, model_normalized, variant_key) [unique, note: '"RTX 4060" va "RTX 4060 Ti" — har xil model_normalized']
+    mpn_normalized [note: 'Unikal, faqat NULL bo‘lmaganlar uchun (partial index)']
+  }
+  Note: '''
+  PC qismlarining tasdiqlangan texnik ma’lumotlari (DEC-011, DEC-120). Moslik tekshiruvi faqat shu jadvaldan o‘qiydi.
+  Faqat platforma panelidan yoziladi; shoplar o‘qiydi.
+  '''
+}
+
+Table catalog.reference_hardware_spec_versions {
+  spec_id uuid [not null]
+  version int [not null]
+  brand text [not null]
+  model_name text [not null]
+  variant_key text [not null, default: '']
+  mpn text
+  attributes jsonb [not null]
+  source_url text [not null]
+  status catalog.spec_version_status [not null, default: 'PENDING']
+  proposed_by uuid [not null, note: 'platform.principals.id']
+  proposed_at timestamptz [not null, default: `now()`]
+  reviewed_by uuid [note: 'Taklif qilgandan BOSHQA odam (SELF_APPROVAL_NOT_ALLOWED)']
+  reviewed_at timestamptz
+  review_note text [note: 'Rad etilsa — sabab majburiy']
+
+  indexes {
+    (spec_id, version) [pk]
+    (status, proposed_at) [note: 'Tasdiq navbati']
+  }
+  Note: '''
+  "Ikki ko‘z" qoidasi (engineering/17 §10): har yangi spec va har o‘zgarish avval shu yerda PENDING bo‘ladi.
+  Ikkinchi odam tasdiqlasa — ma’lumot asosiy jadvalga ko‘chadi va version oshadi. Tasdiqgacha eski ma’lumot ishlayveradi.
+  Shu bilan birga — to‘liq o‘zgarishlar tarixi.
+  '''
+}
+
+Table catalog.sku_spec_links {
+  shop_id uuid [not null]
+  sku_id uuid [not null]
+  spec_id uuid [not null]
+  method catalog.link_method [not null]
+  linked_by uuid [note: 'platform.memberships.id — MANUAL bo‘lsa kim tanlagan; avtomatikda NULL']
+  linked_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, sku_id) [pk, note: 'Bitta SKU — bitta spec']
+    spec_id [note: 'Spec o‘zgarganda qaysi SKU’larga ta’sir qilishini topish']
+  }
+  Note: '''
+  Shop SKU’si ↔ kutubxonadagi model. Bog‘lanmagan SKU sotiladi, lekin PC yig‘mada "tekshirish kerak" (REVIEW_REQUIRED) bo‘ladi.
+  Avtomatik bog‘lash faqat aniq bitta mos kelsa; "RTX 5060" ↔ "RTX 5060 Ti" hech qachon (engineering/17 §5).
+  '''
+}
+
+Table catalog.spec_requests {
+  id uuid [pk]
+  shop_id uuid [not null]
+  sku_id uuid [note: 'Qaysi SKU uchun so‘ralgan (ixtiyoriy)']
+  category catalog.spec_category [not null]
+  brand text [not null]
+  model_name text [not null]
+  mpn text
+  source_url text [note: 'Shop bilsa — mahsulot sahifasi']
+  comment text
+  status catalog.spec_request_status [not null, default: 'OPEN']
+  resolved_spec_id uuid [note: 'Qo‘shilgan yoki topilgan spec']
+  resolution_note text [note: 'Rad etilsa — sabab']
+  requested_by uuid [note: 'platform.memberships.id']
+  resolved_by uuid [note: 'platform.principals.id (platforma xodimi)']
+  created_at timestamptz [not null, default: `now()`]
+  resolved_at timestamptz
+
+  indexes {
+    (shop_id, id) [unique]
+    (status, created_at) [note: 'Platforma navbati — hamma shoplar bo‘yicha']
+    (shop_id, status)
+  }
+  Note: 'Shopning "yangi model qo‘shing" so‘rovi. Hal bo‘lganda so‘ralgan SKU avtomatik bog‘lanadi.'
+}
+
+// ---------------------------------------------------------------------
+// Fayllar (S0-08) — `platform` schemasida, katalog birinchi foydalanuvchi
+// ---------------------------------------------------------------------
+
+Table platform.stored_files {
+  id uuid [pk]
+  shop_id uuid [not null]
+  purpose platform.file_purpose [not null]
+  object_key text [not null, unique, note: 'Ombordagi yo‘l: shops/{shop_id}/{purpose}/{id}. Fayl nomi emas — taxmin qilib bo‘lmaydi']
+  is_public boolean [not null, default: false, note: 'Mahsulot rasmi — ochiq (DEC-133): sayt va brauzer keshlaydi, Telegram/Instagram’da ochiladi. Qolganlari — 5 daqiqalik imzoli havola bilan']
+  mime_type text [not null, note: 'Fayl ichidan aniqlanadi, nomidan emas: image/jpeg, image/png, image/webp']
+  size_bytes bigint [not null, note: 'Rasm uchun ko‘pi bilan 5 MB (kodda)']
+  sha256 text [not null, note: 'Butunlik va takror yuklashni aniqlash']
+  original_name text [note: 'Yuklangan fayl nomi — faqat ko‘rsatish uchun, logga yozilmaydi']
+  status platform.file_status [not null, default: 'ACTIVE']
+  uploaded_by uuid [note: 'platform.memberships.id']
+  retention_until timestamptz [note: 'Saqlash muddati (engineering/26); rasm uchun NULL — mahsulot bilan yashaydi']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, purpose, status)
+  }
+  Note: '''
+  Fayl haqida yozuv; faylning o‘zi S3-mos omborda (prod), lokal va testda — diskda (`FileStorage` porti, ikki adapter). Bazada blob yo‘q (ADR-014).
+  RLS (FORCE) — shop konteksti bo‘yicha (engineering/10 §4).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Bog‘lanishlar
+// ---------------------------------------------------------------------
+
+Ref: catalog.categories.parent_code > catalog.categories.code
+Ref: catalog.products.category_code > catalog.categories.code [delete: restrict]
+
+// (shop_id, ...) juftligi — boshqa shop obyektiga bog‘lab bo‘lmaydi
+Ref: catalog.skus.(shop_id, product_id) > catalog.products.(shop_id, id) [delete: restrict]
+Ref: catalog.product_media.(shop_id, product_id) > catalog.products.(shop_id, id) [delete: cascade]
+Ref: catalog.price_versions.(shop_id, sku_id) > catalog.skus.(shop_id, id) [delete: restrict]
+Ref: catalog.current_prices.(shop_id, sku_id) > catalog.skus.(shop_id, id) [delete: restrict]
+Ref: catalog.current_prices.(shop_id, sku_id, price_version_id) > catalog.price_versions.(shop_id, sku_id, id) [delete: restrict]
+Ref: catalog.sku_spec_links.(shop_id, sku_id) > catalog.skus.(shop_id, id) [delete: cascade]
+Ref: catalog.spec_requests.(shop_id, sku_id) > catalog.skus.(shop_id, id) [delete: restrict]
+
+// Shop jadvali → platforma ma’lumotnomasi (bir schema ichida, shop_id’siz)
+Ref: catalog.sku_spec_links.spec_id > catalog.reference_hardware_specs.id [delete: restrict]
+Ref: catalog.spec_requests.resolved_spec_id > catalog.reference_hardware_specs.id
+Ref: catalog.reference_hardware_spec_versions.spec_id > catalog.reference_hardware_specs.id [delete: cascade]
+
+// ---------------------------------------------------------------------
+// Diagrammada guruhlash
+// ---------------------------------------------------------------------
+
+TableGroup mahsulotlar {
+  catalog.categories
+  catalog.products
+  catalog.skus
+  catalog.product_media
+}
+
+TableGroup narx_va_kurs {
+  catalog.price_versions
+  catalog.current_prices
+  catalog.exchange_rates
+}
+
+TableGroup texnik_kutubxona {
+  catalog.reference_hardware_specs
+  catalog.reference_hardware_spec_versions
+  catalog.sku_spec_links
+  catalog.spec_requests
+}
+
+TableGroup fayllar {
+  platform.stored_files
+}

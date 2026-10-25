@@ -1,0 +1,502 @@
+// =====================================================================
+// AI Commerce OS — `commerce` schemasi: Savdo — ombor va buyurtmalar (3-modul)
+// Holat: TASDIQLANGAN — DEC-134 (2026-10-25). Founder qarorlari: commerce.md oxirida
+// Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
+// Izohlar: db/commerce.md (har jadval va maydon nega kerak)
+// Manba hujjatlar: business/02 M06, M07, M13; business/03 BL-019…BL-023, BL-046…BL-049, BL-057, BL-109…BL-111;
+//                  business/05 FSM-07, FSM-08; business/04; engineering/04 §4.1, engineering/07 §4.4, §6.3,
+//                  engineering/10 §4, §6.3, engineering/12, engineering/26 §4–§8;
+//                  DEC-100(a–h), DEC-104, DEC-105, DEC-107, DEC-108, DEC-110, DEC-113, DEC-114, DEC-115,
+//                  DEC-121, DEC-123, DEC-127, DEC-128, DEC-133
+// Hajm: ombor (S1-05), tez sotuv (DEC-123), buyurtmalar va band qilish (S4), saytdan buyurtma so‘rovi (DEC-115).
+// Leadlar va PC takliflari (S3) — bu faylda yo‘q; qanday ulanishi pastda, orders.quote_* izohida.
+// =====================================================================
+
+Project ai_commerce_os_commerce {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Umumiy qoidalar (07 §2)** — platform va catalog schemasidagi bilan bir xil:
+  - id — UUIDv7, ilovada yaratiladi. Vaqt — timestamptz (UTC).
+  - Har jadvalda `shop_id NOT NULL`; schema ichidagi FK’lar (shop_id, ...) juftligi bilan — boshqa shop obyektiga bog‘lab bo‘lmaydi.
+  - Holatlar — TEXT + CHECK (diagrammada Enum).
+  - Pul — `*_minor bigint` (tiyin / sent) + valyuta. Float yo‘q. Xaridorga doim so‘m (DEC-121).
+  - Boshqa schemadagi obyekt (catalog.skus, catalog.price_versions, platform.branches, platform.memberships,
+    messaging.*) — faqat uuid, FK’siz (07 §6.3). SKU va narx `CatalogQueryPort` orqali tekshiriladi.
+  - Biznes obyektlari o‘chirilmaydi. Ombor daftari (stock_ledger) faqat qo‘shiladi.
+  - Tahrirlanadigan jadvallarda `version` (12 §4): faqat avtomatik oshadi, eskirgan versiya → VERSION_CONFLICT.
+
+  **Qoldiq qoidasi (BL-019):** sotuvga mavjud = on_hand − reserved − allocated, hech qachon < 0.
+  Qoldiq qatorlari `SELECT … FOR UPDATE` bilan, doim (shop_id, branch_id, sku_id) o‘sish tartibida qulflanadi (12 §2, §6).
+
+  **Standart texnik jadvallar** (diagrammada yo‘q, 07 §5): commerce.outbox_events, commerce.consumer_receipts.
+  Takroriy so‘rov himoyasi — platform.idempotency_keys (operation: order.confirm, quick_sale.create, ...).
+
+  **Xaridor ma’lumoti (engineering/26):** faqat orders’dagi alohida ustunlarda. Telefon va manzil — ustun darajasida
+  shifrlangan (EncryptedString). Log, outbox, audit diff’ga tushmaydi. Anonimlashtirishda shu ustunlar tozalanadi,
+  qatorlar va summalar qoladi. Saqlash muddati — huquqshunos bilan aniqlanadi (26 §5, §12).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum)
+// ---------------------------------------------------------------------
+
+Enum commerce.currency {
+  UZS [note: 'So‘m; minor = tiyin']
+  USD [note: 'Dollar; minor = sent. Faqat narxning asl valyutasi sifatida — xaridor so‘mda to‘laydi']
+}
+
+Enum commerce.ledger_reason {
+  RECEIPT [note: 'Kirim: on_hand +']
+  ADJUSTMENT [note: 'Sanoq farqi: on_hand ± (stock_adjustments)']
+  OFFLINE_SALE [note: 'Tez sotuv — do‘kondagi sotuv: on_hand − (DEC-123)']
+  RESERVE [note: 'Buyurtma tasdiqlandi: reserved +']
+  ALLOCATE [note: 'Tayyorlash boshlandi: reserved −, allocated +']
+  RELEASE [note: 'Bekor qilindi yoki muddati o‘tdi: reserved − yoki allocated −']
+  SALE [note: 'Buyurtma topshirildi: allocated −, on_hand −']
+  QUARANTINE_IN [note: '"Sotilmaydi" deb belgilandi (shikastlangan): on_hand −, quarantine +']
+  RETURN_QUARANTINE [note: 'Xaridordan qaytdi, tekshiruvda: quarantine + (S5, kafolat)']
+  RESTOCK [note: 'Tekshiruvdan o‘tdi — sotuvga qaytdi: quarantine −, on_hand +']
+  WRITE_OFF [note: 'Yaroqsiz — hisobdan chiqarildi: quarantine −']
+}
+
+Enum commerce.ledger_ref_type {
+  RECEIPT [note: 'stock_receipts.id']
+  ADJUSTMENT [note: 'stock_adjustments.id']
+  QUICK_SALE [note: 'quick_sales.id']
+  RESERVATION [note: 'reservations.id — RESERVE, ALLOCATE, RELEASE, SALE']
+  SUPPORT_CASE [note: 'support.support_cases.id — S5']
+}
+
+Enum commerce.adjustment_kind {
+  ADJUSTMENT [note: 'Sanoqda farq chiqdi (±)']
+  QUARANTINE_IN [note: '"Sotilmaydi" deb belgilash (M06, 5-band)']
+  RESTOCK [note: 'Tekshiruvdan o‘tdi — sotuvga qaytarish']
+  WRITE_OFF [note: 'Yaroqsizni hisobdan chiqarish']
+}
+
+Enum commerce.adjustment_status {
+  PENDING [note: 'Tasdiq kutilmoqda — qoldiq hali o‘zgarmagan']
+  APPROVED [note: 'Qo‘llandi — ledger yozuvi bor']
+  REJECTED [note: 'Rad etildi (sabab bilan)']
+}
+
+Enum commerce.order_status {
+  DRAFT [note: 'Qoralama — AI, sayt yoki xodim yaratdi. Mahsulot band qilinmaydi']
+  PENDING_CONFIRMATION [note: 'Tasdiq kutilmoqda — operatorga vazifa (saytdan kelgani shu holatda tushadi)']
+  CONFIRMED [note: 'Tasdiqlandi — mahsulot band (reservation ACTIVE)']
+  PROCESSING [note: 'Tayyorlanmoqda — mahsulot ajratilgan (ALLOCATED). "Tayyor" belgisi holatni o‘zgartirmaydi']
+  COMPLETED [note: 'Topshirildi — qoldiq bir marta kamaydi. Qayta ochilmaydi']
+  CANCELLED [note: 'Bekor qilindi — band bir marta bo‘shadi']
+  EXCEPTION [note: 'Muammoli — menejer hal qiladi (PROCESSING yoki CANCELLED)']
+}
+
+Enum commerce.order_source {
+  AI [note: 'AI sotuvchi qoralamasi (DEC-100c)']
+  STOREFRONT [note: 'Shop saytidagi savatcha → buyurtma so‘rovi (DEC-115)']
+  STAFF [note: 'Xodim qo‘lda yaratdi (chat, telefon)']
+  // S3 da: QUOTE — xaridor PC taklifini qabul qildi
+}
+
+Enum commerce.fulfillment_method {
+  PICKUP [note: 'Filialdan olib ketadi']
+  DELIVERY [note: 'Yetkazib beriladi — shop o‘zi tashkil qiladi, narx kelishiladi (DEC-113, DEC-100h)']
+}
+
+Enum commerce.paid_mark_method {
+  CASH
+  CARD
+  TRANSFER
+  OTHER
+}
+
+Enum commerce.note_kind {
+  NOTE [note: 'Oddiy izoh']
+  CALL_RESULT [note: 'Qo‘ng‘iroq natijasi / kelishuv (DEC-100g)']
+}
+
+Enum commerce.reservation_status {
+  ACTIVE [note: 'Band — tasdiqlangan, hali tayyorlanmagan']
+  ALLOCATED [note: 'Ajratilgan — tayyorlanmoqda']
+  CONSUMED [note: 'Ishlatildi — buyurtma topshirildi']
+  RELEASED [note: 'Bo‘shatildi — buyurtma bekor qilindi']
+  EXPIRED [note: 'Muddati o‘tdi — menejer 72 soatlik vazifadan bekor qildi (DEC-104). ACTIVE va ALLOCATED dan (DEC-134). Avtomatik emas']
+}
+
+// ---------------------------------------------------------------------
+// Ombor: qoldiq va daftar (S1-05)
+// ---------------------------------------------------------------------
+
+Table commerce.stock_balances {
+  shop_id uuid [not null]
+  branch_id uuid [not null, note: 'platform.branches.id — FK’siz (boshqa schema)']
+  sku_id uuid [not null, note: 'catalog.skus.id — FK’siz (07 §6.3)']
+  on_hand int [not null, default: 0, note: 'Omborda jismonan bor (tekshiruvdagilar kirmaydi)']
+  reserved int [not null, default: 0, note: 'Tasdiqlangan, hali tayyorlanmagan buyurtmalarga band']
+  allocated int [not null, default: 0, note: 'Tayyorlanayotgan buyurtmalarga ajratilgan']
+  quarantine_qty int [not null, default: 0, note: 'Tekshiruvda / "sotilmaydi" — on_hand’ga kirmaydi, sotilmaydi (BR-X11)']
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, branch_id, sku_id) [pk]
+    (shop_id, sku_id) [note: 'Bir SKU’ning hamma filiallardagi qoldig‘i (sayt, AI)']
+  }
+  Note: '''
+  Har filial × SKU uchun bitta qator: hozirgi sonlar. Birinchi kirim yoki tuzatishda yaratiladi.
+  CHECK (on_hand >= 0 AND reserved >= 0 AND allocated >= 0 AND quarantine_qty >= 0)
+  CHECK (reserved + allocated <= on_hand) — sotuvga mavjud hech qachon manfiy emas (BL-019). Oxirgi himoya; asosiysi — qulf.
+  Sotuvga mavjud (available) saqlanmaydi — hisoblanadi.
+  Har o‘zgarish shu tranzaksiyada stock_ledger’ga yoziladi; ledger yig‘indisi har kecha balans bilan solishtiriladi (12 §6.1).
+  RLS (FORCE) — engineering/10 §4.
+  '''
+}
+
+Table commerce.stock_ledger {
+  id uuid [pk]
+  shop_id uuid [not null]
+  branch_id uuid [not null]
+  sku_id uuid [not null]
+  reason commerce.ledger_reason [not null]
+  delta_on_hand int [not null, default: 0]
+  delta_reserved int [not null, default: 0]
+  delta_allocated int [not null, default: 0]
+  delta_quarantine int [not null, default: 0]
+  on_hand_after int [not null, note: 'O‘zgarishdan keyingi qiymatlar — "mahsulot tarixi" ekrani va tekshiruv uchun']
+  reserved_after int [not null]
+  allocated_after int [not null]
+  quarantine_after int [not null]
+  ref_type commerce.ledger_ref_type [not null, note: 'Qaysi hujjat sabab bo‘ldi']
+  ref_id uuid [not null]
+  actor_membership_id uuid [note: 'platform.memberships.id — kim. Stage 1 da har o‘zgarish xodimdan; NULL faqat tizim amali uchun (Stage 2 POS)']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, reason, ref_type, ref_id, sku_id) [unique, note: 'Bir hujjat bir SKU’ni bir sabab bilan faqat bir marta o‘zgartiradi (TC-030, BL-021)']
+    (shop_id, branch_id, sku_id, created_at) [note: 'Mahsulot tarixi']
+    (shop_id, created_at)
+  }
+  Note: '''
+  Ombor daftari: har qoldiq o‘zgarishi — bitta qator. Faqat qo‘shiladi: ilova roli UPDATE/DELETE qila olmaydi.
+  Xato yozuv o‘chirilmaydi — teskari tuzatish yoziladi.
+  RLS (FORCE) — engineering/10 §4.
+  '''
+}
+
+Table commerce.stock_receipts {
+  id uuid [pk]
+  shop_id uuid [not null]
+  branch_id uuid [not null, note: 'platform.branches.id — FK’siz']
+  note text [note: 'Ixtiyoriy: "Yetkazib beruvchidan 2-partiya"']
+  received_by uuid [not null, note: 'platform.memberships.id']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, branch_id, created_at) [note: 'Kirimlar ro‘yxati']
+  }
+  Note: '''
+  Kirim hujjati (sarlavha). Qatorlari — stock_ledger’da: reason RECEIPT, ref_type RECEIPT, ref_id = shu id; bir SKU bir marta.
+  O‘zgarmaydi. Xato kirim tuzatish (stock_adjustments) bilan to‘g‘rilanadi. Tasdiq kerak emas (12 §6).
+  RLS (FORCE) — taklif: engineering/10 §4 ro‘yxatiga qo‘shish.
+  '''
+}
+
+Table commerce.stock_adjustments {
+  id uuid [pk]
+  shop_id uuid [not null]
+  branch_id uuid [not null]
+  sku_id uuid [not null]
+  kind commerce.adjustment_kind [not null, default: 'ADJUSTMENT']
+  delta int [not null, note: 'ADJUSTMENT da ± (CHECK <> 0); qolgan turlarda miqdor (CHECK > 0)']
+  reason text [not null, note: 'Majburiy (BL-022): "sanoqda 1 ta kam chiqdi", "qutisi ezilgan"']
+  evidence_file_id uuid [note: 'platform.stored_files.id — rasm yoki dalolatnoma, ixtiyoriy. file_purpose’ga STOCK_EVIDENCE qo‘shiladi']
+  status commerce.adjustment_status [not null, default: 'PENDING']
+  requested_by uuid [not null, note: 'platform.memberships.id']
+  requested_at timestamptz [not null, default: `now()`]
+  decided_by uuid [note: 'Tasdiqlagan yoki rad etgan (ega/menejer). Ega/menejer o‘zi tuzatsa — o‘zi, darhol APPROVED']
+  decided_at timestamptz
+  decision_note text [note: 'Rad etilsa — sabab majburiy']
+  on_hand_before int [note: 'Qo‘llangan paytdagi eski va yangi qiymat (business/04 §3)']
+  on_hand_after int
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, status, requested_at) [note: 'Tasdiq navbati']
+    (shop_id, branch_id, sku_id, requested_at)
+  }
+  Note: '''
+  Qo‘lda qilingan har qoldiq o‘zgarishi (kirim va sotuvdan tashqari): sanoq farqi, "sotilmaydi", sotuvga qaytarish, hisobdan chiqarish.
+  Omborchi so‘raydi → ega/menejer tasdiqlaydi: omborchining har tuzatishi tasdiq bilan, ega/menejer o‘zi to‘g‘ridan (darhol APPROVED) — DEC-134. Tasdiqda ledger yoziladi.
+  Tasdiq paytida qoldiq qayta tekshiriladi: on_hand band + ajratilgandan pastga tushmaydi (TC-CON-12) — aks holda tasdiqlab bo‘lmaydi.
+  RLS (FORCE) — taklif: engineering/10 §4 ro‘yxatiga qo‘shish (07 dagi stock_adjustment_requests ham ro‘yxatda yo‘q edi).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Tez sotuv — do‘kondagi sotuv (DEC-123)
+// ---------------------------------------------------------------------
+
+Table commerce.quick_sales {
+  id uuid [pk]
+  shop_id uuid [not null]
+  branch_id uuid [not null, note: 'Qaysi filialda sotildi']
+  currency commerce.currency [not null, default: 'UZS', note: 'Doim UZS']
+  total_minor bigint [not null, note: 'Qatorlar yig‘indisi, katalog narxida']
+  sold_by uuid [not null, note: 'platform.memberships.id — kim sotdi (BL-109)']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, branch_id, created_at) [note: 'Hisobot: offline sotuvlar alohida']
+    (shop_id, sold_by, created_at)
+  }
+  Note: '''
+  Peshtaxtadan sotuv: mahsulot + miqdor → qoldiq darhol kamayadi. Xaridor ma’lumoti yo‘q (DEC-123).
+  Faqat sotuvga mavjud sondan: band mahsulotni sotib bo‘lmaydi (BL-109, TC-027) → 409 INSUFFICIENT_AVAILABLE_STOCK.
+  Bekor qilinmaydi: xato bosilsa — tuzatish (+) sabab bilan. Takror bosish — platform.idempotency_keys (quick_sale.create).
+  RLS (FORCE) — engineering/10 §4.
+  '''
+}
+
+Table commerce.quick_sale_lines {
+  id uuid [pk]
+  shop_id uuid [not null]
+  quick_sale_id uuid [not null]
+  sku_id uuid [not null, note: 'catalog.skus.id — FK’siz']
+  title_snapshot text [not null, note: 'Sotuv paytidagi nom + variant']
+  sku_code_snapshot text [not null]
+  qty int [not null, note: 'CHECK > 0']
+  price_version_id uuid [not null, note: 'catalog.price_versions.id — joriy narx, avtomatik']
+  unit_price_minor bigint [not null, note: 'Asl valyutada']
+  currency commerce.currency [not null, note: 'Narxning asl valyutasi']
+  exchange_rate_snapshot numeric(18,6) [note: 'USD bo‘lsa majburiy']
+  unit_price_uzs_minor bigint [not null]
+  line_total_minor bigint [not null, note: 'qty × unit_price_uzs_minor']
+  warranty_months int [note: 'catalog.skus.warranty_months nusxasi (BL-057)']
+
+  indexes {
+    (shop_id, quick_sale_id, sku_id) [unique, note: 'Bir SKU — bitta qator (ledger kaliti bilan mos)']
+  }
+  Note: '''
+  Tez sotuv qatorlari. O‘zgarmaydi.
+  RLS (FORCE) — taklif: engineering/10 §4 ro‘yxatiga qo‘shish.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Buyurtmalar (S4) va saytdan buyurtma so‘rovi (DEC-115)
+// ---------------------------------------------------------------------
+
+Table commerce.orders {
+  id uuid [pk]
+  shop_id uuid [not null]
+  number bigint [not null, note: 'Shop ichida ketma-ket: 1, 2, 3… Xaridorga "#1042". order_counters’dan, shu tranzaksiyada']
+  status commerce.order_status [not null, default: 'DRAFT', note: 'FSM-08']
+  source commerce.order_source [not null]
+  source_request_id text [note: 'Takror himoyasi (BL-046): AI — sales_ai request_id; sayt — buyurtma formasining Idempotency-Key’i; xodimda NULL']
+  conversation_id uuid [note: 'messaging.conversations.id — FK’siz. Chat orqali kelganda']
+  customer_ref uuid [note: 'messaging.customer_identities.id — FK’siz. Saytdan kelganda NULL']
+  quote_id uuid [note: 'S3: qabul qilingan PC taklifi. Hozir doim NULL; FK S3 migratsiyasida']
+  quote_revision_id uuid [note: 'S3: taklif versiyasi — tasdiqlashda narx shu bilan solishtiriladi (12 §5, 8-qadam)']
+  branch_id uuid [note: 'platform.branches.id — FK’siz. Qoldiq shu filialdan band qilinadi. Olib ketishda — xaridor tanlagan filial']
+  assigned_membership_id uuid [note: 'platform.memberships.id — mas’ul operator. Operator faqat o‘ziga biriktirilganini tasdiqlaydi (DEC-108)']
+  fulfillment_method commerce.fulfillment_method [not null, default: 'PICKUP']
+  customer_name text [note: 'PII. Xaridor ismi']
+  customer_phone_enc text [note: 'PII. Telefon — ustun darajasida shifrlangan (EncryptedString, engineering/26 §4)']
+  customer_phone_hmac text [note: 'Telefon bo‘yicha qidirish uchun kalitli xesh (HMAC-SHA256). Raqamni tiklab bo‘lmaydi']
+  delivery_address_enc text [note: 'PII. Yetkazish manzili — shifrlangan. DELIVERY bo‘lsa yuborishda majburiy']
+  customer_locale text [not null, default: 'uz', note: 'uz | ru | en — xaridorga xabarlar shu tilda (UAT-M17)']
+  customer_comment text [note: 'PII bo‘lishi mumkin. Xaridor saytda yozgan izoh']
+  consent_version text [note: 'Sayt formasidagi rozilik matni versiyasi (engineering/26 §8). STOREFRONT da majburiy']
+  pii_erased_at timestamptz [note: 'Xaridor ma’lumoti anonimlashtirilgan vaqt (engineering/26 §2)']
+  currency commerce.currency [not null, default: 'UZS', note: 'Stage 1 da doim UZS (CHECK)']
+  total_minor bigint [not null, default: 0, note: 'Qatorlar line_total_minor yig‘indisi. Yetkazish narxi kirmaydi (DEC-100h)']
+  submitted_at timestamptz [note: '→ PENDING_CONFIRMATION. 24 soatlik eslatma shundan (DEC-104)']
+  confirmed_at timestamptz
+  confirmed_by uuid [note: 'platform.memberships.id']
+  processing_at timestamptz
+  ready_at timestamptz [note: '"Olib ketishga tayyor" — holat PROCESSING qoladi, xaridorga xabar']
+  completed_at timestamptz
+  completed_by uuid
+  cancelled_at timestamptz
+  cancelled_by uuid [note: 'Xaridor qoralamani o‘zi bekor qilsa — NULL']
+  cancel_reason text [note: 'PENDING_CONFIRMATION / CONFIRMED / EXCEPTION dan bekor qilishda majburiy (BL-049)']
+  exception_reason text [note: '"Muammoli" holat sababi']
+  paid_mark_at timestamptz [note: '"To‘landi" belgisi — tekshirilmagan (DEC-100a). To‘lov holati emas']
+  paid_mark_by uuid
+  paid_mark_method commerce.paid_mark_method
+  tracking_token_hash text [note: 'Saytdagi "buyurtma holati" havolasining SHA-256 xeshi. Tokenning o‘zi saqlanmaydi']
+  created_by uuid [note: 'platform.memberships.id — xodim yaratsa; AI va saytda NULL']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique, note: 'Qator, izoh, band FK’lari uchun']
+    (shop_id, number) [unique]
+    (shop_id, source, source_request_id) [unique, note: 'Faqat source_request_id NULL bo‘lmaganlar (partial). Takror so‘rovga birinchi buyurtma qaytadi']
+    (shop_id, status, created_at) [note: 'Ro‘yxat: holat bo‘yicha, yangisi birinchi (DESC)']
+    (shop_id, assigned_membership_id, status) [note: '"Mening buyurtmalarim"']
+    (shop_id, customer_phone_hmac) [note: 'Telefon bo‘yicha qidirish']
+    tracking_token_hash [unique]
+  }
+  Note: '''
+  Xaridor olmoqchi bo‘lgan narsa va uning qoralamadan topshirilguncha yo‘li (FSM-08). To‘lov holati yo‘q (DEC-100, K-03).
+  Saytdan so‘rov (DEC-115): bitta tranzaksiyada DRAFT yaratiladi va darhol SUBMIT → PENDING_CONFIRMATION; band qilinmaydi (DEC-100b).
+  CHECK: number > 0; total_minor >= 0; currency = 'UZS';
+         status IN (CONFIRMED, PROCESSING, COMPLETED, EXCEPTION) → branch_id va confirmed_at NOT NULL;
+         paid_mark_at, paid_mark_by, paid_mark_method — uchalasi birga yoki hech biri.
+  Qatorlar faqat DRAFT va PENDING_CONFIRMATION da o‘zgaradi. Tasdiqlangandan keyin o‘zgarmaydi: bekor qilinadi va yangi buyurtma ochiladi (DEC-134).
+  Bir buyurtma — bir filial (DEC-134): hamma qator branch_id qoldig‘idan band qilinadi.
+  Tasdiqlashda har qatorning so‘mdagi narxi qayta hisoblanadi (joriy narx × joriy kurs); farq bo‘lsa — PRICE_CHANGED, xaridordan qayta rozilik (DEC-127, DEC-134).
+  Tasdiqlash: order FOR UPDATE + If-Match → qoldiq FOR UPDATE → narx CatalogQueryPort.get_active_price() bilan (DEC-127) → band (12 §5).
+  S3 da: taklif qabul qilinganda DRAFT buyurtma yaratiladi — qatorlar taklif versiyasidan nusxa, quote_id/quote_revision_id
+  to‘ldiriladi, (shop_id, quote_revision_id) → commerce.quote_revisions FK qo‘shiladi, source’ga QUOTE qo‘shiladi.
+  RLS (FORCE) — engineering/10 §4.
+  '''
+}
+
+Table commerce.order_lines {
+  id uuid [pk]
+  shop_id uuid [not null]
+  order_id uuid [not null]
+  position int [not null, default: 0, note: 'Ko‘rsatish tartibi']
+  sku_id uuid [not null, note: 'catalog.skus.id — FK’siz; CatalogQueryPort orqali tekshiriladi (07 §6.3)']
+  product_id uuid [note: 'catalog.products.id — sayt havolasi va hisobot uchun']
+  title_snapshot text [not null, note: 'Buyurtma paytidagi nom + variant: "MSI GeForce RTX 4060 Ventus 2X · 8 GB"']
+  sku_code_snapshot text [not null]
+  qty int [not null, note: 'CHECK > 0']
+  price_version_id uuid [not null, note: 'catalog.price_versions.id — tasdiqlashda joriy narx bilan solishtiriladi (DEC-127)']
+  unit_price_minor bigint [not null, note: 'Narx asl valyutada (price_versions.amount_minor)']
+  currency commerce.currency [not null, note: 'Narxning asl valyutasi: UZS yoki USD (DEC-121)']
+  exchange_rate_id uuid [note: 'catalog.exchange_rates.id — USD bo‘lsa']
+  exchange_rate_snapshot numeric(18,6) [note: 'USD bo‘lsa majburiy (CHECK): 12800.000000']
+  unit_price_uzs_minor bigint [not null, note: 'Xaridor ko‘radigan narx, so‘mda; eng yaqin so‘mgacha (DEC-133)']
+  discount_pct numeric(5,2) [not null, default: 0, note: 'CHECK 0…100. Chegirma limiti — shop_policies (DEC-110)']
+  discount_requested_by uuid [note: 'Operator chegirma so‘radi (platform.memberships.id)']
+  discount_approved_by uuid [note: 'Limiti yetadigan menejer/ega. discount_pct > 0 bo‘lsa tasdiqlashdan oldin majburiy']
+  discount_approved_at timestamptz
+  line_total_minor bigint [not null, note: 'UZS: qty × unit_price_uzs_minor × (1 − discount_pct/100), eng yaqin so‘mgacha']
+  warranty_months int [note: 'catalog.skus.warranty_months nusxasi (BL-057, DEC-114)']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, order_id, id) [unique, note: 'reservations FK’i qator aynan shu buyurtmaniki ekanini kafolatlaydi']
+    (shop_id, order_id, sku_id) [unique, note: 'Bir buyurtmada bir SKU — bitta qator']
+  }
+  Note: '''
+  Buyurtma qatori. Nom, kod, narx, valyuta, kurs va kafolat — nusxa: katalog keyin o‘zgarsa ham, buyurtma o‘zgarmaydi.
+  RLS (FORCE) — engineering/10 §4.
+  '''
+}
+
+Table commerce.order_notes {
+  id uuid [pk]
+  shop_id uuid [not null]
+  order_id uuid [not null]
+  kind commerce.note_kind [not null, default: 'NOTE']
+  author_membership_id uuid [not null, note: 'platform.memberships.id']
+  body text [not null, note: 'PII yozilishi mumkin — anonimlashtirishda matn tozalanadi']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, order_id, created_at)
+  }
+  Note: '''
+  Buyurtma izohlari: qo‘ng‘iroq natijasi, kelishuv (DEC-100g). Faqat qo‘shiladi, tahrirlanmaydi.
+  RLS (FORCE) — engineering/10 §4.
+  '''
+}
+
+Table commerce.order_counters {
+  shop_id uuid [pk, note: 'platform.shops.id — FK’siz']
+  last_number bigint [not null, default: 0]
+
+  Note: '''
+  Buyurtma raqami hisoblagichi. Buyurtma yaratish tranzaksiyasida:
+  UPDATE … SET last_number = last_number + 1 RETURNING last_number. Rollback bo‘lsa raqam ham qaytadi — bo‘shliq yo‘q.
+  RLS yo‘q — faqat raqam; app-layer filtri.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Band qilish (FSM-07)
+// ---------------------------------------------------------------------
+
+Table commerce.reservations {
+  id uuid [pk]
+  shop_id uuid [not null]
+  order_id uuid [not null]
+  order_line_id uuid [not null]
+  branch_id uuid [not null, note: 'Doim orders.branch_id (bir buyurtma — bir filial, DEC-134)']
+  sku_id uuid [not null]
+  qty int [not null, note: 'CHECK > 0']
+  status commerce.reservation_status [not null, default: 'ACTIVE', note: 'FSM-07']
+  review_at timestamptz [not null, note: 'Shu vaqtdan keyin menejerga "bekor qilinsinmi?" vazifasi (72 soat, DEC-104). "Kutamiz" desa — suriladi']
+  allocated_at timestamptz
+  closed_at timestamptz [note: 'CONSUMED / RELEASED / EXPIRED bo‘lgan vaqt']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, order_line_id) [unique, note: 'Bir qatorga bitta band']
+    (shop_id, order_id)
+    review_at [note: 'Partial: WHERE status IN (ACTIVE, ALLOCATED) — DEC-134']
+  }
+  Note: '''
+  Buyurtma qatori uchun band (FSM-07). Tasdiqlashda yaratiladi; har o‘tish balans va ledger bilan bitta tranzaksiyada.
+  Ledger’da ref_type = RESERVATION, ref_id = shu id: har band bir marta RESERVE, ALLOCATE va SALE yoki RELEASE oladi.
+  Avtomatik muddati o‘tmaydi (DEC-104): rejali ish faqat vazifa yaratadi, EXPIRED — menejer qarori.
+  RLS (FORCE) — engineering/10 §4.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Bog‘lanishlar
+// ---------------------------------------------------------------------
+
+// (shop_id, ...) juftligi — boshqa shop obyektiga bog‘lab bo‘lmaydi
+Ref: commerce.stock_ledger.(shop_id, branch_id, sku_id) > commerce.stock_balances.(shop_id, branch_id, sku_id) [delete: restrict]
+Ref: commerce.stock_adjustments.(shop_id, branch_id, sku_id) > commerce.stock_balances.(shop_id, branch_id, sku_id) [delete: restrict]
+Ref: commerce.quick_sale_lines.(shop_id, quick_sale_id) > commerce.quick_sales.(shop_id, id) [delete: restrict]
+Ref: commerce.order_lines.(shop_id, order_id) > commerce.orders.(shop_id, id) [delete: restrict]
+Ref: commerce.order_notes.(shop_id, order_id) > commerce.orders.(shop_id, id) [delete: restrict]
+Ref: commerce.reservations.(shop_id, order_id) > commerce.orders.(shop_id, id) [delete: restrict]
+Ref: commerce.reservations.(shop_id, order_id, order_line_id) > commerce.order_lines.(shop_id, order_id, id) [delete: restrict]
+Ref: commerce.reservations.(shop_id, branch_id, sku_id) > commerce.stock_balances.(shop_id, branch_id, sku_id) [delete: restrict]
+
+// stock_ledger.ref_id — bir nechta jadvalga ishora (ref_type bo‘yicha), shuning uchun FK yo‘q; ilova va unikal kalit tekshiradi.
+
+// ---------------------------------------------------------------------
+// Diagrammada guruhlash
+// ---------------------------------------------------------------------
+
+TableGroup ombor {
+  commerce.stock_balances
+  commerce.stock_ledger
+  commerce.stock_receipts
+  commerce.stock_adjustments
+}
+
+TableGroup tez_sotuv {
+  commerce.quick_sales
+  commerce.quick_sale_lines
+}
+
+TableGroup buyurtmalar {
+  commerce.orders
+  commerce.order_lines
+  commerce.order_notes
+  commerce.order_counters
+}
+
+TableGroup band_qilish {
+  commerce.reservations
+}
