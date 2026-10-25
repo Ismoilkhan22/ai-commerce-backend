@@ -15,7 +15,7 @@ from app.platform.shops.schemas import Locale, ShopOut, ShopStatus
 from app.platform.staff.schemas import BranchScope, Role
 
 MemberStatus = Literal["INVITED", "ACTIVE", "DISABLED"]
-InviteState = Literal["expired", "expiring", "valid"]
+InviteState = Literal["expired", "expiring"]
 ShopSort = Literal["created_desc", "activated_desc", "name"]
 
 
@@ -34,7 +34,7 @@ class ReviewQueueItem(BaseModel):
 
 
 class PendingOwnerItem(BaseModel):
-    """Ega taklifni hali qabul qilmagan shop: havola eskirganmi yoki eskirishiga oz qoldimi."""
+    """Ega taklifni hali qabul qilmagan shop: havola eskirgan yoki eskirishiga oz qolgan."""
 
     shop_id: UUID
     name: str

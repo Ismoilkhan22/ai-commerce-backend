@@ -149,6 +149,7 @@ class PlatformQueryService:
         return sorted(items, key=lambda i: i.submitted_at or now)  # eng uzoq kutayotgan birinchi
 
     async def _pending_owners(self, db: AsyncSession, now: datetime) -> list[PendingOwnerItem]:
+        """Faqat taklif muddati o'tgan yoki tugashiga oz qolgan egalar."""
         # Ochiq taklif havolalari (invitations'da RLS yo'q) → har biri egami va hali INVITED mi
         open_invites = (
             await db.execute(
@@ -186,13 +187,9 @@ class PlatformQueryService:
             ).one_or_none()
             if row is None or row[0].role != "OWNER" or row[0].status != "INVITED":
                 continue
-            state = (
-                "expired"
-                if expires_at <= now
-                else "expiring"
-                if expires_at - now < INVITE_EXPIRING_WITHIN
-                else "valid"
-            )
+            if expires_at - now >= INVITE_EXPIRING_WITHIN:
+                continue  # havola hali amalda — aralashish shart emas (business/15, A bosqich)
+            state = "expired" if expires_at <= now else "expiring"
             items.append(
                 PendingOwnerItem(
                     shop_id=shop.id,

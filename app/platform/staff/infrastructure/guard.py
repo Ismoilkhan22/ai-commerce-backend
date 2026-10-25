@@ -75,6 +75,9 @@ async def _active_session(db: AsyncSession, claims: AccessClaims) -> tuple[AuthS
     if row is None:
         raise UnauthenticatedError("Session not found")
     session, principal = row
+    if session.revoked_reason == "SHOP_CLOSED":
+        # Shop yopilganda sessiyalar tugatiladi — klient oddiy "chiqib ketdi" emas, sababini ko'rsatadi
+        raise ShopNotActiveError("Shop is closed")
     if (
         session.revoked_at is not None
         or session.expires_at <= utcnow()

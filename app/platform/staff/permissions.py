@@ -27,7 +27,8 @@ PLATFORM_ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = {
             "platform.spec.edit",
         }
     ),
-    "PLATFORM_SUPPORT": frozenset({"platform.shop.view_meta", "platform.shop.note", "platform.staff.view"}),
+    # Platforma jamoasi bo'limi faqat adminga (business/15 §5) — support jamoani ko'rmaydi
+    "PLATFORM_SUPPORT": frozenset({"platform.shop.view_meta", "platform.shop.note"}),
     "SPEC_EDITOR": frozenset({"platform.spec.edit"}),
 }
 

@@ -68,6 +68,7 @@ def test_shop_lifecycle_from_creation_to_activation(world: World) -> None:  # UA
 def test_suspend_requires_reason_and_closed_shop_blocks_panel(world: World) -> None:
     c, s = world.client, world.create_shop()
     shop_id, admin = s["shop"]["id"], _bearer(world.admin_token, **_idem())
+    world.branch(s["owner_token"])
     c.post("/api/v1/shop/profile/submit-for-verification", headers=_bearer(s["owner_token"], **_idem()))
     c.post(f"/api/v1/platform/shops/{shop_id}/activate", headers=admin)
     assert (
@@ -88,10 +89,122 @@ def test_suspend_requires_reason_and_closed_shop_blocks_panel(world: World) -> N
     )
     blocked = c.get("/api/v1/shop/profile", headers=_bearer(s["owner_token"]))
     assert (blocked.status_code, _code(blocked)) == (409, "SHOP_NOT_ACTIVE")
+    # Sessiyalar ham tugaydi: yangilash ishlamaydi, sababi — shop yopilgan (klient xabar ko'rsatadi)
+    assert _code(c.get("/api/v1/auth/me", headers=_bearer(s["owner_token"]))) == "SHOP_NOT_ACTIVE"
+    assert _code(c.post("/api/v1/auth/refresh", json=SHOP)) == "SHOP_NOT_ACTIVE"
+    open_sessions = _sql(
+        world.urls.admin,  # sessions jadvalida FORCE RLS — tekshiruv superuser bilan
+        "SELECT count(*) FILTER (WHERE revoked_at IS NULL) AS open, "
+        "count(*) FILTER (WHERE revoked_reason = 'SHOP_CLOSED') AS closed "
+        "FROM platform.sessions WHERE shop_id = $1",
+        UUID(shop_id),
+    )
+    assert open_sessions[0]["open"] == 0 and open_sessions[0]["closed"] >= 1
     login = c.post(
         "/api/v1/auth/login", json={"phone": s["owner_phone"], "password": PASSWORD, "audience": "shop"}
     )
     assert _code(login) == "SHOP_NOT_ACTIVE"
+
+
+def test_suspended_shop_keeps_sessions(world: World) -> None:  # business/13: ichki ish davom etadi
+    c, s = world.client, world.create_shop()
+    shop_id = s["shop"]["id"]
+    world.branch(s["owner_token"])
+    c.post("/api/v1/shop/profile/submit-for-verification", headers=_bearer(s["owner_token"], **_idem()))
+    c.post(f"/api/v1/platform/shops/{shop_id}/activate", headers=_bearer(world.admin_token, **_idem()))
+    suspended = c.post(
+        f"/api/v1/platform/shops/{shop_id}/suspend",
+        json={"reason": "To'lov kechikdi"},
+        headers=_bearer(world.admin_token, **_idem()),
+    )
+    assert suspended.json()["status"] == "SUSPENDED"
+    me = c.get("/api/v1/auth/me", headers=_bearer(s["owner_token"]))
+    assert (me.status_code, me.json()["shop"]["status"]) == (200, "SUSPENDED")
+
+
+def test_submit_for_verification_requires_active_branch(world: World) -> None:
+    c, s = world.client, world.create_shop()
+    owner = s["owner_token"]
+
+    def submit() -> Any:
+        return c.post("/api/v1/shop/profile/submit-for-verification", headers=_bearer(owner, **_idem()))
+
+    no_branch = submit()
+    assert (_code(no_branch), no_branch.json()["error"]["details"]["fields"]) == (
+        "VALIDATION_FAILED",
+        [{"field": "branches", "code": "required", "params": {}}],
+    )
+    branch = world.branch(owner)
+    closed = c.post(f"/api/v1/shop/branches/{branch['id']}/close", headers=_bearer(owner, **_idem()))
+    assert closed.json()["status"] == "CLOSED"
+    assert _code(submit()) == "VALIDATION_FAILED"  # yopilgan filial hisobga olinmaydi
+    world.branch(owner, "Yunusobod")
+    assert submit().json()["status"] == "PENDING_VERIFICATION"
+
+
+def test_profile_patch_keeps_omitted_fields_and_checks_timezone(world: World) -> None:
+    c, s = world.client, world.create_shop()
+    owner = s["owner_token"]
+    profile = c.get("/api/v1/shop/profile", headers=_bearer(owner)).json()
+    required = {"name": profile["name"], "tin": profile["tin"]}
+
+    bad = c.patch(
+        "/api/v1/shop/profile",
+        json={**required, "timezone": "Mars/Olympus"},
+        headers=_bearer(owner, **{"If-Match": '"v1"'}),
+    )
+    assert (_code(bad), bad.json()["error"]["details"]["fields"]) == (
+        "VALIDATION_FAILED",
+        [{"field": "timezone", "code": "invalid_choice", "params": {}}],
+    )
+    first = c.patch(
+        "/api/v1/shop/profile",
+        json={**required, "legal_name": "TechPC MCHJ", "default_locale": "ru", "timezone": "Asia/Samarkand"},
+        headers=_bearer(owner, **{"If-Match": '"v1"'}),
+    )
+    assert first.status_code == 200, first.text
+    # Faqat nomi yuborildi — qolganlari standart qiymatga qaytmasligi kerak
+    second = c.patch(
+        "/api/v1/shop/profile",
+        json={**required, "name": "TechPC Plus"},
+        headers=_bearer(owner, **{"If-Match": '"v2"'}),
+    )
+    assert second.status_code == 200, second.text
+    body = second.json()
+    assert (body["name"], body["legal_name"], body["default_locale"], body["timezone"]) == (
+        "TechPC Plus",
+        "TechPC MCHJ",
+        "ru",
+        "Asia/Samarkand",
+    )
+
+
+def test_policies_validate_limits_and_reminder_hours(world: World) -> None:
+    c, s = world.client, world.create_shop()
+    owner = s["owner_token"]
+    current = {
+        k: v
+        for k, v in c.get("/api/v1/shop/policies", headers=_bearer(owner)).json().items()
+        if k != "version"
+    }
+    if_match = {"If-Match": '"v1"'}
+
+    sales_above = c.patch(
+        "/api/v1/shop/policies",
+        json={**current, "discount_limit_sales_pct": "12.00", "discount_limit_manager_pct": "10.00"},
+        headers=_bearer(owner, **if_match),
+    )
+    assert (_code(sales_above), sales_above.json()["error"]["details"]["fields"]) == (
+        "VALIDATION_FAILED",
+        [{"field": "discount_limit_sales_pct", "code": "max_value", "params": {"max": "10.00"}}],
+    )
+    zero_hours = c.patch(
+        "/api/v1/shop/policies",
+        json={**current, "order_reminder_hours": [0, 24]},
+        headers=_bearer(owner, **if_match),
+    )
+    fields = zero_hours.json()["error"]["details"]["fields"]
+    assert [(f["field"], f["code"]) for f in fields] == [("order_reminder_hours[0]", "min_value")]
 
 
 def test_create_shop_replay_returns_same_shop_and_fresh_link(world: World) -> None:
@@ -372,6 +485,7 @@ def test_brute_force_locks_account(world: World) -> None:
     )  # to'g'ri parol ham
     assert (locked.status_code, _code(locked)) == (429, "RATE_LIMITED")
     assert locked.json()["error"]["details"]["retry_after_seconds"] > 0
+    assert int(locked.headers["Retry-After"]) == locked.json()["error"]["details"]["retry_after_seconds"]
     failed = _sql(
         world.urls.migrator,
         "SELECT count(*) AS n FROM audit.audit_entries WHERE action = 'auth.login.failed' "
@@ -403,6 +517,7 @@ def test_login_rate_limited_per_ip_and_phone(world: World) -> None:
         )
     limited = c.post("/api/v1/auth/login", json={"phone": phone, "password": "x", "audience": "shop"})
     assert (limited.status_code, _code(limited)) == (429, "RATE_LIMITED")
+    assert int(limited.headers["Retry-After"]) >= 1
 
 
 def test_refresh_rotation_and_reuse_detection(world: World) -> None:
@@ -439,12 +554,21 @@ def test_logout_and_logout_all(world: World) -> None:
 def test_change_password_keeps_current_session_only(world: World) -> None:
     c, s = world.client, world.create_shop()
     current, other = world.login(s["owner_phone"]), world.login(s["owner_phone"])
-    weak = c.post(
-        "/api/v1/auth/password/change",
-        json={"current_password": PASSWORD, "new_password": "12345678"},
-        headers=_bearer(current),
-    )
-    assert weak.json()["error"]["details"]["fields"][0]["code"] == "too_weak"
+
+    def change(current_password: str, new_password: str) -> Any:
+        return c.post(
+            "/api/v1/auth/password/change",
+            json={"current_password": current_password, "new_password": new_password},
+            headers=_bearer(current),
+        )
+
+    def field_error(response: Any) -> tuple[str, str]:
+        field = response.json()["error"]["details"]["fields"][0]
+        return field["field"], field["code"]
+
+    assert field_error(change(PASSWORD, "password123")) == ("new_password", "too_weak")
+    assert field_error(change(PASSWORD, PASSWORD)) == ("new_password", "same_as_current")
+    assert field_error(change("noto'g'ri-parol", "Yangi-parol-2027")) == ("current_password", "invalid")
     ok = c.post(
         "/api/v1/auth/password/change",
         json={"current_password": PASSWORD, "new_password": "Yangi-parol-2027"},

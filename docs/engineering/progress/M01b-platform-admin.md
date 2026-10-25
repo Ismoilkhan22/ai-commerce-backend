@@ -185,3 +185,46 @@ ai-commerce-frontend/
 - **Ichki izoh va jamoa takliflari** — DBML'dagi taklif bo'yicha qurildi (founder: "platforma qismini to'liq tugat"). Commit'dan oldin o'zgartirish mumkin.
 - **API o'zgarishi:** `GET /platform/shops` endi `{items, total}` qaytaradi. Frontend client qayta generatsiya qilingan.
 - **Eski jurnal yozuvlari** (bu o'zgarishdan oldingi) `shop_id` siz. Kartochka jurnalida ular `entity_id` orqali topiladi, umumiy jurnalda esa shop nomisiz ko'rinadi.
+
+## 7. QA tekshiruvi (2026-10-25)
+
+Mustaqil QA: 11 o'rta va 26 kichik topilma. O'rtalarning hammasi va kichiklarning ko'pi tuzatildi; qolgan 7 tasi 8-bo'limda.
+
+**Founder qarori (M11):** "Platforma jamoasi" bo'limi faqat adminga (business/15 §5). `PLATFORM_SUPPORT` dan `platform.staff.view` olindi → support menyuda bo'limni ko'rmaydi, to'g'ridan manzilda "Ruxsat yo'q", jurnaldagi "Kim" filtri ham yashirin.
+
+**Backend:**
+- Shop yopilsa (`CLOSE`) → shopning hamma sessiyasi tugaydi (`revoked_reason = SHOP_CLOSED`). Shu sessiya bilan kelgan so'rov va refresh → `SHOP_NOT_ACTIVE`, klient sababini ko'rsatadi. To'xtatilganda (`SUSPEND`) sessiyalar qoladi — shop ichki ishini davom ettiradi (business/13).
+- `PATCH /shop/profile` va `PATCH /platform/shops/{id}`: body'da yo'q maydon o'zgarmaydi (`exclude_unset`). Oldin `legal_name`, til va vaqt zonasi standart qiymatga qaytib qolardi.
+- Vaqt zonasi IANA ro'yxatidan tekshiriladi → noma'lumi `VALIDATION_FAILED`, `timezone / invalid_choice`.
+- Tekshiruvga yuborish → kamida bitta ochiq filial shart (`branches / required`).
+- Sozlamalar: operator chegirma limiti menejernikidan oshmaydi (`discount_limit_sales_pct / max_value`); eslatma soatlari 1…720.
+- Platforma tahririda sabab kamida 3 belgi (holat o'zgartirish sababi bilan bir xil).
+- Buzuq JSON → `400 INVALID_REQUEST` (oldin `VALIDATION_FAILED` edi). Har 429 javobida `Retry-After` sarlavhasi (bloklash ham, rate limit ham).
+- Parol: oddiy parollar ro'yxati ~220 ta (xalqaro + mahalliy: `toshkent`, `uzbekistan`, `parol123`…). Parolda telefonning oxirgi 7 raqami bo'lsa (ajratgichlar bilan ham) → `too_weak`.
+- Parolni o'zgartirish: joriy parol noto'g'ri → `current_password / invalid`; yangisi joriysi bilan bir xil → `new_password / same_as_current`; oddiy parol → `new_password / too_weak`. Ikki yangi kod 11 §6.3 ro'yxatiga qo'shildi.
+- Bosh sahifadagi "Ega kirmagan" ro'yxati → faqat havolasi eskirgan yoki 24 soatda eskiradiganlar.
+
+**Frontend:**
+- Xato matnlari kod bo'yicha tarjima qilinadi (`errors.codes`, katalogdagi hamma kod, uz/ru/en). Backend matni faqat noma'lum kodda. Forma ostiga tushmagan `VALIDATION_FAILED` → "Maydonlarni tekshiring" va qaysi maydon ekani.
+- Har qanday so'rov `SHOP_NOT_ACTIVE` qaytarsa → sessiya tugaydi, login sahifasida "Shop yopilgan…". Oynaga qaytilganda `me` yangilanadi (ko'pi bilan daqiqada bir marta).
+- Platforma menyusi va ⌘K amallari ruxsatga qarab. Sahifalar ruxsat yo'q bo'lsa `Forbidden`. Biror so'rov 403 qaytarsa → ruxsatlar qayta olinadi, sahifa eski ma'lumot o'rniga "Ruxsat yo'q" ko'rsatadi. Kutubxona muharriri bosh sahifada bo'sh oyna emas, "bo'limingiz katalog moduli bilan keladi" ko'radi.
+- Holat oynasi: sabab 3 belgidan qisqa bo'lsa tugma o'chiq va ostida qoida; server xatosi maydon ostida. Izoh matni endi "shop egasi ko'radi" demaydi (ko'rmaydi).
+- Jurnal: `auth.*` amallari va o'zgargan maydon nomlari tarjima qilingan (`fields`).
+- Uzun matn (izoh, sabab, nom) qatorga sig'adi; textarea faqat bo'yiga cho'ziladi.
+- Shop paneli 390px da gorizontal aylanmaydi (jadvallar karta ichida aylanadi). Platforma menyusi telefonda hamma bandi bilan ko'rinadi. E2E ikkalasini ham tekshiradi.
+- Vaqt zonasi — ro'yxatdan tanlanadi. Sessiyalarda "Chrome · macOS". Login: "Telefon raqamini to'liq kiriting", bloklash daqiqada. Foydalanuvchi menyusida rol tarjimasi. Shop ro'yxatida slug va "3 xodim · 2 filial". Bosh sahifada qoralama, yopilgan va 7 kunlik yangi shoplar. Ruscha/inglizcha sonli matnlar ko'plik shaklisiz yozildi. Kartochkada tanlangan tab ko'rinadigan joyga suriladi. Jamoa oynalarida amal xato bersa ro'yxat yangilanadi; holat boshqa joyda o'zgargan bo'lsa (404/409) oyna yopiladi.
+
+**Tekshiruv:**
+- [x] backend `make check` → **205 passed** (+14)
+- [x] frontend `pnpm check` va ikkala build xatosiz
+- [x] Playwright → **5 test**. Yangilari: support jamoa bo'limini ocha olmaydi; shop yopilsa ega darhol chiqariladi va sababini ko'radi; shop va platforma paneli 390px da enidan oshmaydi
+
+## 8. QA topilmalari — keyinga qoldirilgan
+
+- **L6 — login javobidan telefon bor-yo'qligini bilish.** Hozir bir xil xabar va vaqt; to'liq himoya (CAPTCHA, IP bo'yicha qattiqroq limit) — ochiq ro'yxatdan o'tish paydo bo'lganda.
+- **L10 — `working_hours` sxemasi.** Filial ish vaqti UI'si yo'q (L24), sxemani u bilan birga belgilaymiz.
+- **L11 — o'xshash nomli shop haqida ogohlantirish.** STIR va slug noyob; nom takrori xato emas, pilot hajmida kerak emas.
+- **L12 — telefonning bir qismi bo'yicha qidiruv.** Hozir to'liq raqam (istalgan ko'rinishda); qisman qidiruv uchun indeks kerak — shoplar ko'payganda.
+- **L14 — jurnal qatorida nishon nomi (qaysi xodim, qaysi filial).** Audit'da faqat `entity_id`; nomni olish uchun har domen bo'yicha qo'shimcha so'rov kerak — reporting proyeksiyasi bilan.
+- **L22 — havolani oldindan tekshirish endpoint'i.** Hozir xato parol yuborilganda chiqadi; oldindan tekshirish havolani "ishlatmasdan" holatini oshkor qiladi — xavfsizlik bilan birga ko'rib chiqiladi.
+- **L24 — filial ish vaqti va xarita UI.** Buyurtma va olib ketish moduli bilan keladi (u yerda kerak bo'ladi).

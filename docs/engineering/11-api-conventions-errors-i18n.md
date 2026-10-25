@@ -174,7 +174,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 
 | Code | `details` |
 |---|---|
-| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak` (`too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi) |
+| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak, invalid, same_as_current` (`too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi; `invalid` — qiymat tekshiruvdan o'tmadi, masalan joriy parol noto'g'ri; `same_as_current` — yangi parol joriysi bilan bir xil) |
 | `VERSION_CONFLICT` | `{"current_version": 5, "your_version": 4}` |
 | `INVALID_STATE_TRANSITION` | `{"entity": "commerce.order", "from": "DRAFT", "command": "COMPLETE"}` |
 | `INSUFFICIENT_AVAILABLE_STOCK` | `{"lines": [{"sku_id", "branch_id", "requested", "available"}]}` |

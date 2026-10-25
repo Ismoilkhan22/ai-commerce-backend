@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -76,7 +76,7 @@ class PolicyUpdate(BaseModel):
     quote_ttl_hours: int = Field(ge=1, le=720)
     discount_limit_sales_pct: Decimal = Field(ge=0, le=100, decimal_places=2)
     discount_limit_manager_pct: Decimal = Field(ge=0, le=100, decimal_places=2)
-    order_reminder_hours: list[int] = Field(min_length=1, max_length=5)
+    order_reminder_hours: list[Annotated[int, Field(ge=1, le=720)]] = Field(min_length=1, max_length=5)
     quote_approval_mode: Literal["ALL", "RISKY_ONLY"]
     exchange_rate_source: Literal["MANUAL", "CBU"]
     stock_display: Literal["EXACT", "STATUS_ONLY"]

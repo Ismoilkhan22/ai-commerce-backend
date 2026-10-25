@@ -109,14 +109,23 @@ async def _domain_error_handler(_: Request, exc: Exception) -> JSONResponse:
     status = status_for(exc.code)
     log = logger.error if status >= 500 else logger.warning
     log("domain_error", code=exc.code, status=status)
-    return error_response(exc.code, exc.message, exc.details)
+    headers = None
+    retry_after = exc.details.get("retry_after_seconds")
+    if status == 429 and isinstance(retry_after, int):
+        headers = {"Retry-After": str(max(retry_after, 1))}  # har 429 javobida (RFC 9110 §10.2.3)
+    return error_response(exc.code, exc.message, exc.details, headers=headers)
 
 
 async def _validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
+    errors = list(exc.errors())
+    if any(err.get("type") == "json_invalid" for err in errors):
+        # Buzuq JSON — maydon xatosi emas, so'rovning o'zi noto'g'ri tuzilgan
+        logger.warning("invalid_json")
+        return error_response("INVALID_REQUEST", "Malformed JSON body")
     logger.warning("validation_failed")
     return error_response(
-        "VALIDATION_FAILED", "Request validation failed", {"fields": validation_fields(list(exc.errors()))}
+        "VALIDATION_FAILED", "Request validation failed", {"fields": validation_fields(errors)}
     )
 
 

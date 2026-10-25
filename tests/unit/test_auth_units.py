@@ -40,7 +40,17 @@ def test_invalid_phone_rejected(raw: str) -> None:
 
 @pytest.mark.parametrize(
     ("password", "code"),
-    [("short1", "min_length"), ("12345678", "too_weak"), ("Password", "too_weak"), ("x" * 129, "max_length")],
+    [
+        ("short1", "min_length"),
+        ("12345678", "too_weak"),
+        ("Password", "too_weak"),
+        ("x" * 129, "max_length"),
+        ("Password123", "too_weak"),
+        ("qwerty123", "too_weak"),
+        ("123456789a", "too_weak"),
+        ("Uzbekistan", "too_weak"),
+        ("toshkent", "too_weak"),
+    ],
 )
 def test_weak_passwords_rejected(password: str, code: str) -> None:
     with pytest.raises(ValidationError) as exc:
@@ -48,10 +58,18 @@ def test_weak_passwords_rejected(password: str, code: str) -> None:
     assert exc.value.details["fields"][0]["code"] == code  # type: ignore[index]
 
 
-def test_password_containing_phone_digits_rejected() -> None:
-    with pytest.raises(ValidationError):
-        validate_new_password("ab901234567", phone="+998901234567")
+@pytest.mark.parametrize("password", ["ab901234567", "Ali1234567!", "x-998901234567", "90-123-45-67-uz"])
+def test_password_containing_phone_digits_rejected(password: str) -> None:
+    with pytest.raises(ValidationError) as exc:
+        validate_new_password(password, phone="+998901234567", field="new_password")
+    assert exc.value.details["fields"] == [  # type: ignore[comparison-overlap]
+        {"field": "new_password", "code": "too_weak", "params": {}}
+    ]
+
+
+def test_password_with_short_phone_fragment_allowed() -> None:
     validate_new_password("Kuchli-parol-2026", phone="+998901234567")
+    validate_new_password("Do'kon-4567-yangi", phone="+998901234567")  # oxirgi 4 raqam — yetarli emas
 
 
 async def test_hasher_verifies_and_resists_missing_hash() -> None:

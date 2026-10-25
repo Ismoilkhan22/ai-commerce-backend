@@ -5,13 +5,15 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 from uuid import UUID
+from zoneinfo import available_timezones
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.config import AuthConfig
+from app.platform.auth.models.orm import AuthSession
 from app.platform.shops.models.orm import Branch, Shop, ShopNote, ShopPolicy
 from app.platform.shops.platform_schemas import PlatformShopUpdate, ShopNoteIn, ShopNoteOut
 from app.platform.shops.schemas import (
@@ -45,6 +47,10 @@ def _not_unique(field: str) -> ValidationError:
     return ValidationError(
         f"{field} already used", fields=[{"field": field, "code": "not_unique", "params": {}}]
     )
+
+
+def _field_error(field: str, code: str, message: str, **params: object) -> ValidationError:
+    return ValidationError(message, fields=[{"field": field, "code": code, "params": params}])
 
 
 def _on_shop(actor: ActorContext, shop_id: UUID) -> ActorContext:
@@ -94,7 +100,11 @@ class ShopService:
     ) -> ShopOut:
         shop = await self._shop(db, actor.shop_id, for_update=True)
         check_version(shop.version, expected_version)
-        changed = {k: v for k, v in data.model_dump().items() if getattr(shop, k) != v}
+        # PATCH: body'da yo'q maydon o'zgarmaydi (standart qiymatga qaytmaydi)
+        wanted = data.model_dump(exclude_unset=True)
+        if "timezone" in wanted and wanted["timezone"] not in available_timezones():
+            raise _field_error("timezone", "invalid_choice", "Unknown timezone")
+        changed = {k: v for k, v in wanted.items() if getattr(shop, k) != v}
         for key, value in changed.items():
             setattr(shop, key, value)
         await self._flush_unique(db, {"uq_shops_tin": "tin"})
@@ -111,6 +121,11 @@ class ShopService:
 
     async def submit_for_verification(self, db: AsyncSession, actor: ActorContext) -> ShopOut:
         shop = await self._shop(db, actor.shop_id, for_update=True)
+        active_branches = await db.scalar(
+            select(func.count()).where(Branch.shop_id == shop.id, Branch.status == "ACTIVE")
+        )
+        if not active_branches:  # tekshiruvga kamida bitta ishlayotgan filial bilan yuboriladi
+            raise _field_error("branches", "required", "At least one active branch is required")
         return await self._transition(
             db, actor, shop, "PENDING_VERIFICATION", "SUBMIT_FOR_VERIFICATION", None
         )
@@ -123,6 +138,14 @@ class ShopService:
     ) -> PolicyOut:
         policy = await self._policy(db, actor.shop_id, for_update=True)
         check_version(policy.version, expected_version)
+        if data.discount_limit_sales_pct > data.discount_limit_manager_pct:
+            # Sotuvchi chegarasi menejernikidan oshmaydi — aks holda tasdiqlash zinapoyasi buziladi
+            raise _field_error(
+                "discount_limit_sales_pct",
+                "max_value",
+                "Sales limit exceeds manager limit",
+                max=data.discount_limit_manager_pct,
+            )
         changed = {k: v for k, v in data.model_dump().items() if getattr(policy, k) != v}
         for key, value in changed.items():
             setattr(policy, key, value)
@@ -262,7 +285,17 @@ class ShopService:
             command
         ]
         shop = await self._shop(db, shop_id, for_update=True)
-        return await self._transition(db, _on_shop(actor, shop.id), shop, target, command, reason)
+        result = await self._transition(db, _on_shop(actor, shop.id), shop, target, command, reason)
+        if target == "CLOSED":
+            # Yopilgan shopda hech kim ishlamaydi: barcha sessiyalar darhol tugaydi.
+            # SUSPENDED da sessiyalar qoladi — shop ichki ishini davom ettiradi (business/13)
+            await set_identity_context(db, shop_id=shop.id)
+            await db.execute(
+                update(AuthSession)
+                .where(AuthSession.shop_id == shop.id, AuthSession.revoked_at.is_(None))
+                .values(revoked_at=utcnow(), revoked_reason="SHOP_CLOSED")
+            )
+        return result
 
     async def platform_update(
         self,
@@ -275,12 +308,12 @@ class ShopService:
         """Platforma shop ma'lumotini tuzatadi: sabab majburiy, slug o'zgarmaydi (business/15 §3)."""
         reason = data.reason.strip()
         if not reason:
-            raise ValidationError(
-                "Reason required", fields=[{"field": "reason", "code": "required", "params": {}}]
-            )
+            raise _field_error("reason", "required", "Reason required")
+        if len(reason) < 3:  # holat o'zgartirish sababi bilan bir xil qoida (ReasonIn)
+            raise _field_error("reason", "min_length", "Reason too short", min=3)
         shop = await self._shop(db, shop_id, for_update=True)
         check_version(shop.version, expected_version)
-        wanted = data.model_dump(exclude={"reason"})
+        wanted = data.model_dump(exclude={"reason"}, exclude_unset=True)
         old = {key: getattr(shop, key) for key in wanted}
         changed = {key: value for key, value in wanted.items() if old[key] != value}
         if changed:

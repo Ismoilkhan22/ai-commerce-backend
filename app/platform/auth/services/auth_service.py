@@ -183,6 +183,8 @@ class AuthService:
                     actor=_actor(session.principal_id, session.shop_id, session.audience),
                 )
                 logger.warning("auth.refresh_reuse_detected", family_id=str(session.family_id))
+            if session.revoked_reason == "SHOP_CLOSED":
+                return Outcome(error=ShopNotActiveError("Shop is closed"))
             return Outcome(error=UnauthenticatedError("Refresh token is no longer valid"))
         if session.expires_at <= now:
             return Outcome(error=UnauthenticatedError("Refresh token expired"))
@@ -258,9 +260,14 @@ class AuthService:
         if not await self.hasher.verify(principal.password_hash, current):
             raise ValidationError(
                 "Current password is wrong",
-                fields=[{"field": "current_password", "code": "invalid_format", "params": {}}],
+                fields=[{"field": "current_password", "code": "invalid", "params": {}}],
             )
-        validate_new_password(new, principal.phone)
+        if new == current:
+            raise ValidationError(
+                "New password equals the current one",
+                fields=[{"field": "new_password", "code": "same_as_current", "params": {}}],
+            )
+        validate_new_password(new, principal.phone, field="new_password")
         now = utcnow()
         principal.password_hash = await self.hasher.hash(new)
         principal.password_changed_at = now

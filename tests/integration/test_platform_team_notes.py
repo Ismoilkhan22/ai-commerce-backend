@@ -204,13 +204,17 @@ def test_last_active_admin_cannot_be_demoted(world: World) -> None:
         )
 
 
-def test_support_can_view_and_note_but_not_manage(world: World) -> None:
+def test_support_can_note_but_not_see_or_manage_team(world: World) -> None:
     support_phone = _phone()
     asyncio.run(
         create_platform_admin(world.settings, support_phone, "Dilnoza Support", PASSWORD, "PLATFORM_SUPPORT")
     )
     support = _bearer(_platform_login(world, support_phone))
-    assert world.client.get("/api/v1/platform/staff", headers=support).status_code == 200
+    # Platforma jamoasi bo'limi faqat adminga (business/15 §5)
+    staff = world.client.get("/api/v1/platform/staff", headers=support)
+    assert (staff.status_code, _code(staff)) == (403, "FORBIDDEN")
+    me = world.client.get("/api/v1/auth/me", headers=support).json()
+    assert "platform.staff.view" not in me["permissions"]
     invite = world.client.post(
         "/api/v1/platform/staff/invites",
         json={"phone": _phone(), "full_name": "Yangi Odam", "role": "SPEC_EDITOR"},

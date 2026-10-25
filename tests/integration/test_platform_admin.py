@@ -7,6 +7,7 @@ ichida tekshiriladi.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -130,9 +131,9 @@ def test_dashboard_pending_owner_invite_states(world: World) -> None:
     pending = {p["shop_id"]: p for p in _dashboard(world)["pending_owners"]}
     assert pending[expired["shop"]["id"]]["invite_state"] == "expired"
     assert pending[expiring["shop"]["id"]]["invite_state"] == "expiring"
-    assert pending[fresh["shop"]["id"]]["invite_state"] == "valid"
-    assert pending[fresh["shop"]["id"]]["membership_id"] == fresh["owner_membership_id"]
-    assert pending[fresh["shop"]["id"]]["owner_name"] == "Ega Egayev"
+    assert pending[expiring["shop"]["id"]]["membership_id"] == expiring["owner_membership_id"]
+    assert pending[expiring["shop"]["id"]]["owner_name"] == "Ega Egayev"
+    assert fresh["shop"]["id"] not in pending  # havola hali amalda — aralashish shart emas
     assert accepted["shop"]["id"] not in pending
 
 
@@ -213,6 +214,12 @@ def test_platform_edits_shop_with_reason_and_if_match(world: World) -> None:
         "code": "required",
         "params": {},
     }
+    short = world.client.patch(url, json={**body, "reason": " ab "}, headers={**admin, "If-Match": '"v1"'})
+    assert short.json()["error"]["details"]["fields"][0] == {
+        "field": "reason",
+        "code": "min_length",
+        "params": {"min": 3},
+    }
     duplicate = world.client.patch(
         url,
         json={**body, "tin": other["shop"]["tin"], "reason": "Shartnoma"},
@@ -239,18 +246,30 @@ def test_platform_edits_shop_with_reason_and_if_match(world: World) -> None:
     stale = world.client.patch(url, json={**body, "reason": "Yana"}, headers={**admin, "If-Match": '"v1"'})
     assert _code(stale) == "VERSION_CONFLICT"
 
+    # PATCH: yuborilmagan legal_name va default_locale o'z qiymatida qoladi
+    partial = world.client.patch(
+        url,
+        json={"name": "Faqat nom", "tin": body["tin"], "reason": "Nom tuzatildi"},
+        headers={**admin, "If-Match": '"v2"'},
+    )
+    assert partial.status_code == 200, partial.text
+    kept = partial.json()
+    assert (kept["name"], kept["legal_name"], kept["default_locale"]) == ("Faqat nom", "Yangi MCHJ", "ru")
+
     rows = _sql(
         world.urls.admin,
         "SELECT shop_id, reason, diff FROM audit.audit_entries "
         "WHERE action = 'shops.shop.updated' AND entity_id = $1",
         UUID(shop_id),
     )
+    rows = sorted(rows, key=lambda r: r["reason"] != "Shartnoma bo'yicha")
     assert (
-        len(rows) == 1 and rows[0]["shop_id"] == UUID(shop_id) and rows[0]["reason"] == "Shartnoma bo'yicha"
+        len(rows) == 2 and rows[0]["shop_id"] == UUID(shop_id) and rows[0]["reason"] == "Shartnoma bo'yicha"
     )
     assert (
         '"tin": {"changed": true}' in rows[0]["diff"] and body["tin"] not in rows[0]["diff"]
     )  # STIR qiymati yo'q
+    assert set(json.loads(rows[1]["diff"])) == {"name"}  # faqat haqiqatan o'zgargan maydon
 
 
 def test_support_role_reads_but_cannot_change(world: World) -> None:

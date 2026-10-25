@@ -81,6 +81,11 @@ async def legacy_conflict() -> dict[str, str]:
     raise HTTPException(status_code=409, detail="conflict from a library")
 
 
+@router.post("/busy")
+async def busy() -> dict[str, str]:
+    raise base.RateLimitedError("Too many requests", retry_after_seconds=42)
+
+
 @router.get("/boom")
 async def boom() -> dict[str, str]:
     raise RuntimeError("database password=secret leaked?")
@@ -123,8 +128,15 @@ def test_missing_field_and_bad_json(client: TestClient) -> None:
     response = client.post(
         "/api/v1/shop/orders", content=b"{not json", headers={"content-type": "application/json"}
     )
-    assert response.status_code == 422
-    _assert_envelope(response.json(), "VALIDATION_FAILED")
+    assert response.status_code == 400  # buzuq JSON — maydon xatosi emas
+    _assert_envelope(response.json(), "INVALID_REQUEST")
+
+
+def test_rate_limited_sets_retry_after_header(client: TestClient) -> None:
+    response = client.post("/api/v1/shop/busy")
+    assert response.status_code == 429
+    assert _assert_envelope(response.json(), "RATE_LIMITED")["details"] == {"retry_after_seconds": 42}
+    assert response.headers["Retry-After"] == "42"
 
 
 def test_unknown_path_and_method(client: TestClient) -> None:  # TC-CONV-02
