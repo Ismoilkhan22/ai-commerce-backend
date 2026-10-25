@@ -9,10 +9,10 @@ Admin ulanishi (`DATABASE_ADMIN_URL`) faqat shu skript uchun. Rol parollari `DAT
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 
 import asyncpg
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 from app.db.schemas import MIGRATOR_ROLE, RUNTIME_ROLE
@@ -50,13 +50,18 @@ async def bootstrap(admin_url: str, runtime_url: str, migrator_url: str) -> None
         await conn.close()
 
 
+class _AdminSettings(BaseSettings):
+    """Admin URL ilova sozlamalarida yo'q (runtime unga muhtoj emas), lekin xuddi shu .env'dan o'qiladi."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    database_admin_url: str = "postgresql://postgres:postgres@localhost:5433/commerce_os"
+
+
 def main() -> None:
     from app.config.settings import Settings
 
     settings = Settings()
-    admin_url = os.environ.get(
-        "DATABASE_ADMIN_URL", "postgresql://postgres:postgres@localhost:5432/commerce_os"
-    )
+    admin_url = _AdminSettings().database_admin_url
     asyncio.run(bootstrap(admin_url, settings.database_url, settings.database_migrator_url))
 
 

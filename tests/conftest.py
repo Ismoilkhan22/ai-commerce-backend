@@ -4,6 +4,9 @@ import pytest
 
 from app.config.settings import Settings
 
+# Testlar dasturchining lokal .env fayliga bog'liq bo'lmasin: faqat kodda berilgan qiymatlar
+Settings.model_config["env_file"] = None
+
 # Testlarda Argon2 tez ishlashi uchun past parametrlar; rate limit — xotirada
 FAST_TEST_SETTINGS = {
     "app_env": "test",
