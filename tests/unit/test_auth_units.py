@@ -131,3 +131,11 @@ def test_real_manifests_give_owner_everything_manager_less() -> None:
     owner, manager, sales = (registry.for_role(r) for r in ("OWNER", "MANAGER", "SALES"))
     assert manager < owner and "staff.member.invite" in owner and "staff.member.invite" not in manager
     assert "shops.settings.view" not in sales
+
+
+async def test_memory_rate_limiter_scale_multiplies_limit() -> None:
+    from app.shared.ratelimit import MemoryRateLimiter
+
+    plain, scaled = MemoryRateLimiter(), MemoryRateLimiter(scale=3)
+    assert [await plain.hit("k", 2, 60) > 0 for _ in range(3)] == [False, False, True]
+    assert [await scaled.hit("k", 2, 60) > 0 for _ in range(7)] == [False] * 6 + [True]

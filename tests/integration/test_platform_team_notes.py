@@ -347,7 +347,18 @@ def test_dev_seed_builds_demo_data_and_is_idempotent(seed_urls: PgUrls) -> None:
     second = asyncio.run(run_seed(settings))
     assert second.created_shops == [] and second.created_team == []
     assert counts() == before
-    assert before["shops"] == 8 and before["team"] == 3
+    assert before["shops"] == 8 and before["team"] == 4
+    assert first.catalog_products == 18 and first.catalog_specs == 13
+    assert second.catalog_products == 0 and second.catalog_specs == 0
+    catalog = _sql(
+        seed_urls.admin,
+        "SELECT (SELECT count(*) FROM catalog.products) AS products, "
+        "(SELECT count(*) FROM catalog.reference_hardware_specs WHERE status = 'APPROVED') AS approved, "
+        "(SELECT count(*) FROM catalog.sku_spec_links) AS links, "
+        "(SELECT count(*) FROM catalog.spec_requests) AS requests, "
+        "(SELECT count(*) FROM platform.stored_files) AS files",
+    )[0]
+    assert dict(catalog) == {"products": 18, "approved": 12, "links": 13, "requests": 1, "files": 4}
 
     shops = {
         r["slug"]: r

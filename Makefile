@@ -8,7 +8,7 @@ install:
 	uv sync
 
 up:
-	$(COMPOSE) up -d postgres redis minio
+	$(COMPOSE) up -d postgres redis
 
 down:
 	$(COMPOSE) down

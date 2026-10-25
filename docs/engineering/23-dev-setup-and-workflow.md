@@ -29,7 +29,7 @@
 | pytest, pytest-asyncio, hypothesis | — | testlar |
 | testcontainers | PostgreSQL 16, Redis 7 | integratsiya testlari haqiqiy DB bilan |
 | pre-commit | ruff, mypy (o'zgargan fayllar), secret scan, `lint-imports` | commit oldidan |
-| Docker Compose | — | lokal PostgreSQL, Redis, MinIO |
+| Docker Compose | — | lokal PostgreSQL, Redis (fayllar — diskda, `var/storage`) |
 
 ### Frontend (`ai-commerce-frontend`)
 
@@ -67,7 +67,7 @@ pnpm dev                                   # shop paneli :3000, platforma paneli
 pnpm test:e2e                              # Playwright (backend va admin kerak)
 ```
 
-**Demo ma'lumot:** `make seed` — platforma jamoasi (admin, yordam, taklif qilingan a'zo) va 8 ta shop turli holatda (tekshiruvda, faol pilot, to'xtatilgan, egasi kirmagan). Servislar orqali yaratiladi — audit va jurnal haqiqiydagidek; qayta ishga tushirish xavfsiz. Kirish ma'lumotlari skript oxirida chiqadi. **Hozircha yo'q:** MinIO — obrazi (`minio/minio`) Docker Hub'dan endi yuklanmaydi; fayllar kerak bo'lganda (2-modul) boshqa manba tanlanadi.
+**Demo ma'lumot:** `make seed` — platforma jamoasi (admin, yordam, taklif qilingan a'zo) va 8 ta shop turli holatda (tekshiruvda, faol pilot, to'xtatilgan, egasi kirmagan). Servislar orqali yaratiladi — audit va jurnal haqiqiydagidek; qayta ishga tushirish xavfsiz. Kirish ma'lumotlari skript oxirida chiqadi. **Fayllar:** lokal va testda diskda (`STORAGE_LOCAL_DIR`, standart `var/storage`, git'ga kirmaydi) — `FileStorage` portining disk adapteri (2-modul). MinIO ishlatilmaydi: obrazi Docker Hub'dan endi yuklanmaydi. Production uchun S3-mos adapter deploy bilan qo'shiladi (S0-10, TD-03).
 
 **Seed ma'lumot:** har doim ikkita shop (A va B) — izolyatsiyani lokalda ham ko'rish uchun (TC-ISO). Faqat sintetik ma'lumot; haqiqiy xaridor ma'lumoti lokal yoki staging'ga hech qachon yuklanmaydi.
 

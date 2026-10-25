@@ -175,7 +175,8 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 |---|---|---|---|---|---|---|---|---|---|---|
 | `catalog.product.view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | agg | — | ✓ | Mahsulot (Ko'radi) |
 | `catalog.product.edit` | ✓ | ✓ | — | — | — | ✓ | — | — | — | Mahsulot qo'shish va tahrirlash |
-| `catalog.product.publish` | ✓ | ✓ | — | — | — | — | — | — | — | Saytga chiqarish (Tasdiqlaydi) |
+| `catalog.product.publish` | ✓ | ✓ | — | — | — | — | — | — | — | Saytga chiqarish (Tasdiqlaydi); yashirish va qayta chiqarish ham |
+| `catalog.product.archive` | ✓ | — | — | — | — | — | — | — | — | Arxivlash — faqat ega (DEC-133) |
 | `catalog.import.run` | ✓ | ✓ | — | — | — | ✓ | — | — | — | Katalog xodimi: fayldan yuklaydi (yuklash, mapping, dry-run) |
 | `catalog.import.commit` | ✓ | ✓ | — | — | — | ✓ | — | — | — | Importni yakunlash; qoldiq ustunlari bo'lsa qo'shimcha `commerce.stock.receive` talab qilinadi |
 | `catalog.price.view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | agg | — | ✓ | Narx (Ko'radi) |
@@ -261,9 +262,11 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `platform.state.force` (holatni majburan o'zgartirish, sabab + audit) | ✓ | — | — |
 | `platform.shop.view_meta` (holat, tarif, xatolar — ichki ma'lumotsiz) | ✓ | ✓ | — |
 | `platform.shop.note` (shop haqida ichki izoh qo'shish, business/15 §3) | ✓ | ✓ | — |
-| `platform.staff.view` (platforma jamoasi ro'yxati) | ✓ | ✓ | — |
+| `platform.staff.view` (platforma jamoasi ro'yxati; business/15 §5 — faqat admin) | ✓ | — | — |
 | `platform.staff.manage` (jamoaga taklif, rol, o'chirish, parol tiklash havolasi; oxirgi faol admin himoyalangan — `LAST_ADMIN_REQUIRED`) | ✓ | — | — |
-| `platform.spec.edit` (texnik ma'lumotlar kutubxonasi, DEC-120) | ✓ | — | ✓ |
+| `platform.spec.view` (kutubxona, tasdiq navbati, shop so'rovlari — faqat ko'rish) | ✓ | ✓ | ✓ |
+| `platform.spec.edit` (kutubxonaga kiritish, boshqaning taklifini tasdiqlash, shop so'rovini hal qilish; DEC-120) | ✓ | — | ✓ |
+| `platform.category.edit` (toifalar ro'yxati, DEC-133) | ✓ | — | — |
 | `platform.support.grant_request` (break-glass so'rovi, §9) | ✓ | ✓ | — |
 | `platform.outbox.replay`, `platform.channel.kill`, `platform.ai.kill` | ✓ | — | — |
 

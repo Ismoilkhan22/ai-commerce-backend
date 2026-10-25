@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     # Redis: db0 kesh va rate limit (08). Testlarda "memory".
     redis_url: str = "redis://localhost:6380/0"
     rate_limit_backend: Literal["redis", "memory"] = "redis"
+    # Faqat "memory" uchun: limitlar shu songa ko'paytiriladi (e2e'da hamma so'rov bitta IP'dan)
+    rate_limit_memory_scale: int = Field(default=1, ge=1, le=100)
 
     # Auth (ADR-023, 10 §5)
     jwt_secret: SecretStr = SecretStr(_DEV_JWT_SECRET)
@@ -73,6 +75,13 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
     argon2_time_cost: int = 3
     argon2_memory_kib: int = 65_536
+
+    # Fayllar (S0-08, ADR-014). Lokal va testda — disk; production'da S3-mos ombor (S0-10, TD-03).
+    storage_backend: Literal["local"] = "local"
+    storage_local_dir: str = "var/storage"
+    # Ochiq fayllar (mahsulot rasmi) shu manzildan beriladi; prod'da CDN yoki bucket manzili
+    public_files_url: str = "http://localhost:8000/api/v1/public/files"
+    signed_url_ttl_seconds: int = 300  # yopiq fayl havolasi 5 daqiqa amal qiladi
 
     @property
     def is_production(self) -> bool:
@@ -92,7 +101,7 @@ class Settings(BaseSettings):
                 )
             if not self.cookie_secure:
                 raise ValueError(f"cookie_secure {self.app_env} muhitida o'chirilmaydi")
-            for name in ("app_public_url", "platform_app_public_url"):
+            for name in ("app_public_url", "platform_app_public_url", "public_files_url"):
                 if (make_url_host(getattr(self, name)) or "") in _LOCAL_HOSTS:
                     raise ValueError(
                         f"{name} {self.app_env} muhitida lokal manzil bo'lmasin (havolalar ishlamaydi)"

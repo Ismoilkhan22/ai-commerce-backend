@@ -24,12 +24,15 @@ PLATFORM_ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = {
             "platform.shop.close",
             "platform.member.password_reset",
             "platform.state.force",
+            "platform.spec.view",
             "platform.spec.edit",
+            "platform.category.edit",
         }
     ),
     # Platforma jamoasi bo'limi faqat adminga (business/15 §5) — support jamoani ko'rmaydi
-    "PLATFORM_SUPPORT": frozenset({"platform.shop.view_meta", "platform.shop.note"}),
-    "SPEC_EDITOR": frozenset({"platform.spec.edit"}),
+    "PLATFORM_SUPPORT": frozenset({"platform.shop.view_meta", "platform.shop.note", "platform.spec.view"}),
+    # Kutubxona muharriri: kiritadi, boshqaning taklifini tasdiqlaydi, shop so'rovlarini hal qiladi
+    "SPEC_EDITOR": frozenset({"platform.spec.view", "platform.spec.edit"}),
 }
 
 

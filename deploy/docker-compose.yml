@@ -1,4 +1,5 @@
-# Lokal muhit: PostgreSQL 16, Redis 7 (AOF), MinIO (22, 23 §3)
+# Lokal muhit: PostgreSQL 16, Redis 7 (AOF) (22, 23 §3).
+# Fayllar lokalda diskda (`var/storage`, FileStorage porti) — MinIO kerak emas (TD-03)
 # Portlar 5433 / 6380: dasturchi kompyuteridagi o'z PostgreSQL (5432) va Redis (6379) bilan to'qnashmasin
 name: commerce-os
 
@@ -26,16 +27,6 @@ services:
       interval: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports: ["9000:9000", "9001:9001"]
-    volumes: [miniodata:/data]
-
 volumes:
   pgdata:
   redisdata:
-  miniodata:

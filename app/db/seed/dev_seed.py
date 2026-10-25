@@ -1,4 +1,4 @@
-"""Lokal demo ma'lumotlari: platforma jamoasi va turli holatdagi 8 ta shop (23 §3).
+"""Lokal demo ma'lumotlari: platforma jamoasi, turli holatdagi 8 ta shop va katalog (23 §3).
 
     make seed          # yoki: uv run python -m app.db.seed.dev_seed
 
@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import Settings
+from app.db.seed.catalog_seed import run_catalog_seed
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
@@ -79,6 +80,8 @@ class ShopSeed:
 TEAM = (
     TeamSeed("Dilnoza Support", "+998900000002", "PLATFORM_SUPPORT", "Demo-Support-2026"),
     TeamSeed("Bekzod Kutubxona", "+998900000003", "SPEC_EDITOR", None),
+    # Kutubxonaga admin kiritgan modellarni shu odam tasdiqlaydi ("ikki ko'z", engineering/17 §10)
+    TeamSeed("Sardor Kutubxona", "+998900000004", "SPEC_EDITOR", "Demo-Kutubxona-2026"),
 )
 
 SHOPS = (
@@ -184,6 +187,8 @@ class SeedReport:
     created_shops: list[str] = field(default_factory=list)
     skipped_shops: list[str] = field(default_factory=list)
     created_team: list[str] = field(default_factory=list)
+    catalog_products: int = 0
+    catalog_specs: int = 0
 
 
 @dataclass(frozen=True)
@@ -436,18 +441,22 @@ async def run_seed(settings: Settings) -> SeedReport:
                 report.skipped_shops.append(spec.slug)
     finally:
         await database.dispose()
+    catalog = await run_catalog_seed(settings, ADMIN_PHONE, TEAM[2].phone)
+    report.catalog_products, report.catalog_specs = catalog.products, catalog.specs
     return report
 
 
 def main() -> None:
     report = asyncio.run(run_seed(Settings()))
     lines = [
-        f"Yaratildi: shoplar {len(report.created_shops)}, jamoa {len(report.created_team)}; "
+        f"Yaratildi: shoplar {len(report.created_shops)}, jamoa {len(report.created_team)}, "
+        f"katalog: mahsulotlar {report.catalog_products}, kutubxona modellari {report.catalog_specs}; "
         f"o'tkazib yuborildi: {len(report.skipped_shops)}",
         "",
         "Platforma paneli (http://localhost:3001):",
         f"  admin   {ADMIN_PHONE} / {ADMIN_PASSWORD}",
         f"  support {TEAM[0].phone} / {TEAM[0].password}",
+        f"  kutubxona muharriri {TEAM[2].phone} / {TEAM[2].password}",
         "Shop paneli (http://localhost:3000) — egalar paroli: "
         + OWNER_PASSWORD
         + ", xodimlar: "

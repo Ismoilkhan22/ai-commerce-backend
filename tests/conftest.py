@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import tempfile
+
 import pytest
 
 from app.config.settings import Settings
@@ -16,6 +18,8 @@ FAST_TEST_SETTINGS = {
     "argon2_time_cost": 1,
     "argon2_memory_kib": 1024,
     "cookie_secure": False,
+    # Yuklangan fayllar repo ichidagi var/storage'ga emas, vaqtinchalik papkaga tushadi
+    "storage_local_dir": tempfile.mkdtemp(prefix="cos-test-storage-"),
 }
 
 

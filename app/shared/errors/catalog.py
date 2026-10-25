@@ -36,6 +36,7 @@ ERROR_CATALOG: dict[str, ErrorSpec] = {
     "SHOP_NOT_ACTIVE": ErrorSpec(409),
     "LAST_OWNER_REQUIRED": ErrorSpec(409),
     "LAST_ADMIN_REQUIRED": ErrorSpec(409),
+    "FILE_IN_USE": ErrorSpec(409),
     "SPEAKER_CONFLICT": ErrorSpec(409),
     "CHANNEL_UNAVAILABLE": ErrorSpec(409),
     "PAYLOAD_TOO_LARGE": ErrorSpec(413),

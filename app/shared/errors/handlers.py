@@ -51,9 +51,7 @@ _PYDANTIC_CODES = {
 }
 _PYDANTIC_PARAMS = {
     "ge": "min",
-    "gt": "min",
     "le": "max",
-    "lt": "max",
     "min_length": "min",
     "max_length": "max",
 }
@@ -89,11 +87,23 @@ def _field_path(loc: tuple[int | str, ...]) -> str:
     return path
 
 
+def _exclusive(name: str, bound: Any, step: int) -> dict[str, Any]:
+    """Qat'iy chegara (gt/lt): butun sonda — eng chetki RUXSAT ETILGAN qiymat (`gt=0` → `min: 1`);
+    kasrda bunday qiymat yo'q — chegaraning o'zi va `exclusive: true` (11 §6.3)."""
+    if isinstance(bound, int) and not isinstance(bound, bool):
+        return {name: bound + step}
+    return {name: bound, "exclusive": True}
+
+
 def validation_fields(errors: list[Any]) -> list[dict[str, Any]]:
     fields = []
     for err in errors:
         ctx = err.get("ctx") or {}
         params = {_PYDANTIC_PARAMS[k]: v for k, v in ctx.items() if k in _PYDANTIC_PARAMS}
+        if "gt" in ctx:
+            params.update(_exclusive("min", ctx["gt"], 1))
+        if "lt" in ctx:
+            params.update(_exclusive("max", ctx["lt"], -1))
         fields.append(
             {
                 "field": _field_path(tuple(err.get("loc", ()))),

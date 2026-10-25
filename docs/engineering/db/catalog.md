@@ -124,7 +124,7 @@ Misollarda **"TechPC"** shopi ishlatiladi. Ega — **Ali**, menejer — **Vali**
 - **`effective_at`** — qachondan amal qiladi. Joriy kurs — eng oxirgisi.
 - **`created_by`** — kim kiritgan.
 
-**Hisoblash (UAT-M05):** 300 dollar = `30000` sent × 12 800 = `384000000` tiyin = **3 840 000 so'm**. **Yaxlitlanmaydi** (DEC-133): 300 × 12 835 = 3 850 500 so'm shundayligicha ko'rsatiladi. Kursda kasr bo'lsa, faqat eng yaqin so'mgacha.
+**Hisoblash (UAT-M05):** 300 dollar = `30000` sent × 12 800 = `384000000` tiyin = **3 840 000 so'm**. **Yaxlitlanmaydi** (DEC-133): 300 × 12 835 = 3 850 500 so'm shundayligicha ko'rsatiladi — mingliklarga yoki yuzliklarga emas. Natija har doim **eng yaqin butun so'm** (0.5 yuqoriga): tiyin kursdagi kasrdan ham, dollar narxidagi sentdan ham chiqishi mumkin — 0.01 $ × 12 850 = 128.5 → 129 so'm.
 **Eskirish:** kurs 3 kundan eski bo'lsa, API buni `is_stale` bilan bildiradi. "Yangi taklif berilmaydi" qoidasi (BL-018) takliflar bilan birga 3-modulda keladi.
 **O'zgarmaydi va RLS** — narx kabi.
 

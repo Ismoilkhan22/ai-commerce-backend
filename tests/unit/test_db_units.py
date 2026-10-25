@@ -37,6 +37,7 @@ def test_migration_env_exists_for_every_schema() -> None:
 PUBLIC_URLS = {
     "app_public_url": "https://app.example.uz",
     "platform_app_public_url": "https://admin.example.uz",
+    "public_files_url": "https://cdn.example.uz/files",
 }
 
 

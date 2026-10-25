@@ -11,6 +11,8 @@ import pkgutil
 import re
 from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
+from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI
@@ -20,6 +22,7 @@ from redis.asyncio import Redis
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
+from app.domains.catalog.providers import build_catalog_services
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
@@ -28,6 +31,9 @@ from app.platform.shops.services.shop_service import ShopService
 from app.platform.staff.permissions import PermissionRegistry
 from app.platform.staff.services.platform_team_service import PlatformTeamService
 from app.platform.staff.services.staff_service import StaffService
+from app.platform.storage.local import LocalDiskStorage
+from app.platform.storage.services.file_service import FileService
+from app.platform.storage.signing import UrlSigner
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
 from app.shared.db.session import Database
@@ -35,6 +41,7 @@ from app.shared.errors.handlers import register_exception_handlers
 from app.shared.i18n.middleware import I18nMiddleware
 from app.shared.observability.health import router as health_router
 from app.shared.ratelimit import MemoryRateLimiter, RedisRateLimiter
+from app.shared.request_guard import RequestGuardMiddleware
 from app.shared.tracing.middleware import RequestContextMiddleware
 from app.shared.types.manifest import SURFACE_PREFIXES, DomainManifest, Surface
 
@@ -123,7 +130,7 @@ def create_app(
             app.state.rate_limiter = RedisRateLimiter(redis)
             app.state.readiness_checks["redis"] = redis.ping
         else:
-            app.state.rate_limiter = MemoryRateLimiter()
+            app.state.rate_limiter = MemoryRateLimiter(scale=settings.rate_limit_memory_scale)
         try:
             yield
         finally:
@@ -145,9 +152,10 @@ def create_app(
     app.include_router(health_router)
     manifests = discover_manifests() if manifests is None else manifests
     mount_manifests(app, manifests)
-    _wire_platform_services(app, settings, manifests)
+    _wire_services(app, settings, manifests)
 
     # Starlette middleware'larni teskari tartibda o'raydi: oxirgi qo'shilgan — eng tashqi.
+    app.add_middleware(RequestGuardMiddleware)  # eng ichkisi: NUL/NaN, JSON chegarasi, deadlock retry
     app.add_middleware(I18nMiddleware, default_locale=settings.default_locale)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
@@ -173,8 +181,8 @@ def _operation_id(route: APIRoute) -> str:
     return f"{route.tags[0]}_{route.name}" if route.tags else route.name
 
 
-def _wire_platform_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainManifest]) -> None:
-    """Platform servislari bir marta yaratiladi (stateless) va app.state'da turadi."""
+def _wire_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainManifest]) -> None:
+    """Platform va domen servislari bir marta yaratiladi (stateless) va app.state'da turadi."""
     auth_config = settings.auth_config()
     audit = AuditService()
     use = UseService(RulesRegistry.from_manifests(manifests), audit)
@@ -190,6 +198,15 @@ def _wire_platform_services(app: FastAPI, settings: Settings, manifests: Sequenc
     app.state.shop_service = ShopService(use, audit, auth_config, staff)
     app.state.platform_queries = PlatformQueryService()
     app.state.platform_team = PlatformTeamService(audit, auth_config)
+    files = FileService(
+        storage=LocalDiskStorage(Path(settings.storage_local_dir)),
+        signer=UrlSigner(auth_config.jwt_secret),
+        audit=audit,
+        public_base_url=settings.public_files_url,
+        signed_ttl=timedelta(seconds=settings.signed_url_ttl_seconds),
+    )
+    app.state.file_service = files
+    app.state.catalog = build_catalog_services(use, audit, files)
 
 
 app = create_app()

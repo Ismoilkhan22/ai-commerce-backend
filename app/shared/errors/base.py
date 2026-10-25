@@ -119,6 +119,13 @@ class LastAdminRequiredError(ConflictError):
     abstract = False
 
 
+class FileInUseError(ConflictError):
+    """Fayl allaqachon boshqa mahsulot rasmi: bitta fayl — bitta joy (birida o'chsa, boshqasi buzilmasin)."""
+
+    code = "FILE_IN_USE"
+    abstract = False
+
+
 class SpeakerConflictError(ConflictError):
     code = "SPEAKER_CONFLICT"
     abstract = False

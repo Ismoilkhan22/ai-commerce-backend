@@ -10,3 +10,11 @@ platform.membership:
   - [ACCEPT_INVITE, INVITED, ACTIVE]
   - [DISABLE, ACTIVE, DISABLED]
   - [REVOKE_INVITE, INVITED, DISABLED]
+# FSM-02 (DEC-133). "Tekshiruvda" (IN_REVIEW) strelkalari — katalog xodimi roli qo'shilganda.
+catalog.product:
+  - [PUBLISH, DRAFT, PUBLISHED]
+  - [HIDE, PUBLISHED, HIDDEN]
+  - [REPUBLISH, HIDDEN, PUBLISHED]
+  - [ARCHIVE, DRAFT, ARCHIVED]
+  - [ARCHIVE, PUBLISHED, ARCHIVED]
+  - [ARCHIVE, HIDDEN, ARCHIVED]

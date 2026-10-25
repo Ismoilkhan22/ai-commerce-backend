@@ -205,7 +205,7 @@ Mustaqil QA: 11 o'rta va 26 kichik topilma. O'rtalarning hammasi va kichiklarnin
 - Bosh sahifadagi "Ega kirmagan" ro'yxati → faqat havolasi eskirgan yoki 24 soatda eskiradiganlar.
 
 **Frontend:**
-- Xato matnlari kod bo'yicha tarjima qilinadi (`errors.codes`, katalogdagi hamma kod, uz/ru/en). Backend matni faqat noma'lum kodda. Forma ostiga tushmagan `VALIDATION_FAILED` → "Maydonlarni tekshiring" va qaysi maydon ekani.
+- Xato matnlari kod bo'yicha tarjima qilinadi (`errors.codes`, katalogdagi hamma kod, uz/ru/en). Noma'lum kodda — umumiy "Kutilmagan xato" matni, backend'ning inglizcha matni hech qachon ko'rsatilmaydi (11 §8.8; 2026-10-25 tuzatildi, M02 §9). Forma ostiga tushmagan `VALIDATION_FAILED` → "Maydonlarni tekshiring" va qaysi maydon ekani.
 - Har qanday so'rov `SHOP_NOT_ACTIVE` qaytarsa → sessiya tugaydi, login sahifasida "Shop yopilgan…". Oynaga qaytilganda `me` yangilanadi (ko'pi bilan daqiqada bir marta).
 - Platforma menyusi va ⌘K amallari ruxsatga qarab. Sahifalar ruxsat yo'q bo'lsa `Forbidden`. Biror so'rov 403 qaytarsa → ruxsatlar qayta olinadi, sahifa eski ma'lumot o'rniga "Ruxsat yo'q" ko'rsatadi. Kutubxona muharriri bosh sahifada bo'sh oyna emas, "bo'limingiz katalog moduli bilan keladi" ko'radi.
 - Holat oynasi: sabab 3 belgidan qisqa bo'lsa tugma o'chiq va ostida qoida; server xatosi maydon ostida. Izoh matni endi "shop egasi ko'radi" demaydi (ko'rmaydi).

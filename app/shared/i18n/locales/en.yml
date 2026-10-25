@@ -20,6 +20,7 @@ errors:
   SHOP_NOT_ACTIVE: "The shop is not active"
   LAST_OWNER_REQUIRED: "A shop must keep at least one owner"
   LAST_ADMIN_REQUIRED: "The platform must keep at least one active admin"
+  FILE_IN_USE: "This image is already attached to another product. Upload it again"
   SPEAKER_CONFLICT: "Another operator took over this conversation"
   CHANNEL_UNAVAILABLE: "The channel is not connected or not working"
   PAYLOAD_TOO_LARGE: "The file is too large"

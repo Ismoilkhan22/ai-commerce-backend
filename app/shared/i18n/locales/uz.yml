@@ -21,6 +21,7 @@ errors:
   SHOP_NOT_ACTIVE: "Shop faol emas"
   LAST_OWNER_REQUIRED: "Shopda kamida bitta ega qolishi kerak"
   LAST_ADMIN_REQUIRED: "Platformada kamida bitta faol admin qolishi kerak"
+  FILE_IN_USE: "Bu rasm boshqa mahsulotga biriktirilgan. Rasmni qaytadan yuklang"
   SPEAKER_CONFLICT: "Suhbatni boshqa operator oldi"
   CHANNEL_UNAVAILABLE: "Kanal ulanmagan yoki ishlamayapti"
   PAYLOAD_TOO_LARGE: "Fayl juda katta"

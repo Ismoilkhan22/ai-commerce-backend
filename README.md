@@ -13,7 +13,7 @@ Talablar: Python 3.12, [uv](https://docs.astral.sh/uv/), Docker.
 ```bash
 cp .env.example .env
 make install        # uv sync
-make up             # PostgreSQL 16, Redis 7, MinIO
+make up             # PostgreSQL 16, Redis 7 (fayllar lokalda — var/storage)
 make check          # ruff, mypy, import-linter, pytest — CI bilan bir xil
 ```
 

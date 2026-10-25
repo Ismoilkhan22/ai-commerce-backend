@@ -156,6 +156,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `SHOP_NOT_ACTIVE` | 409 | Shop `SUSPENDED`/`CLOSED` — yangi buyurtma qabul qilinmaydi (TC-023) | yo'q |
 | `LAST_OWNER_REQUIRED` | 409 | Oxirgi egani o'chirish yoki rolini olish (UAT-M02) | yo'q |
 | `LAST_ADMIN_REQUIRED` | 409 | Oxirgi faol platforma adminini o'chirish yoki rolini olish (business/15 §5) | yo'q |
+| `FILE_IN_USE` | 409 | Fayl allaqachon boshqa mahsulot rasmi — bitta fayl bitta mahsulotda (`details.product_id`) | yo'q (faylni qayta yuklash) |
 | `SPEAKER_CONFLICT` | 409 | Suhbatni boshqa operator olgan yoki `speaker_version` eskirgan (TC-009) | yangilab qayta |
 | `CHANNEL_UNAVAILABLE` | 409 | Kanal `DISCONNECTED`/`DEGRADED`, xabar yuborib bo'lmaydi (TC-011) | ulangach |
 | `PAYLOAD_TOO_LARGE` | 413 | Fayl yoki audio limiti | yo'q |
@@ -174,7 +175,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 
 | Code | `details` |
 |---|---|
-| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak, invalid, same_as_current` (`too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi; `invalid` — qiymat tekshiruvdan o'tmadi, masalan joriy parol noto'g'ri; `same_as_current` — yangi parol joriysi bilan bir xil) |
+| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak, invalid, same_as_current` (`too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi; `invalid` — qiymat tekshiruvdan o'tmadi, masalan joriy parol noto'g'ri; `same_as_current` — yangi parol joriysi bilan bir xil). Qat'iy chegara (`> 0`): butun sonda `min` — eng kichik **ruxsat etilgan** qiymat (`{"min": 1}`), kasrda — chegaraning o'zi va `"exclusive": true`. NUL belgisi (`\u0000`) yoki `NaN`/`Infinity` bor maydon — `invalid_format` (so'rov darajasida ushlanadi; yo'lda NUL — 404) |
 | `VERSION_CONFLICT` | `{"current_version": 5, "your_version": 4}` |
 | `INVALID_STATE_TRANSITION` | `{"entity": "commerce.order", "from": "DRAFT", "command": "COMPLETE"}` |
 | `INSUFFICIENT_AVAILABLE_STOCK` | `{"lines": [{"sku_id", "branch_id", "requested", "available"}]}` |
@@ -224,6 +225,7 @@ class BranchClosedError(ConflictError):           code = "BRANCH_CLOSED"
 class ShopNotActiveError(ConflictError):          code = "SHOP_NOT_ACTIVE"
 class LastOwnerRequiredError(ConflictError):      code = "LAST_OWNER_REQUIRED"
 class LastAdminRequiredError(ConflictError):      code = "LAST_ADMIN_REQUIRED"
+class FileInUseError(ConflictError):              code = "FILE_IN_USE"
 class SpeakerConflictError(ConflictError):        code = "SPEAKER_CONFLICT"
 class ChannelUnavailableError(ConflictError):     code = "CHANNEL_UNAVAILABLE"
 
@@ -346,7 +348,7 @@ function errorText(err: ApiError, t: TFunction): string {
 | `UNAUTHENTICATED` | Jimgina `/auth/refresh`; muvaffaqiyatsiz — login |
 | `FORBIDDEN`, `SELF_APPROVAL_NOT_ALLOWED` | "Ruxsat yo'q" holati |
 | `RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `SERVICE_UNAVAILABLE` | Toast + `Retry-After` bo'yicha avtomatik qayta urinish (faqat GET va idempotent) |
-| `INTERNAL_ERROR` | Toast + "Xato kodi: `trace_id`" |
+| `INTERNAL_ERROR` | Toast + "Murojaat raqami: `trace_id`" (qo'llab-quvvatlash shu raqam bilan logdan topadi) |
 
 ---
 
@@ -395,20 +397,28 @@ Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS pr
 
 ### 9.3 `catalog`
 
+Holat: 2-modul backend'i qurilgan (2026-10-25, [progress/M02](progress/M02-catalog.md)). Import va moslik tekshiruvi — 5 va 6-modullar.
+
 | Metod va yo'l | Ruxsat | Idem / IfM |
 |---|---|---|
-| `GET /shop/products`, `GET /shop/products/{id}` | `catalog.product.view` | — |
-| `POST /shop/products`, `PATCH /shop/products/{id}` | `catalog.product.edit` | Idem / IfM |
-| `POST /shop/products/{id}/submit-review` | `catalog.product.edit` | Idem |
-| `POST /shop/products/{id}/publish`, `/hide`, `/archive` | `catalog.product.publish` | Idem |
-| `POST /shop/products/{id}/skus`, `PATCH /shop/skus/{id}` | `catalog.product.edit` | Idem / IfM |
-| `PUT /shop/skus/{id}/price`, `GET /shop/skus/{id}/price-history` | `catalog.price.change` / `catalog.price.view` | Idem + IfM |
-| `GET /shop/exchange-rates`, `POST /shop/exchange-rates` | `catalog.price.view` / `catalog.exchange_rate.edit` | — / Idem |
-| `POST /shop/catalog/imports` (multipart), `GET /shop/catalog/imports/{id}`, `PUT …/{id}/mapping`, `POST …/{id}/dry-run` (202), `GET …/{id}/errors.csv` | `catalog.import.run` | Idem (POST'lar) |
-| `POST /shop/catalog/imports/{id}/commit` (202) | `catalog.import.commit` (+ `quantity` bo'lsa `commerce.stock.receive`) — [18](18-catalog-import.md) §13 | Idem |
-| `GET /shop/hardware-specs?q=` | `catalog.product.view` | — |
-| `PUT /shop/skus/{id}/spec-link`, `POST /shop/hardware-spec-requests` | `catalog.spec.link` | IfM / Idem |
-| `POST /shop/pc-builds/check` | `catalog.compatibility.check` | Idem (natija saqlanmaydi; taklifda snapshot — `commerce`) |
+| `GET /shop/categories` | `catalog.product.view` | — |
+| `GET /shop/products` (`status=A,B` yoki takroriy `status`, `category`, `q`, `sort`, `limit`, `cursor`), `GET /shop/products/counts`, `GET /shop/products/{id}` | `catalog.product.view` | — |
+| `POST /shop/products` (kartochka + ixtiyoriy variantlar va narxlar), `PATCH /shop/products/{id}` | `catalog.product.edit` | Idem / IfM |
+| `POST /shop/products/{id}/submit-review` | `catalog.product.edit` | Idem — **keyin** (katalog xodimi roli bilan, DEC-133) |
+| `POST /shop/products/{id}/publish` (qoralamadan va yashirilgandan), `/hide` | `catalog.product.publish` | Idem |
+| `POST /shop/products/{id}/archive` | `catalog.product.archive` (faqat ega) | Idem |
+| `POST /shop/products/{id}/skus`, `PATCH /shop/skus/{id}`, `POST /shop/skus/{id}/archive` | `catalog.product.edit` | Idem / IfM (SKU versiyasi; javob `ETag` — ham SKU versiyasi) / Idem |
+| `POST /shop/products/{id}/media` (`file_id`), `DELETE …/media/{media_id}`, `PUT …/media/order` | `catalog.product.edit`. Bitta fayl — bitta mahsulot: boshqa mahsulotdagi faylni ulash — `FILE_IN_USE` | Idem / — / — |
+| `PUT /shop/skus/{id}/price`, `GET /shop/skus/{id}/price-history` | `catalog.price.change` / `catalog.price.view` | Idem + IfM (birinchi narx — `"v0"`) / — |
+| `GET /shop/exchange-rates`, `GET /shop/exchange-rates/{id}`, `POST /shop/exchange-rates` (`Location`) | `catalog.price.view` / `catalog.exchange_rate.edit` | — / Idem |
+| `POST /shop/catalog/imports` (multipart), `GET /shop/catalog/imports/{id}`, `PUT …/{id}/mapping`, `POST …/{id}/dry-run` (202), `GET …/{id}/errors.csv` | `catalog.import.run` | Idem (POST'lar) — 5-modul |
+| `POST /shop/catalog/imports/{id}/commit` (202) | `catalog.import.commit` (+ `quantity` bo'lsa `commerce.stock.receive`) — [18](18-catalog-import.md) §13 | Idem — 5-modul |
+| `GET /shop/hardware-specs?q=&category=`, `GET /shop/skus/{id}/spec-candidates` | `catalog.product.view` | — |
+| `PUT /shop/skus/{id}/spec-link`, `DELETE …/spec-link`, `POST /shop/skus/auto-link` | `catalog.spec.link`. Qo'lda uzilgan bog'lanishni avtomatika qayta tiklamaydi (`spec_autolink_blocked`), qo'lda bog'lash taqiqni oladi; ikkalasi SKU versiyasini oshiradi | — (bir xil natija) / — / Idem |
+| `GET /shop/hardware-spec-requests`, `GET /shop/hardware-spec-requests/{id}`, `POST /shop/hardware-spec-requests` (`Location`) | `catalog.spec.link`. `sku_id` bo'lsa — `category` shu SKU mahsuloti turi bilan bir xil (`category/invalid_choice`, `params.expected`), arxivdagisi uchun so'rov yo'q | — / Idem |
+| `POST /shop/files?purpose=PRODUCT_IMAGE&filename=…` (tana — fayl baytlari), `GET /shop/files/{id}` | maqsadga qarab (`catalog.product.edit`) | Idem / — |
+| `GET /public/files/{key}` | ochiq fayl — hamma; yopiq — `?exp=&sig=` (5 daqiqa) | — |
+| `POST /shop/pc-builds/check` | `catalog.compatibility.check` | Idem (natija saqlanmaydi; taklifda snapshot — `commerce`) — 6-modul |
 
 ### 9.4 `commerce`
 
@@ -509,7 +519,9 @@ Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS pr
 | `POST /platform/shops/{id}/members/{membership_id}/invite` | `platform.shop.create` — ega taklifini qayta berish (72 soat o'tgan bo'lsa). Har chaqiruv yangi havola, eskisi bekor. Idem |
 | `POST /platform/shops/{id}/activate`, `…/reactivate`, `…/suspend`, `…/close` | `platform.shop.activate` (activate, reactivate) / `.suspend` / `.close`; suspend, reactivate va close uchun sabab majburiy. Idem |
 | `POST /platform/shops/{id}/members/{membership_id}/password-reset` | `platform.member.password_reset` — faqat shop egasi uchun. Idem |
-| `GET/POST/PATCH /platform/hardware-specs` | `platform.spec.edit` |
+| `GET /platform/hardware-specs`, `GET …/review-queue`, `GET …/{id}` (versiyalar bilan), `GET /platform/hardware-spec-requests` | `platform.spec.view` |
+| `POST /platform/hardware-specs` (qoralama + 1-taklif), `POST …/{id}/versions` (o'zgarish taklifi), `POST …/{id}/versions/{n}/approve` / `reject`, `POST …/{id}/retire`, `POST /platform/hardware-spec-requests/{id}/resolve` / `reject` | `platform.spec.edit`. O'z taklifini tasdiqlab bo'lmaydi — `SELF_APPROVAL_NOT_ALLOWED` (17 §10). Hal qilishda SKU hozir ham faol va turi model turi bilan bir xil bo'lishi shart (navbatda `sku_spec_category`). Ro'yxatlar hozircha `offset` bilan (§4.1 dan chetlanish, M02). Idem |
+| `GET /platform/catalog/categories`, `GET …/{code}`, `POST …`, `PATCH …/{code}` | ko'rish — har platforma xodimi; yozish — `platform.category.edit` (DEC-133) |
 | `POST /platform/support-grants` | Break-glass so'rovi ([10](10-security-tenancy-rbac.md) §9) |
 | `POST /platform/outbox/{schema}/{event_id}/replay` | `platform.outbox.replay` |
 | `POST /platform/kill-switches` (`channel`, `ai`, `shop`) | `platform.channel.kill` / `platform.ai.kill` ([25](25-operations-runbooks.md)) |

@@ -167,6 +167,13 @@ async def _context(request: Request, token: str, audience: Audience | None) -> A
         yield RequestContext(actor=actor, db=db)
 
 
+async def shop_token_claims(request: Request, credentials: Bearer) -> AccessClaims:
+    """Faqat token imzosi va muddati — bazasiz. Katta tanani o'qishdan OLDIN: anonim so'rov 5 MB
+    yuklatib serverni band qilmasin (401 darhol). To'liq tekshiruv (sessiya, rol) keyin `shop_context`."""
+    config: AuthConfig = request.app.state.auth_config
+    return decode_access_token(config, _token(credentials), "shop")
+
+
 async def shop_context(request: Request, credentials: Bearer) -> AsyncIterator[RequestContext]:
     async with _context(request, _token(credentials), "shop") as ctx:
         yield ctx

@@ -99,6 +99,7 @@ Enum catalog.spec_request_status {
 
 Enum platform.file_purpose {
   PRODUCT_IMAGE [note: '2-modul']
+  STOCK_EVIDENCE [note: 'Stok tuzatish dalili — 3-modul (DEC-134, commerce.dbml)']
   IMPORT_FILE [note: 'Keyin — 5-modul']
   EXPORT_FILE [note: 'Keyin — hisobotlar']
 }
@@ -174,12 +175,14 @@ Table catalog.skus {
   attributes jsonb [not null, default: '{}', note: 'Variant xususiyatlari: {"rang": "qora", "xotira_gb": 8}']
   warranty_months int [note: 'Kafolat muddati, oy (CHECK >= 0). Sotilganda buyurtmaga nusxa olinadi']
   status catalog.sku_status [not null, default: 'ACTIVE']
+  spec_autolink_blocked boolean [not null, default: false, note: 'Xodim spec bog‘lanishini qo‘lda uzgan — avtomatika qayta bog‘lamaydi, xodim o‘zi bog‘laguncha']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   version bigint [not null, default: 1]
 
   indexes {
     (shop_id, sku_code) [unique, note: 'BL-011: takror kod qabul qilinmaydi']
+    (shop_id, `lower(sku_code)`) [note: 'Katta-kichik harfsiz tekshiruv ("ABC-1" = "abc-1"); yagonalik — service’da, tranzaksiya qulfi bilan']
     (shop_id, id) [unique]
     (shop_id, product_id)
   }
@@ -198,6 +201,7 @@ Table catalog.product_media {
   created_at timestamptz [not null, default: `now()`]
 
   indexes {
+    (shop_id, file_id) [unique, note: 'Bitta fayl — bitta mahsulot rasmi (birida o‘chirilsa, boshqasi buzilmasin)']
     (shop_id, product_id, position)
   }
   Note: 'Mahsulot rasmlari. Bitta mahsulotga ko‘pi bilan 10 ta (kodda).'
@@ -275,6 +279,7 @@ Table catalog.reference_hardware_specs {
   id uuid [pk]
   category catalog.spec_category [not null]
   brand text [not null]
+  brand_normalized text [not null, note: '"QA Race" = "qa race" — yagonalik shu bo‘yicha']
   model_name text [not null, note: 'Masalan "GeForce RTX 4060 Ti"']
   model_normalized text [not null, note: 'Solishtirish uchun: "GEFORCERTX4060TI"']
   variant_key text [not null, default: '', note: 'Bir model ichidagi farq: "8GB" / "16GB". Yo‘q bo‘lsa — bo‘sh']
@@ -291,8 +296,8 @@ Table catalog.reference_hardware_specs {
   updated_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (category, brand, model_normalized, variant_key) [unique, note: '"RTX 4060" va "RTX 4060 Ti" — har xil model_normalized']
-    mpn_normalized [note: 'Unikal, faqat NULL bo‘lmaganlar uchun (partial index)']
+    (category, brand_normalized, model_normalized, variant_key) [unique, note: 'Partial: WHERE status <> RETIRED. "RTX 4060" va "RTX 4060 Ti" — har xil model_normalized; eskirgan model qayta kiritishga to‘sqinlik qilmaydi']
+    mpn_normalized [note: 'Unikal: partial, WHERE mpn_normalized IS NOT NULL AND status <> RETIRED']
   }
   Note: '''
   PC qismlarining tasdiqlangan texnik ma’lumotlari (DEC-011, DEC-120). Moslik tekshiruvi faqat shu jadvaldan o‘qiydi.

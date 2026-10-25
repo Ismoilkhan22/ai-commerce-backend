@@ -36,16 +36,20 @@ class RedisRateLimiter:
 
 
 class MemoryRateLimiter:
-    """Bitta jarayon uchun. Faqat testlar va lokal ishlab chiqish."""
+    """Bitta jarayon uchun. Faqat testlar va lokal ishlab chiqish.
 
-    def __init__(self) -> None:
+    `scale` limitlarni ko'paytiradi: e2e'da hamma brauzer bitta IP'dan kiradi.
+    """
+
+    def __init__(self, scale: int = 1) -> None:
         self._counts: dict[str, int] = {}
+        self._scale = scale
 
     async def hit(self, key: str, limit: int, window_seconds: int) -> int:
         window = int(time.time() // window_seconds)
         bucket = f"{key}:{window}"
         self._counts[bucket] = self._counts.get(bucket, 0) + 1
-        if self._counts[bucket] > limit:
+        if self._counts[bucket] > limit * self._scale:
             return window_seconds - int(time.time() % window_seconds)
         return 0
 
