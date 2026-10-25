@@ -137,7 +137,7 @@ Tasdiq kutilmoqda yoki Tasdiqlandi ──(menejer yoki ega bekor qildi, sabab bi
 
 Tayyorlanmoqda ──(muammo: mahsulot shikastlangan, xaridor bosh tortdi...)──▶ Muammoli (EXCEPTION)
 Muammoli ──(menejer hal qildi)──▶ Tayyorlanmoqda yoki Bekor qilindi
-Tayyorlanmoqda ──(72 soatlik vazifa: menejer "bekor" dedi)──▶ Bekor qilindi   [band "muddati o'tdi", mahsulot sotuvga qaytadi; DEC-134]
+Tayyorlanmoqda yoki Muammoli ──(72 soatlik vazifa: menejer "bekor" dedi)──▶ Bekor qilindi   [band "muddati o'tdi", mahsulot sotuvga qaytadi; DEC-134]
 ```
 
 **Tasdiqlangan buyurtma o'zgartirilmaydi** (DEC-134): xaridor fikrini o'zgartirsa, buyurtma bekor qilinadi va yangisi ochiladi. **Bir buyurtma — bitta filial.**
@@ -215,6 +215,7 @@ Faol ──(ega va platforma yopishga kelishdi)──▶ Yopilgan (CLOSED)   [ma
 
 - Stage 1 da har shopni platforma jamoasi qo'lda faollashtiradi: katalogni tekshiradi, sozlaydi (DEC-122, `business/13`).
 - To'xtatilgan shopda yangi savdo bo'lmaydi, lekin mavjud buyurtmalarni oxiriga yetkazish mumkin.
+- Hali faollashtirilmagan shop (qoralama, tekshiruvda) panelda savdo qila oladi — buyurtma va tez sotuv. Sayt esa faqat faol shopda ochiladi (DEC-136).
 
 ## Xodim (a'zolik)
 

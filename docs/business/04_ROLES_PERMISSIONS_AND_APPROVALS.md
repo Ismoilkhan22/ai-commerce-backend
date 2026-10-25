@@ -88,7 +88,7 @@ Bu hujjatda har bir rol nima qila olishi va qaysi amallar ikkinchi odam tasdig'i
 | Mahsulotni saytga chiqarish | Tasdiqlaydi | Tasdiqlaydi | — | — | — |
 | Narx o'zgartirish | Ha | Ha | — | — | Ko'radi |
 | Chegirma | Ha (cheklovsiz) | 5% gacha | So'raydi | — | — |
-| Stok kirimi | Ha | Tasdiqlaydi | Ko'radi | Ha | Ko'radi |
+| Stok kirimi (tasdiqsiz, DEC-136) | Ha | Ha | Ko'radi | Ha | Ko'radi |
 | Stok tuzatish | Tasdiqlaydi | Tasdiqlaydi | — | So'raydi | — |
 | "Tez sotuv" (do'kondagi sotuv) | Ha | Ha | Ha | Ha | — |
 | Suhbatlar va inbox | Ha | Ha | O'ziniki | — | Javob beradi |

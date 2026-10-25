@@ -615,6 +615,15 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Ma'lumot sahifalari | **3 ta tayyor sahifa** | Sozlash sodda, har shopda kerakli javoblar bor |
 | Shop matnlari tili | **Bitta tilda**; sayt tugmalari doim 3 tilda | Mahsulot tavsifi bilan bir xil qoida |
 
+### DEC-136 — Kirim tasdig'i va faollashtirilmagan shopda savdo — `APPROVED (2026-10-26, founder)`
+**Nima:** 3-modul QA tekshiruvida chiqqan ikki hujjat ziddiyati bo'yicha qaror.
+**Qayerda:** `business/04` (rollar jadvali), `business/05` (FSM-01), `engineering/db/commerce.md` §3.
+
+| Savol | Qaror | Nega |
+|---|---|---|
+| Stok kirimi menejer tasdig'idan o'tadimi | **Yo'q** — omborchi, menejer va ega kiritgan kirim darhol qoldiqqa qo'shiladi | Kirim qoldiqni oshiradi, xavf kam; xato kirim tuzatish bilan to'g'rilanadi. `business/04` dagi "Tasdiqlaydi" olib tashlandi |
+| Faollashtirilmagan shop (qoralama, tekshiruvda) savdo qila oladimi | **Ha** — yangi savdo faqat to'xtatilgan (SUSPENDED) va yopilgan (CLOSED) shopda bloklanadi | FSM-01 qoidasi so'zma-so'z; shop tizimni faollashtirishgacha o'rganadi. Sayt faqat faol shopda ochiladi |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |
