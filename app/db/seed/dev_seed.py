@@ -26,6 +26,8 @@ from app.db.seed.catalog_seed import run_catalog_seed
 from app.db.seed.commerce_seed import run_commerce_seed
 from app.db.seed.messaging_seed import run_messaging_seed
 from app.db.seed.notifications_seed import run_notifications_seed
+from app.db.seed.quotes_seed import run_quotes_seed
+from app.db.seed.sales_ai_seed import run_sales_ai_seed
 from app.db.seed.storefront_seed import run_storefront_seed
 from app.dependencies import get_order_query
 from app.platform.audit.services.audit_service import AuditService
@@ -201,6 +203,11 @@ class SeedReport:
     messaging_channels: int = 0
     messaging_conversations: int = 0
     staff_tasks: int = 0
+    quote_leads: int = 0
+    quotes: int = 0
+    ai_configured: bool = False
+    ai_knowledge: int = 0
+    ai_golden_cases: int = 0
 
 
 @dataclass(frozen=True)
@@ -457,12 +464,17 @@ async def run_seed(settings: Settings) -> SeedReport:
     report.catalog_products, report.catalog_specs = catalog.products, catalog.specs
     commerce = await run_commerce_seed(settings)
     report.commerce_orders, report.commerce_receipts = commerce.orders, commerce.receipts
+    quotes = await run_quotes_seed(settings)  # leadlar va PC takliflari (6a)
+    report.quote_leads, report.quotes = quotes.leads, quotes.quotes
     storefront = await run_storefront_seed(settings)
     report.storefront_sites, report.storefront_live = storefront.sites, storefront.live
     messaging = await run_messaging_seed(settings)  # sayt chati, soxta Telegram bot, demo suhbatlar
     report.messaging_channels, report.messaging_conversations = messaging.channels, messaging.conversations
     notifications = await run_notifications_seed(settings)  # rejali ishlar bir marta: vazifa va xabarlar
     report.staff_tasks = notifications.tasks
+    sales_ai = await run_sales_ai_seed(settings)  # NoutbukUz: AI sotuvchi SUGGEST, FAQ (6b)
+    report.ai_configured, report.ai_knowledge = sales_ai.configured, sales_ai.knowledge
+    report.ai_golden_cases = sales_ai.golden_cases
     return report
 
 
@@ -474,7 +486,9 @@ def main() -> None:
         f"savdo: kirimlar {report.commerce_receipts}, buyurtmalar {report.commerce_orders}; "
         f"saytlar {report.storefront_sites} (ochiq {report.storefront_live}); "
         f"kanallar {report.messaging_channels}, suhbatlar {report.messaging_conversations}; "
-        f"xodim vazifalari {report.staff_tasks}; "
+        f"xodim vazifalari {report.staff_tasks}; leadlar {report.quote_leads}, takliflar {report.quotes}; "
+        f"AI sotuvchi (NoutbukUz, SUGGEST): {'yoqildi' if report.ai_configured else 'avvaldan bor'}, "
+        f"FAQ {report.ai_knowledge}; AI baholash golden to'plami: {report.ai_golden_cases} holat; "
         f"o'tkazib yuborildi: {len(report.skipped_shops)}",
         "",
         "Platforma paneli (http://localhost:3001):",

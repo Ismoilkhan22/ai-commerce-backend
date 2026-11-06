@@ -10,7 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.domains.commerce.schemas import MemberRef
 from app.shared.contracts.commerce import StockStatus
+from app.shared.money import Currency
 from app.shared.text import Text
+
+MAX_UNIT_COST_MINOR = 10**12  # dona tannarxi uchun aql chegarasi (10 mlrd so'm/dollar), QA7 F8
 
 AdjustmentKind = Literal["ADJUSTMENT", "QUARANTINE_IN", "RESTOCK", "WRITE_OFF"]
 AdjustmentStatus = Literal["PENDING", "APPROVED", "REJECTED"]
@@ -26,6 +29,7 @@ LedgerReason = Literal[
     "RETURN_QUARANTINE",
     "RESTOCK",
     "WRITE_OFF",
+    "WARRANTY_REPLACEMENT",
 ]
 LedgerRefType = Literal["RECEIPT", "ADJUSTMENT", "QUICK_SALE", "RESERVATION", "SUPPORT_CASE"]
 
@@ -73,6 +77,8 @@ class SkuPickItem(BaseModel):
     product_title: str
     variant_name: str | None
     sku_code: str
+    # PC roli (CPU, GPU, …) — "PC yig'ish" sahifasi qismni slotga o'zi qo'yadi; PC qismi emas — None
+    spec_category: str | None = None
     product_status: ProductStatus
     sku_status: Literal["ACTIVE", "ARCHIVED"]
     orderable: bool  # buyurtmaga qo'shsa bo'ladi: chiqarilgan, narxi bor (dollar bo'lsa — kurs ham)
@@ -122,6 +128,10 @@ class ReceiptLineIn(BaseModel):
 
     sku_id: UUID
     qty: int = Field(ge=1, le=MAX_QTY)
+    # Tannarx (DEC-146): bitta dona narxi asl valyutada (tiyin/sent). Faqat `commerce.cost.edit` bor xodim
+    # yuboradi; boshqalarda 403. Javobda tannarx qaytmaydi — uni `GET /costs` ko'rsatadi
+    unit_cost_minor: int | None = Field(default=None, ge=1, le=MAX_UNIT_COST_MINOR)
+    cost_currency: Currency = "UZS"
 
 
 class ReceiptIn(BaseModel):
@@ -180,6 +190,8 @@ class AdjustmentIn(BaseModel):
     delta: int = Field(ge=-MAX_QTY, le=MAX_QTY)
     reason: Text = Field(min_length=3, max_length=500)  # BL-022: sababsiz tuzatish yo'q
     evidence_file_id: UUID | None = None  # POST /files?purpose=STOCK_EVIDENCE
+    # RESTOCK / WRITE_OFF: karantindagi dona qaysi kafolat murojaatidan (7b, DEC-145)
+    support_case_id: UUID | None = None
 
 
 class ApproveIn(BaseModel):
@@ -222,11 +234,62 @@ class AdjustmentOut(BaseModel):
     on_hand_after: int | None
     # Import tuzatishi: fayldagi absolyut qoldiq; tasdiqda farq joriy qoldiqdan qayta hisoblanadi (QA F3)
     target_on_hand: int | None = None
+    support_case_id: UUID | None = None
     current_on_hand: int | None = None  # faqat PENDING uchun — "maqsad X (hozir Y)"
     version: int
 
 
 class AdjustmentList(BaseModel):
     items: list[AdjustmentOut]
+    next_cursor: str | None
+    has_more: bool
+
+
+# ------------------------------------------------------------------ tannarx (DEC-146): faqat ega
+
+
+class SkuCostOut(BaseModel):
+    sku_id: UUID
+    sku_code: str | None
+    title: str | None
+    avg_unit_cost_uzs_minor: int  # joriy o'rtacha tortilgan tannarx, so'mda (tiyin)
+    basis_qty: int  # shu qoldiq bo'yicha hisoblangan (hamma filial + tekshiruvda)
+    cost_version: int
+    last_reason: Literal["RECEIPT", "LATE_ENTRY", "MANUAL_SET", "IMPORT"]
+    updated_at: datetime
+    version: int
+
+
+class SkuCostList(BaseModel):
+    items: list[SkuCostOut]
+    next_cursor: str | None
+    has_more: bool
+
+
+class SkuCostSetIn(BaseModel):
+    """Tizimgacha bo'lgan qoldiq yoki xato o'rtachani qo'lda qo'yish."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    avg_unit_cost_uzs_minor: int = Field(ge=1, le=MAX_UNIT_COST_MINOR)
+    reason: Text = Field(min_length=3, max_length=500)  # izoh majburiy
+
+
+class SkuCostChangeOut(BaseModel):
+    id: UUID
+    reason: Literal["RECEIPT", "LATE_ENTRY", "MANUAL_SET", "IMPORT"]
+    ref_id: UUID | None
+    avg_before_uzs_minor: int | None
+    avg_after_uzs_minor: int
+    basis_qty: int
+    incoming_qty: int | None
+    incoming_unit_cost_uzs_minor: int | None
+    note: str | None
+    actor: MemberRef | None
+    created_at: datetime
+
+
+class SkuCostHistory(BaseModel):
+    items: list[SkuCostChangeOut]
     next_cursor: str | None
     has_more: bool

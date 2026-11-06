@@ -32,6 +32,7 @@ from app.platform.notifications.services.tasks import HANDOFF, TaskService
 from app.platform.shops.models.orm import Shop, ShopPolicy
 from app.platform.use.services.use_service import UseService
 from app.shared.clock import utcnow
+from app.shared.contracts.sales_ai import AiGate, AiGatePort
 from app.shared.types.actor import ActorContext
 
 logger = structlog.get_logger(__name__)
@@ -47,12 +48,12 @@ class ConversationCore:
         writer: MessageWriter,
         templates: CustomerTemplateService,
         *,
-        ai_enabled: bool = False,
+        ai_gate: AiGatePort | None = None,
     ) -> None:
         self.use = use
         self.writer = writer
         self.templates = templates
-        self.ai_enabled = ai_enabled  # 6-modulgacha False: birinchi xabar darhol operatorga
+        self.ai_gate = ai_gate  # 6b: shop bo'yicha AI holati (yo'q — AI o'chiq, hammasi operatorga)
         self.tasks = TaskService()
         self.notifications = NotificationService()
 
@@ -84,6 +85,11 @@ class ConversationCore:
             conversation.speaker_mode = "HUMAN" if command == "TAKE_OVER" else "AI"
         await self.use.log_transition(db, entity_id=conversation.id, rule=rule, actor=actor, reason=reason)
 
+    async def gate(self, db: AsyncSession, shop_id: UUID) -> AiGate:
+        if self.ai_gate is None:
+            return AiGate("OFF", False, "OFF")
+        return await self.ai_gate.gate(db, shop_id)
+
     async def pause_speaker(self, conversation: Conversation) -> None:
         """AI javob bermaydi (o'chiq / limit / shop to'xtatilgan): PAUSED, versiya +1 (12 §8)."""
         if conversation.speaker_mode != "PAUSED":
@@ -93,8 +99,10 @@ class ConversationCore:
     async def route_new_customer_message(
         self, db: AsyncSession, actor: ActorContext, conversation: Conversation, *, operator_requested: bool
     ) -> None:
-        """Xaridor yozdi — holat FSM-04 bo'yicha. AI o'chiq (6-modulgacha): AI navbatiga tushgan suhbat darhol
-        operatorga (`REQUEST_HUMAN`, sabab AI_UNAVAILABLE yoki xaridor so'radi)."""
+        """Xaridor yozdi — holat FSM-04 bo'yicha. AI shu shopda javob bermasa (OFF, SHADOW, kill switch, ish
+        vaqtidan tashqari, limit — `AiGatePort`) — AI navbatiga tushgan suhbat darhol operatorga
+        (`REQUEST_HUMAN`, sabab AI_UNAVAILABLE yoki xaridor so'radi). AI javob bersa (SUGGEST/AUTO) —
+        `AI_ACTIVE`, speaker AI."""
         status = conversation.status
         if status == "NEW":
             await self.transition(db, actor, conversation, "FIRST_MESSAGE", "AI_ACTIVE")
@@ -105,9 +113,20 @@ class ConversationCore:
                 await self.transition(db, actor, conversation, "CUSTOMER_REPLIED", "HUMAN_ACTIVE")
                 return
             await self.transition(db, actor, conversation, "CUSTOMER_REPLIED_TO_AI", "AI_ACTIVE")
-        if conversation.status in ("AI_ACTIVE", "REOPENED") and (operator_requested or not self.ai_enabled):
+        if conversation.status not in ("AI_ACTIVE", "REOPENED"):
+            return
+        gate = await self.gate(db, conversation.shop_id)
+        if operator_requested or not gate.speaks:
             reason = "CUSTOMER_REQUEST" if operator_requested else "AI_UNAVAILABLE"
             await self.request_human(db, actor, conversation, reason=reason, requested_by_type="CUSTOMER")
+            return
+        if conversation.status == "REOPENED":
+            await self.transition(db, actor, conversation, "AI_RESUME", "AI_ACTIVE")
+        if (
+            conversation.speaker_mode != "AI"
+        ):  # avval pauza qilingan (AI o'chiq edi) — AI qaytadan javob beradi
+            conversation.speaker_mode = "AI"
+            conversation.speaker_version += 1
 
     async def request_human(
         self,
@@ -120,8 +139,7 @@ class ConversationCore:
         requested_by_membership_id: UUID | None = None,
     ) -> Handoff | None:
         await self.transition(db, actor, conversation, "REQUEST_HUMAN", "HUMAN_NEEDED")
-        if not self.ai_enabled:
-            await self.pause_speaker(conversation)
+        await self.pause_speaker(conversation)  # AI tayyorlab turgan javob yuborilmaydi (versiya +1)
         conversation.waiting_since = utcnow()
         return await self.open_handoff(
             db,

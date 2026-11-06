@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
-from pathlib import Path
 from uuid import UUID
 
 import asyncpg
@@ -41,7 +40,7 @@ from app.platform.shops.models.orm import Branch, Shop
 from app.platform.staff.manifest import MODULE_MANIFEST as STAFF_MANIFEST
 from app.platform.staff.models.orm import Membership
 from app.platform.staff.permissions import PermissionRegistry
-from app.platform.storage.local import LocalDiskStorage
+from app.platform.storage.config import build_file_storage
 from app.platform.storage.services.file_service import FileService
 from app.platform.storage.signing import UrlSigner
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
@@ -89,7 +88,7 @@ def _services(settings: Settings) -> tuple[CommerceServices, CatalogServices, Pe
     manifests = [SHOPS_MANIFEST, STAFF_MANIFEST, CATALOG_MANIFEST, COMMERCE_MANIFEST]
     audit = AuditService()
     files = FileService(
-        storage=LocalDiskStorage(Path(settings.storage_local_dir)),
+        storage=build_file_storage(settings.storage_config()),
         signer=UrlSigner(settings.jwt_secret.get_secret_value()),
         audit=audit,
         public_base_url=settings.public_files_url,

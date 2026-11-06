@@ -13,12 +13,26 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import BigInteger, ColumnElement, Numeric, cast, exists, func, literal, null, or_, select
+from sqlalchemy import (
+    BigInteger,
+    ColumnElement,
+    Numeric,
+    cast,
+    exists,
+    func,
+    literal,
+    null,
+    or_,
+    select,
+    true,
+)
 from sqlalchemy import case as sql_case
 from sqlalchemy import tuple_ as sql_tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.catalog.compatibility.service import USABLE_SPEC_STATUSES, check_skus
 from app.domains.catalog.imports.models.orm import ImportStockRow as StagedRow
+from app.domains.catalog.pc_specs.models.orm import ReferenceHardwareSpec, SkuSpecLink
 from app.domains.catalog.pricing.models.orm import CurrentPrice, PriceVersion
 from app.domains.catalog.pricing.services.pricing_service import RATE_MAX_AGE, PricingService, uzs_amount
 from app.domains.catalog.products.models.orm import Category, Product, ProductMedia, Sku
@@ -31,10 +45,14 @@ from app.shared.contracts.catalog import (
     PublicProductPage,
     PublicSort,
     PublicVariant,
+    RateSnapshot,
+    SkuReportDim,
     SkuSnapshot,
 )
+from app.shared.contracts.compatibility import BuildLine, CompatibilityResult
 from app.shared.contracts.imports import ImportStockRow
 from app.shared.errors.base import ValidationError
+from app.shared.i18n.locale import Locale
 from app.shared.pagination import decode_cursor, encode_cursor
 from app.shared.text import NUL
 
@@ -106,16 +124,127 @@ class CatalogQueryPortImpl:
             )
         return result
 
-    async def search_sku_ids(self, db: AsyncSession, shop_id: UUID, q: str, limit: int) -> list[UUID]:
+    async def sku_report_dims(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, SkuReportDim]:
+        if not sku_ids:
+            return {}
+        snapshots = await self.get_skus(db, shop_id, sku_ids)
+        rows = await db.execute(
+            select(Sku.id, Category.code, Category.name_uz)
+            .join(Product, (Product.shop_id == Sku.shop_id) & (Product.id == Sku.product_id))
+            .join(Category, Category.code == Product.category_code)
+            .where(Sku.shop_id == shop_id, Sku.id.in_(list(sku_ids)))
+        )
+        categories = {sku_id: (code, name) for sku_id, code, name in rows}
+        result: dict[UUID, SkuReportDim] = {}
+        for sku_id, snap in snapshots.items():
+            code, name = categories.get(sku_id, ("", ""))
+            price = snap.uzs_amount_minor
+            result[sku_id] = SkuReportDim(
+                sku_id=sku_id,
+                product_id=snap.product_id,
+                title=snap.title,
+                sku_code=snap.sku_code,
+                category_code=code,
+                category_name=name,
+                price_uzs_minor=int(price) if price is not None else None,
+            )
+        return result
+
+    async def current_rate(self, db: AsyncSession, shop_id: UUID) -> RateSnapshot | None:
+        rate = await self.pricing.current_rate(db, shop_id)
+        if rate is None:
+            return None
+        return RateSnapshot(
+            rate_id=rate.id,
+            rate=rate.rate,
+            effective_at=rate.effective_at,
+            stale=rate.effective_at < utcnow() - RATE_MAX_AGE,
+        )
+
+    async def check_compatibility(
+        self,
+        db: AsyncSession,
+        shop_id: UUID,
+        lines: Sequence[BuildLine],
+        locale: Locale = "uz",
+        *,
+        full_build: bool = True,
+    ) -> CompatibilityResult:
+        return await check_skus(db, shop_id, lines, locale, full_build=full_build)
+
+    async def sku_spec_categories(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, str | None]:
+        if not sku_ids:
+            return {}
+        rows = await db.execute(
+            select(Sku.id, Category.spec_category)
+            .join(Product, (Product.shop_id == Sku.shop_id) & (Product.id == Sku.product_id))
+            .join(Category, Category.code == Product.category_code)
+            .where(Sku.shop_id == shop_id, Sku.id.in_(list(sku_ids)))
+        )
+        return {sku_id: category for sku_id, category in rows}
+
+    async def spec_attributes(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, dict[str, Any]]:
+        if not sku_ids:
+            return {}
+        rows = await db.execute(
+            select(SkuSpecLink.sku_id, ReferenceHardwareSpec.attributes)
+            .join(ReferenceHardwareSpec, ReferenceHardwareSpec.id == SkuSpecLink.spec_id)
+            .where(
+                SkuSpecLink.shop_id == shop_id,
+                SkuSpecLink.sku_id.in_(list(sku_ids)),
+                ReferenceHardwareSpec.status.in_(USABLE_SPEC_STATUSES),
+            )
+        )
+        return {sku_id: dict(attributes or {}) for sku_id, attributes in rows}
+
+    async def candidate_sku_ids(
+        self, db: AsyncSession, shop_id: UUID, spec_category: str, q: str | None, limit: int
+    ) -> list[UUID]:
+        query = (
+            select(Sku.id)
+            .join(Product, (Product.shop_id == Sku.shop_id) & (Product.id == Sku.product_id))
+            .join(Category, Category.code == Product.category_code)
+            .where(
+                Sku.shop_id == shop_id,
+                Sku.status == "ACTIVE",
+                Product.status == "PUBLISHED",
+                Category.spec_category == spec_category,
+            )
+        )
+        text = (q or "").strip()
+        if text:
+            pattern = "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            query = query.where(
+                or_(
+                    Product.title.ilike(pattern, escape="\\"),
+                    Product.brand.ilike(pattern, escape="\\"),
+                    Sku.sku_code.ilike(pattern, escape="\\"),
+                    Sku.variant_name.ilike(pattern, escape="\\"),
+                )
+            )
+        rows = await db.execute(query.order_by(Product.title, Sku.sku_code, Sku.id).limit(limit))
+        return list(rows.scalars())
+
+    async def search_sku_ids(
+        self, db: AsyncSession, shop_id: UUID, q: str, limit: int, *, sellable_only: bool = False
+    ) -> list[UUID]:
         text = q.strip()
         if not text:
             return []
         pattern = "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        sellable = (Sku.status == "ACTIVE") & (Product.status == "PUBLISHED") if sellable_only else true()
         rows = await db.execute(
             select(Sku.id)
             .join(Product, (Product.shop_id == Sku.shop_id) & (Product.id == Sku.product_id))
             .where(
                 Sku.shop_id == shop_id,
+                sellable,
                 or_(
                     Product.title.ilike(pattern, escape="\\"),
                     Product.brand.ilike(pattern, escape="\\"),

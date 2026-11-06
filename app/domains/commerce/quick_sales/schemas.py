@@ -27,6 +27,7 @@ class QuickSaleIn(BaseModel):
 
 
 class QuickSaleLineOut(BaseModel):
+    id: UUID  # kafolat murojaati shu qatordan ochiladi (7b)
     sku_id: UUID
     title: str
     sku_code: str

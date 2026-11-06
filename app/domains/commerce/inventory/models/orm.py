@@ -7,14 +7,18 @@ qo'shiladi: ilova roliga UPDATE/DELETE berilmaydi (migratsiyada REVOKE).
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
@@ -38,6 +42,7 @@ LEDGER_REASONS = (
     "RETURN_QUARANTINE",
     "RESTOCK",
     "WRITE_OFF",
+    "WARRANTY_REPLACEMENT",  # 7b (DEC-145): kafolatda yangi dona berildi; qoldiq -qty, ref SUPPORT_CASE
 )
 LEDGER_REF_TYPES = ("RECEIPT", "ADJUSTMENT", "QUICK_SALE", "RESERVATION", "SUPPORT_CASE")
 ADJUSTMENT_KINDS = ("ADJUSTMENT", "QUARANTINE_IN", "RESTOCK", "WRITE_OFF")
@@ -178,6 +183,7 @@ class StockAdjustment(IdMixin, ShopScopedMixin, VersionMixin, Base):
         CheckConstraint(
             "target_on_hand IS NULL OR (target_on_hand >= 0 AND kind = 'ADJUSTMENT')", name="target_on_hand"
         ),
+        Index("ix_stock_adjustments_shop_id_support_case_id", "shop_id", "support_case_id"),
         Index(
             "uq_stock_adjustments_import",
             "shop_id",
@@ -205,8 +211,12 @@ class StockAdjustment(IdMixin, ShopScopedMixin, VersionMixin, Base):
     on_hand_before: Mapped[int | None] = mapped_column(Integer)
     on_hand_after: Mapped[int | None] = mapped_column(Integer)
     import_batch_id: Mapped[UUID | None]  # catalog.import_batches.id — import farqi (DEC-140, 1-qaror)
+    # Tasdiqlangan kamayish paytidagi o'rtacha tannarx nusxasi (DEC-146); noma'lum bo'lsa NULL
+    unit_cost_uzs_minor: Mapped[int | None] = mapped_column(BigInteger)
     # Import tuzatishi — fayldagi ABSOLYUT qoldiq (QA F3): farq tasdiq paytida joriy qoldiqdan hisoblanadi
     target_on_hand: Mapped[int | None] = mapped_column(Integer)
+    # Karantindagi donani RESTOCK / WRITE_OFF qilganda qaysi murojaatdan kelgani (7b, DEC-145); FK'siz
+    support_case_id: Mapped[UUID | None]
 
 
 IMPORT_STOCK_RESULTS = ("APPLIED", "NO_CHANGE", "PENDING_APPROVAL", "ERROR")
@@ -231,3 +241,90 @@ class ImportStockResult(ShopScopedMixin, Base):
     receipt_id: Mapped[UUID | None]
     adjustment_id: Mapped[UUID | None]
     applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+COST_REASONS = ("RECEIPT", "LATE_ENTRY", "MANUAL_SET", "IMPORT")
+
+
+class StockReceiptCost(IdMixin, ShopScopedMixin, Base):
+    """Kirim qatorining tannarxi (DEC-146, db/commerce_cost_price.md §2). Daftardan alohida: u umumiy va
+    faqat to'ldiriladi. O'zgarmaydi — xato `MANUAL_SET` bilan to'g'rilanadi."""
+
+    __tablename__ = "stock_receipt_costs"
+    __table_args__ = (
+        UniqueConstraint("shop_id", "id"),
+        UniqueConstraint("shop_id", "receipt_id", "sku_id"),
+        Index("ix_stock_receipt_costs_shop_id_sku_id_entered_at", "shop_id", "sku_id", "entered_at"),
+        ForeignKeyConstraint(
+            ["shop_id", "receipt_id"],
+            ["commerce.stock_receipts.shop_id", "commerce.stock_receipts.id"],
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("qty > 0", name="qty_positive"),
+        CheckConstraint("unit_cost_minor > 0 AND unit_cost_uzs_minor > 0", name="cost_positive"),
+        CheckConstraint("cost_currency IN ('UZS', 'USD')", name="currency"),
+        CheckConstraint("cost_currency = 'UZS' OR exchange_rate_snapshot IS NOT NULL", name="usd_needs_rate"),
+        {"schema": "commerce"},
+    )
+
+    receipt_id: Mapped[UUID]
+    sku_id: Mapped[UUID]  # catalog.skus.id — FK'siz
+    qty: Mapped[int] = mapped_column(Integer)
+    unit_cost_minor: Mapped[int] = mapped_column(BigInteger)  # asl valyutada
+    cost_currency: Mapped[str] = mapped_column(Text)
+    exchange_rate_id: Mapped[UUID | None]  # catalog.exchange_rates.id — USD bo'lsa
+    exchange_rate_snapshot: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    unit_cost_uzs_minor: Mapped[int] = mapped_column(BigInteger)
+    late_entry: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    entered_by: Mapped[UUID]  # platform.memberships.id
+    entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SkuCost(VersionMixin, Base):
+    """Shop × SKU joriy o'rtacha tortilgan tannarx, so'mda (DEC-146). Qator yo'q — tannarx noma'lum."""
+
+    __tablename__ = "sku_costs"
+    __table_args__ = (
+        CheckConstraint("avg_unit_cost_uzs_minor > 0", name="cost_positive"),
+        CheckConstraint("basis_qty >= 0", name="basis_non_negative"),
+        CheckConstraint(f"last_reason IN {COST_REASONS}", name="last_reason"),
+        {"schema": "commerce"},
+    )
+
+    shop_id: Mapped[UUID] = mapped_column(primary_key=True)
+    sku_id: Mapped[UUID] = mapped_column(primary_key=True)
+    avg_unit_cost_uzs_minor: Mapped[int] = mapped_column(BigInteger)
+    basis_qty: Mapped[int] = mapped_column(Integer)
+    cost_version: Mapped[int] = mapped_column(BigInteger, server_default="1")
+    last_reason: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SkuCostChange(IdMixin, ShopScopedMixin, Base):
+    """ "Nega tannarx o'zgardi?" tarixi. Faqat qo'shiladi."""
+
+    __tablename__ = "sku_cost_changes"
+    __table_args__ = (
+        UniqueConstraint("shop_id", "id"),
+        Index("ix_sku_cost_changes_shop_id_sku_id_created_at", "shop_id", "sku_id", "created_at"),
+        CheckConstraint(f"reason IN {COST_REASONS}", name="reason"),
+        CheckConstraint(
+            "reason <> 'MANUAL_SET' OR (note IS NOT NULL AND char_length(note) >= 3)",
+            name="manual_needs_note",
+        ),
+        {"schema": "commerce"},
+    )
+
+    sku_id: Mapped[UUID]
+    reason: Mapped[str] = mapped_column(Text)
+    ref_id: Mapped[UUID | None]
+    avg_before_uzs_minor: Mapped[int | None] = mapped_column(BigInteger)
+    avg_after_uzs_minor: Mapped[int] = mapped_column(BigInteger)
+    basis_qty: Mapped[int] = mapped_column(Integer)
+    incoming_qty: Mapped[int | None] = mapped_column(Integer)
+    incoming_unit_cost_uzs_minor: Mapped[int | None] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(Text)
+    actor_membership_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

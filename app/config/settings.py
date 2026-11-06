@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network, ip_network
+from pathlib import Path
 from typing import Literal, Self
 from urllib.parse import urlsplit
 
@@ -13,6 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 from app.platform.auth.config import AuthConfig
+from app.platform.storage.config import S3Config, StorageConfig
 from app.shared.db.encryption import PiiKeyring, parse_keys
 from app.shared.db.session import DatabaseConfig
 from app.shared.i18n.locale import Locale
@@ -53,6 +55,12 @@ class Settings(BaseSettings):
 
     app_env: Literal["local", "test", "staging", "production"] = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    # Kuzatuv (09, S0-05): jarayon nomi (logdagi `service`, Sentry tegi) va reliz (git SHA) — deploy beradi.
+    # Sentry faqat DSN bo'lsa yoqiladi; PII tozalash — app/config/observability.py
+    service_name: str = "api"
+    app_version: str = "dev"
+    sentry_dsn: SecretStr | None = None
+    sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     default_locale: Locale = "uz"
 
     # PostgreSQL (07 §9–10). app_runtime — NOBYPASSRLS, faqat DML; app_migrator — DDL.
@@ -61,6 +69,10 @@ class Settings(BaseSettings):
     database_migrator_url: str = _LOCAL_DB.format(user="app_migrator")
     db_pool_size: int = 10
     db_max_overflow: int = 5
+    # Fon jarayoni (dev worker: outbox + arq + scheduler + polling bitta jarayonda) API'dan ko'proq
+    # ulanish ishlatadi — alohida, kattaroq pool (API pool'i o'zgarmaydi)
+    worker_db_pool_size: int = Field(default=20, ge=1)
+    worker_db_max_overflow: int = Field(default=10, ge=0)
     db_statement_timeout_ms: int = 5_000
 
     # Redis: db0 kesh va rate limit (08). Testlarda "memory".
@@ -100,8 +112,16 @@ class Settings(BaseSettings):
     argon2_memory_kib: int = 65_536
 
     # Fayllar (S0-08, ADR-014). Lokal va testda — disk; production'da S3-mos ombor (S0-10, TD-03).
-    storage_backend: Literal["local"] = "local"
+    storage_backend: Literal["local", "s3"] = "local"
     storage_local_dir: str = "var/storage"
+    # S3-mos ombor (STORAGE_BACKEND=s3). Ochiq bucket ixtiyoriy: bo'lmasa hamma fayl yopiq bucket'da
+    s3_endpoint_url: str | None = None
+    s3_region: str = "us-east-1"
+    s3_access_key_id: SecretStr | None = None
+    s3_secret_access_key: SecretStr | None = None
+    s3_private_bucket: str | None = None
+    s3_public_bucket: str | None = None
+    s3_force_path_style: bool = True
     # Ochiq fayllar (mahsulot rasmi) shu manzildan beriladi; prod'da CDN yoki bucket manzili
     public_files_url: str = "http://localhost:8000/api/v1/public/files"
     signed_url_ttl_seconds: int = 300  # yopiq fayl havolasi 5 daqiqa amal qiladi
@@ -133,6 +153,16 @@ class Settings(BaseSettings):
     # Lokalda — o'z kompyuteri (sayt serveri va brauzer shu yerda; XFF'ni soxtalash lokalda ataylab mumkin).
     # Prod'da — Nginx va shop sayti serverining ichki manzili (22 §8)
     trusted_proxies: list[str] = ["127.0.0.1", "::1"]
+
+    # AI sotuvchi (6b, ai/M06-architecture.md §4). Provayder: fake — testlar va kalitsiz dev demo;
+    # gemini — lokal (bepul kalit faqat sintetik ma'lumot bilan, A14); anthropic — production tavsiyasi.
+    llm_provider: Literal["gemini", "anthropic", "fake"] = "fake"
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_tier: Literal["free", "paid"] = "free"
+    anthropic_api_key: SecretStr | None = None
+    ai_debounce_seconds: float = 2.5  # xaridor ketma-ket yozsa — oxirgisiga javob (M06 §2.1)
+    llm_retry_backoff_seconds: float = 0.5
 
     @property
     def is_production(self) -> bool:
@@ -183,8 +213,18 @@ class Settings(BaseSettings):
                     f"idempotency_hash_key {self.app_env} muhitida kamida {MIN_HASH_KEY_LENGTH} belgi va "
                     "lokal standart emas"
                 )
+        if self.is_production:
+            # A14: bepul Gemini kaliti bilan Google ma'lumotdan o'rganishi mumkin. `fake` production'da ishga
+            # tushadi, lekin AI "sozlanmagan" — rejimni yoqib bo'lmaydi (M06 §10)
+            if self.llm_provider == "gemini" and self.gemini_tier != "paid":
+                raise ValueError("Gemini production'da faqat pullik tarif bilan (GEMINI_TIER=paid, A14)")
         self.pii_keyring()  # kalit formati noto'g'ri bo'lsa — ishga tushishda xato
         self.proxy_networks()  # noto'g'ri IP/CIDR — ishga tushishda xato
+        if self.storage_backend == "s3":
+            if not self.s3_private_bucket:
+                raise ValueError("STORAGE_BACKEND=s3 uchun S3_PRIVATE_BUCKET kerak")
+            if (self.s3_access_key_id is None) != (self.s3_secret_access_key is None):
+                raise ValueError("S3_ACCESS_KEY_ID va S3_SECRET_ACCESS_KEY birga beriladi")
         return self
 
     def proxy_networks(self) -> tuple[IPv4Network | IPv6Network, ...]:
@@ -202,6 +242,23 @@ class Settings(BaseSettings):
             hmac_key=parse_keys(f"hmac:{self.pii_hmac_key.get_secret_value()}")["hmac"],
         )
 
+    def storage_config(self) -> StorageConfig:
+        s3 = None
+        if self.storage_backend == "s3":
+            assert self.s3_private_bucket  # validator tekshirgan
+            s3 = S3Config(
+                private_bucket=self.s3_private_bucket,
+                public_bucket=self.s3_public_bucket or None,
+                endpoint_url=self.s3_endpoint_url or None,
+                region=self.s3_region,
+                access_key_id=self.s3_access_key_id.get_secret_value() if self.s3_access_key_id else None,
+                secret_access_key=(
+                    self.s3_secret_access_key.get_secret_value() if self.s3_secret_access_key else None
+                ),
+                force_path_style=self.s3_force_path_style,
+            )
+        return StorageConfig(backend=self.storage_backend, local_dir=Path(self.storage_local_dir), s3=s3)
+
     def auth_config(self) -> AuthConfig:
         return AuthConfig(
             jwt_secret=self.jwt_secret.get_secret_value(),
@@ -218,12 +275,12 @@ class Settings(BaseSettings):
             argon2_memory_kib=self.argon2_memory_kib,
         )
 
-    def database_config(self) -> DatabaseConfig:
+    def database_config(self, *, worker: bool = False) -> DatabaseConfig:
         return DatabaseConfig(
             url=self.database_url,
             read_url=self.database_read_url,
-            pool_size=self.db_pool_size,
-            max_overflow=self.db_max_overflow,
+            pool_size=self.worker_db_pool_size if worker else self.db_pool_size,
+            max_overflow=self.worker_db_max_overflow if worker else self.db_max_overflow,
             statement_timeout_ms=self.db_statement_timeout_ms,
             application_name=f"commerce-os-{self.app_env}",
         )

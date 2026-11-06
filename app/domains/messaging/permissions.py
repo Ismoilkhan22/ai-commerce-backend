@@ -16,11 +16,21 @@ CONVERSATION_TAKEOVER = "messaging.conversation.takeover"
 CONVERSATION_ASSIGN = "messaging.conversation.assign"
 CONVERSATION_RESOLVE = "messaging.conversation.resolve"
 HANDOFF_REQUEST = "messaging.handoff.request"
+# Instagram izohlari (DEC-148): ko'rish — izohlar, postlar, hisobot; boshqarish — sozlama, shablon, bog'lash
+INSTAGRAM_VIEW = "messaging.instagram.view"
+INSTAGRAM_MANAGE = "messaging.instagram.manage"
 
 _OPERATOR = frozenset(
-    {CONVERSATION_VIEW, CONVERSATION_REPLY, CONVERSATION_TAKEOVER, CONVERSATION_RESOLVE, HANDOFF_REQUEST}
+    {
+        CONVERSATION_VIEW,
+        CONVERSATION_REPLY,
+        CONVERSATION_TAKEOVER,
+        CONVERSATION_RESOLVE,
+        HANDOFF_REQUEST,
+        INSTAGRAM_VIEW,
+    }
 )
-_MANAGER = _OPERATOR | {CHANNEL_VIEW, CONVERSATION_ASSIGN}
+_MANAGER = _OPERATOR | {CHANNEL_VIEW, CONVERSATION_ASSIGN, INSTAGRAM_MANAGE}
 _OWNER = _MANAGER | {CHANNEL_CONNECT}
 
 MESSAGING_PERMISSIONS = sorted(_OWNER)

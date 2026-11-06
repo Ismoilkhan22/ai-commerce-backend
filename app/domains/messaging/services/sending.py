@@ -129,8 +129,11 @@ class SendingService:
         conversation = await db.get(Conversation, message.conversation_id)
         assert conversation is not None
         actor = ActorContext.system(shop_id)
+        # AI xabari: versiya o'zgarmagan bo'lsa. PAUSED — AI'ning operatorga uzatishdan oldingi oxirgi xabari
+        # (pauzadan keyingi versiya bilan yozilgan, AiReplyService.queue)
         if message.origin == "AI_AUTO" and (
-            conversation.speaker_mode != "AI" or conversation.speaker_version != message.speaker_version
+            conversation.speaker_mode not in ("AI", "PAUSED")
+            or conversation.speaker_version != message.speaker_version
         ):
             message.delivery_status, message.last_error_code = "DISCARDED", "SPEAKER_CHANGED"
             await self._event(db, actor, conversation, message, "messaging.message.discarded")

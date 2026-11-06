@@ -172,6 +172,15 @@ async def take_conversation(
     return _etag(response, await svc.inbox.take(ctx.db, ctx.actor, conversation_id, version))
 
 
+@router.post("/{conversation_id}/resume-ai", response_model=ConversationOut)
+async def resume_ai(
+    conversation_id: UUID, response: Response, ctx: CanTake, svc: Messaging, version: IfMatch
+) -> ConversationOut:
+    """ "AI'ga qaytarish" (6b): suhbat yana AI navbatida (speaker AI, versiya +1). AI shu shopda javob
+    bermasa — 409 INVALID_STATE_TRANSITION (`reason`)."""
+    return _etag(response, await svc.inbox.resume_ai(ctx.db, ctx.actor, conversation_id, version))
+
+
 @router.post("/{conversation_id}/assign", response_model=ConversationOut)
 async def assign_conversation(
     conversation_id: UUID,

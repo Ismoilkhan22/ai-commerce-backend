@@ -363,12 +363,14 @@ def test_dev_seed_builds_demo_data_and_is_idempotent(seed_urls: PgUrls) -> None:
     # 3-modul: qoldiq, har holatdagi buyurtma, 24/72 soatlik navbat; qayta yugurish hech narsa qo'shmaydi
     assert (first.commerce_receipts, first.commerce_orders) == (5, 12)
     assert (second.commerce_receipts, second.commerce_orders) == (0, 0)
+    # 6a: leadlar va takliflar; qayta yugurish qo'shmaydi
+    assert (first.quote_leads, first.quotes) == (3, 2) and (second.quote_leads, second.quotes) == (0, 0)
     statuses = {
         r["status"]: r["n"]
         for r in _sql(seed_urls.admin, "SELECT status, count(*) AS n FROM commerce.orders GROUP BY status")
     }
     assert statuses == {
-        "DRAFT": 1,
+        "DRAFT": 2,  # +1: NoutbukUz'da qabul qilingan PC taklifidan buyurtma qoralamasi (6a)
         "PENDING_CONFIRMATION": 5,
         "CONFIRMED": 3,
         "PROCESSING": 1,
@@ -416,6 +418,7 @@ def test_dev_seed_builds_demo_data_and_is_idempotent(seed_urls: PgUrls) -> None:
         "EXCHANGE_RATE_STALE": 1,
         "ADJUSTMENT_APPROVAL": 1,
         "HANDOFF": 4,  # 5b demo suhbatlari: biri ochiq, uchtasini xodim oldi
+        "QUOTE_APPROVAL": 2,  # 6a: ikki taklif tekshiruvga tushdi, menejer tasdiqladi (RESOLVED)
     }
     assert (first.staff_tasks, second.staff_tasks) == (3, 0)
     # 5b: sayt chati (3 ta ochiq sayt) + NoutbukUz'ning soxta boti; har holatdagi suhbat, biri buyurtmali

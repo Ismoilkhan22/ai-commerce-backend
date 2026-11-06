@@ -64,6 +64,10 @@ CONVERSATION_RULES = [
     _conv("RESOLVE", "HUMAN_NEEDED", "RESOLVED", "STAFF"),
     _conv("RESOLVE", "REOPENED", "RESOLVED", "STAFF"),
     _conv("REOPEN", "RESOLVED", "REOPENED", "STAFF"),
+    # 6b (AI sotuvchi): operator AI'ga qaytaradi ("Resume AI") va qayta ochilgan suhbatda AI davom etadi
+    _conv("RETURN_TO_AI", "HUMAN_NEEDED", "AI_ACTIVE", "STAFF"),
+    _conv("RETURN_TO_AI", "WAITING_CUSTOMER", "AI_ACTIVE", "STAFF"),
+    _conv("AI_RESUME", "REOPENED", "AI_ACTIVE", "SYSTEM"),
 ]
 
 CHANNEL_RULES = [

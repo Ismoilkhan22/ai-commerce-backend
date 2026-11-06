@@ -683,6 +683,89 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 |---|---|---|---|
 | Hamma filialda tugagan mahsulotni saytdan so'rash mumkinmi | **Ha** — savatga qo'shiladi, yonida "Hozir mavjud emas — operator muddat va muqobilni aytadi"; so'rov odatdagidek "Tasdiq kutilmoqda" ga tushadi, band qilinmaydi | M07: operator muqobil taklif qiladi; PC shoplar ko'pincha yetkazib beruvchidan buyurtma qiladi; qoldig'i kiritilmagan shop ham so'rov oladi | Tugagan mahsulot faqat ko'rinadi, savatga qo'shilmaydi |
 
+### DEC-142 — Lead va PC takliflari (6-modul) — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/commerce_quotes.dbml`, `commerce_quotes.md`.
+
+| Savol | Tanlov | Muqobil |
+|---|---|---|
+| Lead | AI (ehtiyoj aniq bo'lganda) yoki xodim yaratadi; bir suhbatda bitta ochiq lead | Har suhbat — avtomatik lead |
+| Lead yopilishi | WON avtomatik; LOST faqat xodim (30 kun jimlikda vazifa) | 30 kunda avtomatik LOST |
+| Taklif raqami | Alohida hisoblagich "T-1042" | Buyurtma raqami |
+| Taklifni yuborish | Faqat xodim, tasdiqdan keyin (AI — qoralama) | AUTO rejimda AI yuboradi |
+| Xaridor qabuli | Havola + "Qabul qilaman" tugmasi | Chatdagi "ha" |
+| Qabulda narx o'zgarsa | Qayta tekshiriladi, farq bo'lsa qayta rozilik (DEC-134 kabi) | Muddat ichida narx kafolatlanadi |
+| Moslik natijasi | Yuborish, tasdiq, qabulda yoziladi | Bitta snapshot |
+| Taklifda chegirma | Faqat xodim, limit tekshiriladi; chegirmali taklif doim qo'lda tasdiqlanadi | Taklif darajasida umumiy chegirma |
+
+### DEC-143 — AI sotuvchi (6-modul) — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/sales_ai.dbml`, `sales_ai.md`, `engineering/ai/M06-architecture.md`.
+
+| Savol | Tanlov | Muqobil |
+|---|---|---|
+| Standart rejim | OFF; yoqilganda avval SUGGEST (operator tasdiqlaydi) | Standart SUGGEST |
+| Soya rejimi | SHADOW: AI javob yozadi, xaridorga yubormaydi | Faqat platforma sinovida |
+| Chegirma | AI chegirma haqida gapirmaydi, so'ralsa operatorga uzatadi | Ega belgilagan foizgacha aytish |
+| Tizim prompti | Kodda, o'zgarish baholashdan o'tadi | Bazada, admin tahrirlaydi |
+| Shop FAQ | To'liq matn promptga (~6k token) | Semantik qidiruv (pgvector) |
+| Xarajat | USD × 10⁶; ixtiyoriy kunlik va oylik limit, yetganda AI pauza | Faqat oylik limit |
+| PII xaritasi | `platform.llm_pii_refs` | `sales_ai` ichida |
+| Jurnal muddati | Tool jurnali 90 kun, AI navbatlari 12 oy | Hammasi 12 oy |
+| Operator bahosi | SUGGEST'da avtomatik, xato belgisi qo'lda | Faqat qo'lda |
+| Provayder | Neytral port: Gemini (dev), Claude (production tavsiya), Fake (test); `LLM_PROVIDER` | Faqat Claude |
+| Bepul Gemini kaliti | Faqat sintetik/demo ma'lumot; PII yashirish doim; production'da faqat pullik, no-training tarif | Dev'da ham pullik kalit |
+| Baholash | Bir to'plam ikkala provayderda, natija bazada | Faqat production provayderi |
+
+### DEC-144 — PC moslik engine'i (6-modul) — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/17`, `engineering/ai/M06-architecture.md`.
+
+| Savol | Tanlov | Muqobil |
+|---|---|---|
+| Qoidalar | Kodda, versiya — kod konstantasi | `pc_rulesets` jadvali |
+| Natija keshi | Yo'q; faqat taklif snapshot'i | Kesh jadvali |
+| Yig'ma | Alohida "build" yo'q — taklif versiyasi | `builds` jadvali |
+| Byudjet profillari | Stage 1 da kodda | Jadval + admin ekran |
+
+### DEC-145 — Kafolat murojaatlari (7-modul, `support`) — `PROPOSED (2026-10-27, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/support.dbml`, `support.md`.
+
+| Savol | Tanlov |
+|---|---|
+| Qayerdan ochiladi | Buyurtma qatori, tez sotuv qatori yoki tizimdan oldingi sotuv (chek bilan; qaror doim menejerda) |
+| Holatlar (FSM-11) | O'zgarmaydi; diagnostika `IN_REVIEW` ichida, qaror `resolution` maydonida (ta'mir / almashtirish / qaytarish) |
+| Karantin | Faqat almashtirish va qaytarishda; ta'mirdagi mahsulot xaridorniki, omborga yozilmaydi |
+| Almashtirishda yangi dona | Yangi daftar sababi `WARRANTY_REPLACEMENT` |
+| Domen | `support` (07/27 kabi), DEC-114 dagi `fulfillment` emas |
+
+### DEC-146 — Tannarx va hisobotlar (7-modul, `reporting`) — `PROPOSED (2026-10-27, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/commerce_cost_price.*`, `reporting.*`.
+
+| Savol | Tanlov |
+|---|---|
+| Tannarx usuli | O'rtacha tortilgan, shop bo'yicha, so'mda; ega kiritadi, omborchi ko'rmaydi |
+| Foyda | Buyurtma topshirilganda muzlaydi; tannarx qisman bo'lsa `PARTIAL_COST_DATA` + qamrov foizi, umuman bo'lmasa raqam aytilmaydi |
+| Operator javob vaqti | Har xabar bo'yicha (matnsiz), 13 oy |
+| Ombor qiymati | Sotuv narxida va tannarxda, kunlik tarix |
+| PII | Hisobotlarda yo'q; sanalar Toshkent vaqtida |
+
+### DEC-147 — Xaridorga qolgan xabarnomalar (7-modul) — `PROPOSED (2026-10-27, Claude — founder ko'rib chiqadi)`
+
+| Savol | Tanlov |
+|---|---|
+| Qo'shiladi | Kafolat bo'yicha 4 ta (ochildi, qabul qilindi, rad etildi, tayyor), `price_changed`, `quote_expired`, `ai_greeting` (AI yoqiq bo'lsa) |
+| Qurilmaydi | `order_processing`, avtomatik `order_received` va `quote_sent`, SMS |
+
+### DEC-148 — Instagram izohlari (6+, DEC-132 davomi) — `PROPOSED (2026-10-27, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/instagram_comments.dbml`, `instagram_comments.md`.
+
+| Savol | Tanlov |
+|---|---|
+| Schema | `messaging` ga qo'shimcha (webhook, token, dedup umumiy) |
+| Izohga javob inbox'ga | Yo'q; suhbat xaridor Direct'da javob yozganda ochiladi |
+| «+» va narx so'rovi | Oddiy qoida; kayfiyatni AI baholaydi, ishonch < 0.70 bo'lsa "aniqlanmagan" |
+| Post mahsulotga bog'lanmagan | Narxsiz umumiy javob |
+| Takror | Bir postga bir muallif — bitta avtomatik javob |
+| Xarajat | `COMMENT_CLASSIFY` maqsadi; AI limiti tugasa kayfiyat to'xtaydi, «+» javoblari ishlayveradi |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

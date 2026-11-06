@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy import text
 
-from app.shared.events.models import OUTBOX_SCHEMAS
+from app.shared.events.models import OUTBOX_SCHEMAS, RECEIPT_SCHEMAS
 from app.shared.events.registry import JobContext, JobResult
 
 BATCH = 1000
@@ -79,6 +79,7 @@ async def outbox_cleanup(ctx: JobContext) -> JobResult:
             now=ctx.now,
             days=OUTBOX_PUBLISHED_DAYS,
         )
+    for schema in RECEIPT_SCHEMAS:
         details[f"{schema}.receipts"] = await _purge(
             ctx,
             f"DELETE FROM {schema}.consumer_receipts WHERE (consumer, event_id) IN ("  # noqa: S608

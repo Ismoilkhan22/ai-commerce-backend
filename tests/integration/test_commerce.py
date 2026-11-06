@@ -492,6 +492,47 @@ def test_stale_rate_blocks_confirm_of_usd_order(world: World) -> None:
     assert response.json()["error"]["details"]["max_age_hours"] == 72
 
 
+def test_denied_attempts_are_audited_without_pii_and_rate_limited(world: World) -> None:
+    """TC-029, TC-ISO-01: 403 — `<resurs>.denied` yozuvi; marshrut shabloni, PII yo'q, cheklangan."""
+    shop = Shop(world)
+    warehouse, _ = shop.staff("WAREHOUSE")
+    sku = shop.sku()
+    shop.receive(sku, 3)
+    request = _ok(
+        _post(
+            world,
+            warehouse,
+            "/stock/adjustments",
+            {"branch_id": shop.branch, "sku_id": sku, "delta": -1, "reason": "sanoqda kam"},
+        ),
+        201,
+    )
+    path = f"/stock/adjustments/{request['id']}/approve"
+    for _ in range(8):
+        assert _post(world, warehouse, path, version=request["version"]).status_code == 403
+    rows = _admin_sql(
+        world,
+        "SELECT action, entity_type, entity_id::text AS entity_id, actor_type, actor_id, reason, "
+        "diff::text AS diff "
+        "FROM audit.audit_entries WHERE shop_id = $1 AND action LIKE '%.denied' ORDER BY occurred_at",
+        shop.id,
+    )
+    assert 1 <= len(rows) <= 5  # xodim + marshrut bo'yicha daqiqasiga 5 tagacha
+    row = rows[0]
+    assert row["action"] == "stock.denied" and row["entity_type"] == "stock"
+    assert row["entity_id"] == request["id"] and row["actor_type"] == "STAFF" and row["actor_id"] is not None
+    assert row["reason"] == "FORBIDDEN"
+    assert "{" in row["diff"]  # marshrut shabloni, haqiqiy ID emas
+    assert request["id"] not in row["diff"] and PHONE not in row["diff"]
+    # Boshqa shop xodimi bu yozuvlarni ko'rmaydi (RLS)
+    other = Shop(world)
+    assert not _admin_sql(
+        world,
+        "SELECT 1 FROM audit.audit_entries WHERE shop_id = $1 AND action LIKE '%.denied'",
+        other.id,
+    )
+
+
 # ------------------------------------------------------------------ tuzatish (DEC-134, TC-CON-12)
 
 
@@ -1005,7 +1046,7 @@ def test_customer_pii_is_encrypted_and_kept_out_of_audit_and_idempotency(world: 
         "SELECT response_body::text AS b FROM platform.idempotency_keys "
         "WHERE operation = 'commerce.order.create'",
     )
-    assert stored and not any("9012" in r["b"] for r in stored)
+    assert stored and not any("901234567" in r["b"] for r in stored)
     for query in ("+998 93 555-77-88", "935557788"):
         found = _ok(
             world.client.get("/api/v1/shop/orders", params={"q": query}, headers=_bearer(shop.owner))

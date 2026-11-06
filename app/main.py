@@ -9,10 +9,9 @@ import importlib
 import importlib.util
 import pkgutil
 import re
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI
@@ -22,22 +21,34 @@ from redis.asyncio import Redis
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
 from app.dependencies import (
+    get_ai_conversations,
     get_catalog_query,
     get_chat_availability,
+    get_conversation_lookup,
     get_conversation_orders,
     get_import_stock_results,
     get_import_stock_source,
     get_order_query,
+    get_reporting_sources,
+    get_sales_drafts,
     get_stock_query,
+    get_support_commerce,
 )
 from app.domains.catalog.providers import build_catalog_services
 from app.domains.commerce.providers import build_commerce_services
 from app.domains.messaging.common import MessagingConfig
 from app.domains.messaging.providers import build_messaging_services
+from app.domains.reporting.providers import build_reporting_services
+from app.domains.sales_ai.providers import build_sales_ai_services
 from app.domains.storefront.providers import build_storefront_services
+from app.domains.support.providers import build_support_services
 from app.platform.audit.services.audit_service import AuditService
+from app.platform.audit.services.denied import DeniedAttemptRecorder
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
+from app.platform.llm.factory import build_router
+from app.platform.llm.providers.fake import FakeProvider
+from app.platform.llm.router import LlmRouter
 from app.platform.notifications.providers import build_notification_services
 from app.platform.notifications.telegram import build_sender
 from app.platform.shops.services.platform_queries import PlatformQueryService
@@ -45,7 +56,7 @@ from app.platform.shops.services.shop_service import ShopService
 from app.platform.staff.permissions import PermissionRegistry
 from app.platform.staff.services.platform_team_service import PlatformTeamService
 from app.platform.staff.services.staff_service import StaffService
-from app.platform.storage.local import LocalDiskStorage
+from app.platform.storage.config import build_file_storage
 from app.platform.storage.services.file_service import FileService
 from app.platform.storage.signing import UrlSigner
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
@@ -254,6 +265,7 @@ def wire_services(
         ),
     )
     audit = AuditService()
+    state.denied_recorder = DeniedAttemptRecorder(audit)  # 403 → `<resurs>.denied` audit yozuvi (TC-029)
     use = UseService(RulesRegistry.from_manifests(manifests), audit)
     hasher = PasswordHasher(
         auth_config.argon2_time_cost, auth_config.argon2_memory_kib, auth_config.argon2_parallelism
@@ -268,7 +280,7 @@ def wire_services(
     state.platform_queries = PlatformQueryService()
     state.platform_team = PlatformTeamService(audit, auth_config)
     files = FileService(
-        storage=LocalDiskStorage(Path(settings.storage_local_dir)),
+        storage=build_file_storage(settings.storage_config()),
         signer=UrlSigner(auth_config.jwt_secret),
         audit=audit,
         public_base_url=settings.public_files_url,
@@ -297,6 +309,33 @@ def wire_services(
         storefront.gate,
         get_import_stock_source(),
         state.permissions,
+        storefront_public_url=settings.storefront_public_url,
+        conversations=get_conversation_lookup(),
+    )
+    # 7b: kafolat murojaatlari — sotuv qatori va ombor yozuvi commerce port'i orqali (DEC-126, DEC-145)
+    state.support = build_support_services(
+        use,
+        audit,
+        files,
+        get_catalog_query(),
+        get_conversation_lookup(),
+        get_support_commerce(state.commerce),
+    )
+    # 7c: hisobot read model'lari — katalog o'lchami va qayta qurish manbasi port'lar orqali
+    state.reporting = build_reporting_services(get_catalog_query(), get_reporting_sources())
+    # 6b: AI sotuvchi — LLM provayderi sozlamadan (LLM_PROVIDER), suhbat va qoralamalar port'lar orqali
+    main_router = llm_router(settings)
+    state.sales_ai = build_sales_ai_services(
+        main_router,
+        audit,
+        cache,
+        get_catalog_query(),
+        get_stock_query(),
+        allow_fake=not settings.is_production,
+        debounce_s=settings.ai_debounce_seconds,
+        eval_routers=eval_router_factory(settings, main_router),
+        git_sha=settings.app_version,
+        gemini_free=settings.gemini_tier != "paid",
     )
     state.messaging = build_messaging_services(
         use,
@@ -306,7 +345,52 @@ def wire_services(
         get_conversation_orders(state.commerce),
         storefront.gate,
         messaging_config(settings),
+        ai_gate=state.sales_ai.gate,
+        catalog=get_catalog_query(),
+        stock=get_stock_query(),
+        llm=main_router,
+        ai_budget=state.sales_ai.gate,
     )
+    state.sales_ai.connect(get_ai_conversations(state.messaging), get_sales_drafts(state.commerce))
+
+
+def llm_router(settings: Settings) -> LlmRouter:
+    gemini, anthropic = settings.gemini_api_key, settings.anthropic_api_key
+    return build_router(
+        settings.llm_provider,
+        gemini_api_key=gemini.get_secret_value() if gemini else None,
+        anthropic_api_key=anthropic.get_secret_value() if anthropic else None,
+        gemini_model=settings.gemini_model,
+        backoff_s=settings.llm_retry_backoff_seconds,
+    )
+
+
+def eval_router_factory(
+    settings: Settings, main_router: LlmRouter
+) -> Callable[[str, Mapping[str, Sequence[str]] | None], LlmRouter]:
+    """6c baholash: provayder/model bo'yicha router (keshlanadi). Asosiy provayder va standart model —
+    jonli router o'zi (FakeProvider testlarda skriptlanadi); `fake` — har doim o'sha FakeProvider bilan."""
+    gemini, anthropic = settings.gemini_api_key, settings.anthropic_api_key
+    shared_fake = main_router.provider if isinstance(main_router.provider, FakeProvider) else None
+    cache: dict[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], LlmRouter] = {}
+
+    def build(provider: str, overrides: Mapping[str, Sequence[str]] | None) -> LlmRouter:
+        if provider == settings.llm_provider and not overrides:
+            return main_router
+        key = (provider, tuple(sorted((k, tuple(v)) for k, v in (overrides or {}).items())))
+        if key not in cache:
+            cache[key] = build_router(
+                provider,
+                gemini_api_key=gemini.get_secret_value() if gemini else None,
+                anthropic_api_key=anthropic.get_secret_value() if anthropic else None,
+                gemini_model=settings.gemini_model,
+                model_overrides=overrides,
+                backoff_s=settings.llm_retry_backoff_seconds,
+                fake=shared_fake,
+            )
+        return cache[key]
+
+    return build
 
 
 def messaging_config(settings: Settings) -> MessagingConfig:
@@ -317,6 +401,7 @@ def messaging_config(settings: Settings) -> MessagingConfig:
         instagram_enabled=settings.feature_channel_instagram_dm,
         instagram_app_secret=secret.get_secret_value() if secret else None,
         instagram_verify_token=verify.get_secret_value() if verify else None,
+        storefront_public_url=settings.storefront_public_url,
         telegram_test_tokens=settings.app_env in ("local", "test"),
     )
 

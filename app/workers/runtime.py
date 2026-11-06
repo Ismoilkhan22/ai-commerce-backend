@@ -78,7 +78,7 @@ def build_runtime(
     registry, jobs = collect(manifests)
     runtime = WorkerRuntime(
         settings=settings,
-        database=database or Database(settings.database_config()),
+        database=database or Database(settings.database_config(worker=True)),
         services=services,
         registry=registry,
         jobs=jobs,

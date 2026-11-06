@@ -27,8 +27,18 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.shared.db.base import Base
 
-# 5-modul: shu beshtasi (messaging — 5b); sales_ai/support/reporting — o'z modullari bilan
-OUTBOX_SCHEMAS: tuple[str, ...] = ("platform", "catalog", "commerce", "storefront", "messaging")
+# messaging — 5b, sales_ai — 6b, support — 7b
+OUTBOX_SCHEMAS: tuple[str, ...] = (
+    "platform",
+    "catalog",
+    "commerce",
+    "storefront",
+    "messaging",
+    "sales_ai",
+    "support",
+)
+# reporting (7c) event chiqarmaydi, faqat tinglaydi: unda faqat consumer_receipts bor
+RECEIPT_SCHEMAS: tuple[str, ...] = (*OUTBOX_SCHEMAS, "reporting")
 STATUSES = ("PENDING", "PUBLISHED", "DEAD")
 
 
@@ -80,7 +90,7 @@ def _receipts(schema: str) -> Table:
 
 
 OUTBOX_TABLES: dict[str, Table] = {schema: _outbox(schema) for schema in OUTBOX_SCHEMAS}
-RECEIPT_TABLES: dict[str, Table] = {schema: _receipts(schema) for schema in OUTBOX_SCHEMAS}
+RECEIPT_TABLES: dict[str, Table] = {schema: _receipts(schema) for schema in RECEIPT_SCHEMAS}
 
 
 def outbox_table(schema: str) -> Table:
@@ -94,4 +104,4 @@ def receipts_table(schema: str) -> Table:
     try:
         return RECEIPT_TABLES[schema]
     except KeyError as exc:
-        raise ValueError(f"{schema!r} schemasida consumer_receipts yo'q (OUTBOX_SCHEMAS)") from exc
+        raise ValueError(f"{schema!r} schemasida consumer_receipts yo'q (RECEIPT_SCHEMAS)") from exc

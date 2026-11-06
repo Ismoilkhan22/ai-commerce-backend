@@ -60,6 +60,8 @@ Ustun darajasida shifrlash kaliti — secret manager'da, rotatsiya bilan; `share
 
 **5b holati (2026-10-26):** `messaging_retention` (har kecha) — oxirgi faollikdan 12 oy o'tgan suhbatning xabarlari, izohlari va rasmlari o'chiriladi (fayl `DELETED`), suhbat qatori qoladi; webhook dedup yozuvlari — 30 kun (xom JSON saqlanmaydi); sayt chati sessiyalari — muddati tugagach 30 kun. Xaridor telefoni (`customer_identities.phone_enc`) shifrlangan + HMAC; matn, ism va telefon event, audit diff va log'ga tushmaydi (testda skaner). Xaridorni o'chirish so'rovi (§3) — 7-modul bilan.
 
+**6b holati (2026-10-26):** LLM provayderiga xaridorning telefoni, emaili, karta raqami va manzili bormaydi — `[PHONE_1]` kabi tokenlar (`platform.llm_pii_refs`, qiymat shifrlangan, 12 oy, `llm_cleanup` tozalaydi). Karta raqami javobda hech qachon tiklanmaydi. AI javobi (`sales_ai.ai_turns.reply_text_enc`) — shifrlangan va token holatida. Tool jurnali (`ai_tool_executions`) — faqat redact qilingan argumentlar va ID'lar, 90 kun (`sales_ai_retention`). AI xarajati (`platform.ai_usage`) — PII'siz, 400 kun. Sinov oynasi keshida faqat redact qilingan tarix (1 soat). Ism redaction hali yo'q (keyin). Production'da bepul Gemini kaliti taqiqlangan (A14).
+
 | Turi | Taklif | Muddat tugagach | Kim tozalaydi | Huquqshunosga savol |
 |---|---|---|---|---|
 | Suhbat matni | Oxirgi faollikdan 12 oy | Xabarlar o'chiriladi, `reporting` raqamlari qoladi | `messaging` | Yetarlimi? |

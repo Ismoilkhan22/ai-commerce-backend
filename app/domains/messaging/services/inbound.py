@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,7 +67,9 @@ class InboundService:
             return IngestResult(duplicate=True)  # Telegram qayta yubordi — hech narsa qilinmaydi
         event = await db.get(ProviderEvent, event_id)
         assert event is not None
-        account.last_webhook_at = utcnow()
+        await db.execute(  # Core UPDATE: kanal `version` i har webhook'da oshmasin (If-Match)
+            update(ChannelAccount).where(ChannelAccount.id == account.id).values(last_webhook_at=utcnow())
+        )
         if inbound.ignore_reason is not None:
             event.status, event.error_code = "IGNORED", inbound.ignore_reason
             return IngestResult(duplicate=False, ignored=True)

@@ -138,7 +138,12 @@ def customer_out(identity: CustomerIdentity) -> CustomerOut:
     )
 
 
-def allowed_actions(actor: ActorContext, conversation: Conversation) -> list[ConversationAction]:
+RESUMABLE = frozenset({"HUMAN_ACTIVE", "HUMAN_NEEDED", "WAITING_CUSTOMER"})
+
+
+def allowed_actions(
+    actor: ActorContext, conversation: Conversation, *, ai_speaks: bool = False
+) -> list[ConversationAction]:
     p = actor.permissions
     in_scope = is_supervisor(actor) or conversation.assignee_membership_id in (None, actor.membership_id)
     actions: list[ConversationAction] = []
@@ -161,6 +166,14 @@ def allowed_actions(actor: ActorContext, conversation: Conversation) -> list[Con
         actions.append("CREATE_ORDER")
     if perm.CONVERSATION_VIEW in p:
         actions.append("NOTE")
+    # 6b: AI shu shopda javob beradi va suhbat hozir odamniki — operator AI'ga qaytaradi
+    if (
+        ai_speaks
+        and perm.CONVERSATION_TAKEOVER in p
+        and conversation.status in RESUMABLE
+        and conversation.speaker_mode != "AI"
+    ):
+        actions.append("RESUME_AI")
     return actions
 
 
@@ -172,6 +185,8 @@ def detail_out(
     unread: int,
     available: bool,
     assignee_name: str | None = None,
+    *,
+    ai_speaks: bool = False,
 ) -> ConversationOut:
     return ConversationOut(
         id=conversation.id,
@@ -202,7 +217,7 @@ def detail_out(
         )
         if handoff
         else None,
-        allowed_actions=allowed_actions(actor, conversation),
+        allowed_actions=allowed_actions(actor, conversation, ai_speaks=ai_speaks),
         version=conversation.version,
     )
 

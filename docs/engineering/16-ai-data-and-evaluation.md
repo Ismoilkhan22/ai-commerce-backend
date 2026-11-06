@@ -83,6 +83,8 @@ Har model yoki provayder uchun: `eval_dataset_version`, `prompt_version`, rubrik
 | STT raqamlar aniqligi | `15` §7 |
 | Bitta muvaffaqiyatli lead/buyurtma xarajati | Kuzatiladi (`19`) |
 
+**6c holati (2026-10-27, [progress/M06c](progress/M06c-ai-eval.md)):** nol toqat kodda deterministik tekshiriladi (`sales_ai/eval/scoring.py`): `WRONG_PRICE`, `NONEXISTENT_SKU`, `CONFIRMED_CLAIM`, `DISCOUNT_PROMISE`, `UNAUTHORIZED_ACTION` (ruxsatsiz tool **urinishi** ham), qo'shimcha — `WRONG_STOCK`, `COMPAT_UNVERIFIED`, `FORBIDDEN_PHRASE` (holatdagi taqiqlangan ibora), `PII_LEAK`. "Boshqa shop ma'lumoti" alohida kod emas: tool'lar faqat nishon shop doirasida (RLS), boshqa shop mahsuloti `NONEXISTENT_SKU` bo'lib chiqadi. Yugurish `PASSED` — nol toqat 0 va (berilgan bo'lsa) `min_pass_rate`. Tool tanlash (`tool_selection_acc`) va handoff aniqligi (`handoff_acc`) o'lchanadi, chegaralari bake-off'dan keyin. Sifat ballari — `judge` roli, faqat nol toqatdan o'tgan javobga: foydalilik, til, ohang (0–5, o'rtachasi `judge_score`). Til deterministik faqat yozuv bo'yicha (kirill/lotin), qolgani — judge.
+
 "99% aniqlik" kabi da'volar — faqat muzlatilgan, kontekstli test to'plamida. Kechasi regression; shadow → `SUGGEST` → `AUTO` (`14` §15).
 
 **Orqaga qaytarish:** noto'g'ri narx/qoldiq, ruxsatsiz amal, sifat yoki xarajat keskin o'zgarsa — oldingi `model_alias`/`prompt_version` ga qaytish (`25` runbook).
@@ -109,7 +111,8 @@ Har model yoki provayder uchun: `eval_dataset_version`, `prompt_version`, rubrik
 ## 7. Infratuzilma va boshqaruv
 
 - Boshida GPU kerak emas: hosted inference + eval runner (arq task, cheklangan parallellik).
-- Eval natijalari `sales_ai.eval_runs` (yoki CI artefakti) — kim, qachon, qaysi versiya.
+- Eval natijalari `sales_ai.eval_runs` / `eval_results` jadvallarida — kim, qachon, qaysi to'plam (checksum), prompt, provayder, model, judge, git SHA. CI artefakti emas (6c).
+- **6c holati:** savollar fayl emas, `sales_ai.eval_cases` jadvalida (to'plam 40–500 savol; admin panelda tahrirlanadi, muzlatilgan to'plam faqat nusxa orqali o'zgaradi). Boshlang'ich golden to'plam — 40 ta sintetik savol (uz, uz-Cyrl, ru, en; qidiruv, yig'ma, moslik, qoldiq, chegirma, injection, PII, mavzudan tashqari, buyurtma). Runner — arq (outbox event zanjiri, bitta event = bitta savol), haqiqiy agent loop quruq rejimda, nishon — demo shop yoki tanlangan faol shop katalogi; xarajat `ai_usage` ga shop_id'siz (`EVAL`, `EVAL_JUDGE`), har yugurishga chegara. Bake-off — bir so'rov bilan ikki yugurish, `GET /platform/ai-eval/compare`. Production sifati — shop panelida "AI sifati" (`ai_feedback`, handoff, validator, xarajat, kunma-kun). JSONL eksport/import va `stored_files` — keyin.
 - Litsenziya (rasm, spec), provayder shartlari (saqlash, o'qitish), foydalanuvchi rozilikni qaytarib olishi kuzatiladi.
 - Shop opt-in qaytarib olsa — uning ma'lumoti keyingi to'plam versiyasidan chiqariladi.
 

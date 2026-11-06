@@ -338,6 +338,19 @@ Rejimni ega tanlaydi (`sales_ai.settings.edit`). Global kill switch — platform
 | TC-AI-02 | Worker `commerce.create_order_draft` dan keyin o'chdi, qayta ishga tushdi → bitta `DRAFT` |
 | TC-AI-03 | Limit tugadi → AI javob bermaydi, xaridorga "operator javob beradi" |
 
+## 17. 6b holati (2026-10-26) — nima qurildi
+
+Batafsil: [progress/M06b-ai-runtime.md](progress/M06b-ai-runtime.md).
+
+- **LLM qatlami** — `app/platform/llm`: port, Claude / Gemini / Fake adapterlari, router (1 qayta urinish, model fallback), `ai_usage`, PII redaction (`llm_pii_refs`). Provayder `LLM_PROVIDER` bilan tanlanadi.
+- **Tool'lar** — 8 ta: §4.1, §4.3, §4.5, §4.6, §4.8, §4.10 va qoldiq (`commerce.get_stock`), tafsilot (`catalog.get_sku_details`). API nomi snake_case (`catalog_search`), jurnalda ichki nom (`catalog.search`). `catalog.suggest_builds`, `commerce.request_quote_approval`, `commerce.lookup_order_status` — keyin.
+- **Qoralamalar** — `SalesDraftsPort` orqali to'g'ridan-to'g'ri (outbox event emas): AI javobida raqam kerak. Idempotency kaliti va jurnal bitta tranzaksiyada.
+- **Javob tekshiruvi (§8)** — `validator.py`: `PRICE_MISMATCH`, `DISCOUNT_MENTION`, `FORBIDDEN_CLAIM`, `STOCK_UNVERIFIED`, `COMPAT_UNVERIFIED`, `EMPTY`; bitta qayta yozish, keyin `VALIDATION_FAILED`.
+- **Rejimlar (§10)** — OFF / SHADOW / SUGGEST / AUTO. SHADOW'da suhbat operatorga, AI javobi faqat saqlanadi. SUGGEST takliflari `ai_turns.suggestion_status`, operator bahosi `ai_feedback`.
+- **Handoff (§9)** — qoidalar LLM'siz (operator so'raldi, shikoyat, chegirma, kafolat), model tool'i, tekshiruv, refusal, provayder, limit. AUTO'da AI'ning oxirgi xabari ("operator tez orada javob beradi") va handoff bitta tranzaksiyada — xabar yetib boradi.
+- **Xarajat (§12)** — kunlik va oylik chegara (USD sent), 80% da ogohlantirish, 100% da pauza va egaga xabar (BL-040). Navbatga ≤ 6 tool, ≤ 20 s.
+- **Testlar (§16)** — TC-007 (narx tekshiruvi), TC-009, TC-028, TC-AI-01, TC-AI-02 (tool idempotency), TC-AI-03 — `tests/integration/test_sales_ai.py`. UAT-M11 hozir `DISCOUNT_REQUEST` bilan operatorga (sabab `SECURITY` emas).
+
 ## Keyingi qadam
 
 → [17-pc-compatibility-engine.md](17-pc-compatibility-engine.md) — moslik engine

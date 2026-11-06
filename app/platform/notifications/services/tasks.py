@@ -59,6 +59,13 @@ EXCHANGE_RATE_STALE = "EXCHANGE_RATE_STALE"
 HANDOFF = "HANDOFF"  # operator kerak — suhbatni oling
 MESSAGE_FAILED = "MESSAGE_FAILED"  # xaridorga xabar yetmadi (TC-011)
 CHANNEL_DEGRADED = "CHANNEL_DEGRADED"  # kanal ishlamayapti — egaga
+# 6a: leadlar va PC takliflari
+QUOTE_APPROVAL = "QUOTE_APPROVAL"  # taklif tekshiruvda — menejer/ega tasdiqlaydi (FSM-06)
+LEAD_FOLLOWUP = "LEAD_FOLLOWUP"  # lead 30 kun jim — "yopilsinmi?" (avtomatik yopilmaydi, DEC-142 Q2)
+# 7b: kafolat murojaati
+SUPPORT_CASE_DECISION = (
+    "SUPPORT_CASE_DECISION"  # yangi murojaat — menejer/ega qaror qiladi (DEC-130, DEC-145)
+)
 
 _LINKS: dict[str, str] = {
     ORDER_CONFIRM_REMINDER: "order",
@@ -71,8 +78,11 @@ _LINKS: dict[str, str] = {
     HANDOFF: "conversation",
     MESSAGE_FAILED: "conversation",
     CHANNEL_DEGRADED: "channels",
+    QUOTE_APPROVAL: "quote",
+    LEAD_FOLLOWUP: "lead",
+    SUPPORT_CASE_DECISION: "support_case",
 }
-_WITH_ID = frozenset({"order", "adjustment", "conversation"})
+_WITH_ID = frozenset({"order", "adjustment", "conversation", "quote", "lead", "support_case"})
 
 # Kim bajara oladi (oladi va yopadi) — vazifa turi bo'yicha (QA 5a F8). `assignee_role` esa kimga
 # ko'rinishi va kim nazorat qilishini bildiradi: tasdiq eslatmasi menejer navbatida, lekin operator bajaradi.
@@ -87,6 +97,9 @@ TASK_ROLES: dict[str, frozenset[str]] = {
     HANDOFF: frozenset({"OWNER", "MANAGER", "SALES"}),  # suhbatni operator oladi
     MESSAGE_FAILED: frozenset({"OWNER", "MANAGER", "SALES"}),
     CHANNEL_DEGRADED: frozenset({"OWNER"}),  # kanalni faqat ega ulaydi (UAT-M09)
+    QUOTE_APPROVAL: APPROVERS,  # o'zi tuzgan taklifni o'zi tasdiqlay olmaydi (DEC-109) — service tekshiradi
+    LEAD_FOLLOWUP: frozenset({"OWNER", "MANAGER", "SALES"}),
+    SUPPORT_CASE_DECISION: APPROVERS,  # qabul/rad — faqat menejer yoki ega (DEC-130)
 }
 
 

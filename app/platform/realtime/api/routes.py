@@ -1,6 +1,8 @@
 """Realtime (08 §6, ADR-023): bir martalik ticket va xodim WebSocket'i.
 
     POST /api/v1/auth/ws-ticket  (Bearer)  → {"ticket": "...", "expires_in": 30, "path": "/api/v1/ws"}
+                                             shop yoki platforma tokeni (6c: platforma paneli — kanal
+                                             principal_id bo'yicha, masalan `ai_eval.run.changed`)
     WS   /api/v1/ws?ticket=...             → {"type": "hello", "seq": 41, "heartbeat_seconds": 25}
                                              {"type": "order.changed", "resource": {...}, "seq": 42, ...}
                                              {"type": "ping"}  (har heartbeat'da)
@@ -31,7 +33,7 @@ from fastapi import APIRouter, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from app.platform.auth.tokens import AccessClaims, hash_token
-from app.platform.staff.infrastructure.guard import ShopContext, resolve_shop_actor
+from app.platform.staff.infrastructure.guard import AnyContext, resolve_platform_actor, resolve_shop_actor
 from app.shared.db.session import Database
 from app.shared.errors.base import ShopNotActiveError, UnauthenticatedError
 from app.shared.ratelimit import enforce
@@ -59,8 +61,8 @@ class WsTicketOut(BaseModel):
 
 
 @ticket_router.post("/ws-ticket", response_model=WsTicketOut)
-async def ws_ticket(request: Request, response: Response, ctx: ShopContext) -> WsTicketOut:
-    """Faqat shop paneli (platforma paneli realtime'i keyin)."""
+async def ws_ticket(request: Request, response: Response, ctx: AnyContext) -> WsTicketOut:
+    """Shop paneli (a'zolik kanali) va platforma paneli (principal kanali, 6c)."""
     broker: RealtimeBroker = request.app.state.realtime
     await enforce(request.app.state.rate_limiter, f"ws-ticket:{ctx.actor.actor_id}", TICKETS_PER_MINUTE)
     ticket = secrets.token_urlsafe(32)
@@ -70,7 +72,8 @@ async def ws_ticket(request: Request, response: Response, ctx: ShopContext) -> W
         {
             "principal_id": str(ctx.actor.actor_id),
             "session_id": str(session_id),
-            "shop_id": str(ctx.actor.shop_id),
+            "shop_id": str(ctx.actor.shop_id) if ctx.actor.shop_id else "",
+            "audience": "platform" if ctx.actor.surface == "platform" else "shop",
         },
         TICKET_TTL_SECONDS,
     )
@@ -83,6 +86,8 @@ async def _actor(websocket: WebSocket, claims: AccessClaims) -> ActorContext | i
     database: Database = websocket.app.state.db
     try:
         async with database.transaction() as db:
+            if claims.audience == "platform":
+                return await resolve_platform_actor(db, claims)
             return await resolve_shop_actor(db, claims, websocket.app.state.permissions)
     except ShopNotActiveError:
         return CLOSE_SHOP_CLOSED
@@ -119,17 +124,19 @@ async def realtime_socket(websocket: WebSocket) -> None:
     if data is None:
         await websocket.close(code=CLOSE_UNAUTHENTICATED)
         return
+    platform = data.get("audience") == "platform"
     claims = AccessClaims(
         principal_id=UUID(data["principal_id"]),
         session_id=UUID(data["session_id"]),
-        shop_id=UUID(data["shop_id"]),
-        audience="shop",
+        shop_id=UUID(data["shop_id"]) if data.get("shop_id") else None,
+        audience="platform" if platform else "shop",
     )
     actor = await _actor(websocket, claims)
-    if isinstance(actor, int) or actor.membership_id is None:
+    channel = (actor.actor_id if platform else actor.membership_id) if not isinstance(actor, int) else None
+    if isinstance(actor, int) or channel is None:
         await websocket.close(code=actor if isinstance(actor, int) else CLOSE_UNAUTHENTICATED)
         return
-    member, conn_id = actor.membership_id, secrets.token_hex(8)
+    member, conn_id = channel, secrets.token_hex(8)
     if not await broker.claim_socket(
         member, conn_id, now=time.time(), stale_after=heartbeat * 3, limit=MAX_SOCKETS_PER_MEMBER
     ):

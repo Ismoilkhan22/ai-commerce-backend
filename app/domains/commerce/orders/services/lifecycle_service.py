@@ -26,6 +26,7 @@ from app.domains.commerce.events import (
     order_event,
     reservation_event,
 )
+from app.domains.commerce.inventory.services.cost_service import current_unit_costs
 from app.domains.commerce.inventory.services.stock_service import Movement, StockService, shortage
 from app.domains.commerce.orders import access
 from app.domains.commerce.orders.models.orm import Order, OrderLine, OrderNote, Reservation
@@ -267,9 +268,17 @@ class OrderLifecycleService:
         rule = self.use.validate_transition(ORDER, order.status, "COMPLETED", "COMPLETE", actor)
         access.ensure_own(actor, order)
         await self._move_reservations(db, actor, order, ("ALLOCATED",), "CONSUME", "CONSUMED")
+        await self._freeze_cost(db, order)  # foyda shu paytda muzlaydi (DEC-146, C6)
         order.status = rule.to_status
         order.completed_at, order.completed_by = utcnow(), actor.membership_id
         return await self._finish(db, actor, order, rule.command, rule.from_status, None)
+
+    async def _freeze_cost(self, db: AsyncSession, order: Order) -> None:
+        """Qatorlarga joriy o'rtacha tannarx nusxasi; noma'lum bo'lsa NULL qoladi."""
+        lines = await self.views.lines(db, order)
+        costs = await current_unit_costs(db, order.shop_id, (line.sku_id for line in lines))
+        for line in lines:
+            line.unit_cost_uzs_minor = costs.get(line.sku_id)
 
     # ================================================================== bekor qilish va muammo
     async def cancel(
@@ -555,6 +564,7 @@ class OrderLifecycleService:
                         "qty": line.qty,
                         "unit_price_minor": line.unit_price_uzs_minor,
                         "line_total_minor": line.line_total_minor,
+                        "unit_cost_uzs_minor": line.unit_cost_uzs_minor,
                     }
                     for line in await self.views.lines(db, order)
                 ]

@@ -20,7 +20,7 @@ from app.shared.text import CleanText, Text
 OrderStatus = Literal[
     "DRAFT", "PENDING_CONFIRMATION", "CONFIRMED", "PROCESSING", "COMPLETED", "CANCELLED", "EXCEPTION"
 ]
-OrderSource = Literal["AI", "STOREFRONT", "STAFF"]
+OrderSource = Literal["AI", "STOREFRONT", "STAFF", "QUOTE"]
 FulfillmentMethod = Literal["PICKUP", "DELIVERY"]
 CustomerLocale = Literal["uz", "ru", "en"]
 PaidMarkMethod = Literal["CASH", "CARD", "TRANSFER", "OTHER"]

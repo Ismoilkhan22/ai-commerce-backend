@@ -2,7 +2,7 @@
 
 > **Versiya:** v2 (2026-10-22). Eski `19_INFRASTRUCTURE_AND_DEPLOYMENT` va `04_SYSTEM_ARCHITECTURE_C4` §9 o'rnini bosadi.
 > **Qarorlar:** DEC-001 C (shared-first, dedicated-ready), DEC-003 D (outbox + arq), DEC-012 B (Grafana Cloud + Sentry), DEC-013 A (PII O'zbekistonda), ADR-020, ADR-030, ADR-033, ADR-035.
-> **Holat:** reja — hali hech narsa o'rnatilmagan. Haqiqiy shaxsiy ma'lumot huquqshunos xulosasidan keyin (DEC-013).
+> **Holat:** S0-10 (2026-10-27) — bitta VPS uchun deploy tayyor: image'lar, `deploy/docker-compose.prod.yml`, nginx, backup, CI. Hali hech qayerga o'rnatilmagan. Haqiqiy shaxsiy ma'lumot huquqshunos xulosasidan keyin (DEC-013). Founder uchun qadamlar: [progress/M08-deploy.md](progress/M08-deploy.md).
 
 ## 1. Muammo va yechim
 
@@ -21,11 +21,15 @@
 ```
 deploy/docker/Dockerfile  →  image: cos-backend:<git-sha>
 
-  api            uvicorn app.main:app --workers N --no-access-log --no-proxy-headers   # stateless, ×1–N
+ENTRYPOINT deploy/docker/entrypoint.sh (`cos <buyruq>`), Makefile maqsadlari bilan bir xil:
+  api            uvicorn app.main:app --workers $WEB_CONCURRENCY --no-access-log --no-proxy-headers   # stateless, ×1–N
   outbox-worker  python -m app.workers.outbox_worker      # ×1–2 (SKIP LOCKED tufayli parallel xavfsiz)
   task-worker    arq app.workers.task_worker.WorkerSettings   # ×2–3
-  scheduler      python -m app.workers.scheduler_worker   # ×1–2 (advisory lock: faqat bitta leader)
-  migrate        python -m app.db.migrate --all-schemas   # deploy'dan oldin, bir martalik
+  scheduler      python -m app.workers.scheduler          # ×1–2 (advisory lock: faqat bitta leader)
+  migrate        bootstrap (DATABASE_ADMIN_URL bo'lsa, idempotent) + har schema `alembic -n <s> upgrade head`
+
+Image: builder — `ghcr.io/astral-sh/uv` (uv sync --locked --no-dev), runtime — `python:3.12-slim`, foydalanuvchi
+`app` (uid 10001), kod `/app` (PYTHONPATH), compose'da read-only root FS + `/tmp` tmpfs.
 ```
 
 | Jarayon | Masshtab signali | Nima qilinadi | Nima qilinmaydi |
@@ -46,14 +50,14 @@ Internet (xaridorlar, xodimlar, Telegram, Meta)
         │ HTTPS
         ▼
 ┌───────────────────────────── UZ data center, VM (private network) ───────────────────────────────┐
-│  nginx (TLS, Let's Encrypt, rate limit, *.<platforma>.uz, app., api.)                             │
-│     ├──▶ frontend (Next.js: shop-dashboard, shop-storefront)                                      │
+│  nginx (TLS, Let's Encrypt, rate limit: api., panel., admin., *.<platforma>.uz)  + certbot        │
+│     ├──▶ frontend (Next.js standalone: shop-dashboard, platform-admin, shop-storefront)           │
 │     └──▶ api ×N                                                                                   │
 │                                                                                                    │
 │  postgres:16  (schemalar: platform, audit, catalog, commerce, messaging, sales_ai, storefront,     │
 │                support, reporting; WAL arxivi → backup storage)                                     │
 │  redis:7      (AOF everysec; db0 kesh/rate limit, db1 arq navbati, db2 pub/sub)                    │
-│  minio        (private bucket'lar: catalog-media, imports, exports; versioning)                    │
+│  backup       (busybox cron: har kuni pg_dump → /var/backups/commerce-os, 14 kun)                  │
 │  outbox-worker · task-worker ×2 · scheduler                                                        │
 │  otel-collector (ixtiyoriy: redaction processor, batching)                                         │
 └───────────────────────────────────────────────────────┬───────────────────────────────────────────┘
@@ -68,7 +72,63 @@ Internet (xaridorlar, xodimlar, Telegram, Meta)
 - Tashqariga faqat nginx ochiq (80/443). PostgreSQL, Redis, MinIO konsoli, worker'lar — faqat ichki tarmoqda.
 - nginx kirish logi yo'lni **query string'siz** yozadi (`log_format` da `$uri`, `$request_uri` emas): qidiruvda xaridor telefoni bo'lishi mumkin (09 §4.2).
 - Bitta VM — bitta nosozlik nuqtasi. Pilot uchun ongli qaror; 99.5% maqsad (`00` §4), 99.9% va'da qilinmaydi.
-- Fayllar (MinIO) va DB — O'zbekistonda (DEC-013, ADR-030). LLM'ga faqat redaction'dan o'tgan matn.
+- Fayllar va DB — O'zbekistonda (DEC-013, ADR-030). Fayllar VM ichidagi MinIO'da emas (obrazi Docker Hub'dan endi
+  yuklanmaydi, TD-03), **tashqi S3-mos UZ xizmatida** (`STORAGE_BACKEND=s3`); zaxira yo'l — `storage` volume (`local`).
+  LLM'ga faqat redaction'dan o'tgan matn.
+
+### 3.1 Haqiqiy o'rnatma (S0-10)
+
+```
+deploy/
+├── docker/Dockerfile, entrypoint.sh     # backend image, `cos api|outbox-worker|task-worker|scheduler|migrate`
+├── docker-compose.prod.yml              # bitta VPS: postgres, redis, backup, migrate, api, 3 worker, 3 frontend, nginx, certbot
+├── .env.prod.example                    # compose o'zgaruvchilari: domen, image tag'lari, postgres paroli
+├── app.env.example                      # ilova sozlamalari (api/worker'lar o'qiydi) — superuser paroli bu yerda yo'q
+├── nginx/nginx.conf                     # rasmiy nginx.conf o'rniga (unda query'li `main` logi bor edi)
+├── nginx/templates/default.conf.template  # server'lar, ${PLATFORM_DOMAIN} envsubst bilan
+├── nginx/snippets/                      # proxy.conf (XFF), security-headers.conf, tls.conf, admin-allowlist.conf
+├── backup/pg_backup.sh, entrypoint.sh   # kunlik pg_dump + retention + sha256
+└── secrets/cloudflare.ini.example       # certbot DNS-01 tokeni
+ai-commerce-frontend/Dockerfile          # bitta Dockerfile, APP build arg (standalone, foydalanuvchi node)
+```
+
+Qarorlar:
+- **TLS — nginx + certbot (DNS-01, Cloudflare DNS API)**, Caddy emas. Sabab: shop saytlari `*.platforma.uz` —
+  wildcard sertifikat faqat DNS-01 bilan beriladi; bitta sertifikat `platforma.uz` + `*.platforma.uz` hamma
+  server'ni qoplaydi. nginx 22-hujjatda allaqachon tanlangan proksi; Caddy'ga o'tish ikkinchi proksi yoki
+  on-demand TLS (har shop uchun alohida sertifikat, `ask` endpoint) talab qilardi. Cloudflare faqat DNS sifatida
+  ("DNS only", kulrang bulut) — trafik va ma'lumot Cloudflare orqali o'tmaydi, XFF zanjiri o'zgarmaydi.
+- **IP'lar qat'iy:** `cos` tarmog'i 172.30.0.0/24; nginx 172.30.0.10, shop sayti serveri 172.30.0.20 →
+  `TRUSTED_PROXIES=["172.30.0.10","172.30.0.20"]`; sayt `STOREFRONT_TRUSTED_PROXY_HOPS=1`, SSR API'ni ichkaridan
+  (`API_INTERNAL_URL=http://api:8000`) chaqiradi.
+- **nginx yuklash chegaralari:** umumiy 2 MB (ilova JSON chegarasi 1 MB); `POST /api/v1/shop/files` — 11 MB
+  (import 10 MB + multipart zaxirasi; rasm 5 MB, logotip 2 MB — aniq chegara ilovada, `file_service.PURPOSES`),
+  `proxy_request_buffering off`.
+- **WebSocket** `/api/v1/ws`: Upgrade/Connection map orqali, `proxy_read_timeout 1h` (heartbeat 25 s).
+- **Kirish logi** JSON (`cos_json`): `path` = `$uri` (query'siz), uzun token-ko'rinishli bo'laklar `{seg}`,
+  Referer yozilmaydi.
+- **Image'lar VPS'ning o'zida build qilinadi** (`up -d --build`, tag = git SHA). Registry (GHCR) — staging
+  paydo bo'lganda.
+- **Prometheus `/metrics` hali yo'q** — Stage 1 kuzatuvi: `/health/live`, `/health/ready` (tashqi uptime monitor
+  `https://api.<domen>/health/ready` ni tekshiradi) + JSON loglar + Sentry. OTel → Grafana Cloud — 09 bo'yicha keyin.
+
+### 3.2 Loglarni ko'rish
+
+Hamma konteyner stdout'ga JSON yozadi; Docker `json-file` (20 MB × 5 fayl, servis bo'yicha) saqlaydi.
+
+```
+C="docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod"
+$C logs -f --tail=100 api                     # bitta servis
+$C logs -f api task-worker outbox-worker      # bir nechtasi
+$C logs --since=1h api | grep '"level":"error"'
+$C logs --no-log-prefix api | jq -c 'select(.request_id=="<id>")'   # bitta so'rov zanjiri
+$C logs --no-log-prefix nginx | jq -c 'select(.status>=500)'
+$C logs backup                                # backup.started / backup.finished
+```
+
+Har backend qatorida `service`, `env`, `version` (git SHA), `request_id`/`trace_id` bor (09 §4). Sentry —
+faqat `SENTRY_DSN` (backend) / `FRONTEND_SENTRY_DSN` (build vaqtida) berilganda; PII tozalash
+`app/config/observability.py` va `@cos/app-kit/sentry`.
 
 ---
 
@@ -92,7 +152,7 @@ services:
 ```
 Ilova jarayonlari lokalda `uv run` bilan (tez qayta yuklash). Batafsil: [23-dev-setup-and-workflow.md](23-dev-setup-and-workflow.md).
 
-Production `deploy/docker-compose.prod.yml`: yuqoridagilar + `api`, `outbox-worker`, `task-worker`, `scheduler`, `nginx`, `frontend`; har servisda `restart: unless-stopped`, healthcheck, resurs chegaralari; image tag — git SHA (hech qachon `latest`).
+Production `deploy/docker-compose.prod.yml` (§3.1): postgres, redis, backup, migrate (bir martalik), `api`, `outbox-worker`, `task-worker`, `scheduler`, uchta frontend, `nginx`, `certbot`; har servisda `restart: unless-stopped`, healthcheck (api, frontend, nginx, ma'lumotlar), xotira chegarasi; image tag — git SHA (hech qachon `latest`). Loyiha nomi `cos-prod` — lokal `commerce-os` volume'lari bilan aralashmaydi.
 
 ---
 
@@ -120,6 +180,12 @@ Production `deploy/docker-compose.prod.yml`: yuqoridagilar + `api`, `outbox-work
 ## 6. CI/CD
 
 ### 6.1 Har PR'da (GitHub Actions)
+
+**Hozir bor (S0-10):** backend `.github/workflows/ci.yml` — `make check` (testcontainers: GitHub runner'da Docker bor,
+alohida `services: postgres` kerak emas — lokal bilan bir xil yo'l), backend image build, prod compose va nginx
+`nginx -t` tekshiruvi. Frontend `.github/workflows/ci.yml` — `pnpm check`, har app uchun `next build` va Docker image
+build. Quyidagi ro'yxatning 5–9-bandlari — keyin.
+
 1. `ruff check`, `ruff format --check`
 2. `mypy app`
 3. `lint-imports` — qatlam va domen kontraktlari (ADR-031)
@@ -165,6 +231,10 @@ Rollback: oldingi image tag'iga qaytish; migratsiya avtomatik orqaga qaytarilmay
 | MinIO | Versioning + boshqa diskka/joyga replikatsiya | Doimiy / kuniga | 30 kun |
 | Konfiguratsiya | `deploy/` repo'da; secret'lar shifrlangan nusxa | O'zgarishda | — |
 
+- **Pilotda haqiqatda (S0-10):** faqat kunlik to'liq `pg_dump --format=custom` + `pg_dumpall --globals-only`, 14 kun,
+  `sha256` va `pg_restore --list` tekshiruvi (`deploy/backup/pg_backup.sh`, `backup` konteyneri, 03:00 Toshkent).
+  RPO ≤ 24 soat. WAL/PITR, schema bo'yicha dump va shifrlangan offsite — pilot shoplar haqiqiy savdo boshlaganda.
+  Tiklash buyruqlari — `25` RB-08.
 - Backup'lar shifrlangan; boshqa VM yoki boshqa UZ data center'da (DEC-013 — xorijga emas).
 - Maqsad (taxmin, isbotlanmagan): **RPO ≤ 1 soat, RTO ≤ 4 soat**. Haqiqiy raqam — tiklash mashqidan keyin yoziladi.
 
@@ -186,7 +256,8 @@ Redis — haqiqat manbai emas (ADR-006, ADR-033). Yo'qolganda: kesh qayta to'lad
 
 - Faqat nginx tashqarida. DB, Redis, MinIO portlari ochiq emas; MinIO konsoli faqat SSH tunnel orqali.
 - SSH: faqat kalit, parol o'chiq; root login yo'q; fail2ban.
-- TLS: Let's Encrypt, avtomatik yangilanish; HSTS.
+- TLS: Let's Encrypt wildcard (certbot DNS-01, 12 soatda `renew`, nginx 6 soatda reload); HSTS `includeSubDomains`;
+  noma'lum domen/IP bilan kirishda `ssl_reject_handshake`.
 - DB rollari: `app_migrator` (DDL, faqat migratsiya), `app_runtime` (`NOBYPASSRLS`, faqat DML) — ilova faqat `app_runtime` bilan ishlaydi (ADR-035, `10`).
 - Docker: non-root foydalanuvchi, read-only root filesystem (imkon bo'lsa), image skaneri.
 - OS va image yangilanishlari — oyiga bir marta yoki kritik zaiflikda darhol.

@@ -38,7 +38,7 @@ ORDER_STATUSES = (
     "CANCELLED",
     "EXCEPTION",
 )
-ORDER_SOURCES = ("AI", "STOREFRONT", "STAFF")
+ORDER_SOURCES = ("AI", "STOREFRONT", "STAFF", "QUOTE")  # QUOTE — PC taklifidan (6-modul)
 FULFILLMENT_METHODS = ("PICKUP", "DELIVERY")
 PAID_MARK_METHODS = ("CASH", "CARD", "TRANSFER", "OTHER")
 NOTE_KINDS = ("NOTE", "CALL_RESULT")
@@ -67,6 +67,28 @@ class Order(IdMixin, ShopScopedMixin, TimestampMixin, VersionMixin, Base):
             "ix_orders_shop_id_assigned_membership_id_status", "shop_id", "assigned_membership_id", "status"
         ),
         Index("ix_orders_shop_id_customer_phone_hmac", "shop_id", "customer_phone_hmac"),
+        Index(
+            "ix_orders_shop_id_lead_id", "shop_id", "lead_id", postgresql_where=text("lead_id IS NOT NULL")
+        ),
+        # Taklifdan yaratilgan buyurtma (commerce_quotes.dbml, "commerce.dbml ga ta'sir")
+        ForeignKeyConstraint(
+            ["shop_id", "quote_id"],
+            ["commerce.quotes.shop_id", "commerce.quotes.id"],
+            ondelete="RESTRICT",
+            name="fk_orders_quote",
+        ),
+        ForeignKeyConstraint(
+            ["shop_id", "quote_revision_id"],
+            ["commerce.quote_revisions.shop_id", "commerce.quote_revisions.id"],
+            ondelete="RESTRICT",
+            name="fk_orders_quote_revision",
+        ),
+        ForeignKeyConstraint(
+            ["shop_id", "lead_id"],
+            ["commerce.leads.shop_id", "commerce.leads.id"],
+            ondelete="RESTRICT",
+            name="fk_orders_lead",
+        ),
         CheckConstraint("number > 0", name="number_positive"),
         CheckConstraint("total_minor >= 0", name="total_non_negative"),
         CheckConstraint("currency = 'UZS'", name="currency"),
@@ -96,6 +118,7 @@ class Order(IdMixin, ShopScopedMixin, TimestampMixin, VersionMixin, Base):
     customer_ref: Mapped[UUID | None]  # messaging.customer_identities.id — FK'siz
     quote_id: Mapped[UUID | None]  # S3
     quote_revision_id: Mapped[UUID | None]  # S3
+    lead_id: Mapped[UUID | None]  # lead WON avtomatikasi (buyurtma topshirilganda)
     branch_id: Mapped[UUID | None]  # platform.branches.id — FK'siz; bir buyurtma — bir filial (DEC-134)
     assigned_membership_id: Mapped[UUID | None]  # mas'ul operator (DEC-108)
     fulfillment_method: Mapped[str] = mapped_column(Text, server_default="PICKUP")
@@ -167,6 +190,8 @@ class OrderLine(IdMixin, ShopScopedMixin, TimestampMixin, VersionMixin, Base):
     discount_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     line_total_minor: Mapped[int] = mapped_column(BigInteger)
     warranty_months: Mapped[int | None] = mapped_column(Integer)
+    # COMPLETE paytida o'rtacha tannarxdan nusxa — foyda shu bilan muzlaydi (DEC-146); noma'lum — NULL
+    unit_cost_uzs_minor: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class OrderNote(IdMixin, ShopScopedMixin, Base):

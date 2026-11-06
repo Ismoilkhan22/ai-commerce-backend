@@ -16,7 +16,7 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import PlainTextResponse
 
-from app.domains.messaging.channels.instagram import parse_webhook, verify_signature
+from app.domains.messaging.channels.instagram import parse_comment_events, parse_webhook, verify_signature
 from app.domains.messaging.channels.telegram import parse_update
 from app.domains.messaging.common import sha256
 from app.domains.messaging.providers import MessagingServices, messaging_services
@@ -104,4 +104,10 @@ async def instagram_webhook(
             account = await svc.channels.by_external(db, "INSTAGRAM", account_id)
             if account is not None:
                 await svc.inbound.ingest(db, account, inbound)
+    # Izohlar (DEC-148): o'sha manzil, imzo va dedup; har izoh alohida tranzaksiyada
+    for account_id, comment in parse_comment_events(payload) if isinstance(payload, dict) else []:
+        async with database.transaction() as db:
+            account = await svc.channels.by_external(db, "INSTAGRAM", account_id)
+            if account is not None:
+                await svc.ig.ingest.ingest(db, account, comment)
     return {"ok": True}

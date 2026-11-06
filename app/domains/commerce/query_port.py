@@ -14,9 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.commerce.common import load_policy
 from app.domains.commerce.inventory.models.orm import ImportStockResult, StockBalance
-from app.domains.commerce.orders.models.orm import Order
+from app.domains.commerce.inventory.services.stock_service import StockService
+from app.domains.commerce.orders.models.orm import Order, OrderLine
 from app.domains.commerce.orders.schemas import OrderCreate
 from app.domains.commerce.orders.services.order_service import OrderService
+from app.domains.commerce.quick_sales.models.orm import QuickSale, QuickSaleLine
 from app.platform.shops.models.orm import Branch
 from app.shared.contracts.catalog import CatalogQueryPort
 from app.shared.contracts.commerce import (
@@ -28,6 +30,7 @@ from app.shared.contracts.commerce import (
     stock_status,
 )
 from app.shared.contracts.imports import ImportStockOutcome, ImportStockResultCode, StockLevel
+from app.shared.contracts.support import CaseStock, SaleLine
 from app.shared.db.session import set_shop_context
 from app.shared.types.actor import ActorContext
 
@@ -160,6 +163,96 @@ class ConversationOrdersPortImpl:
             OrderRef(id=o.id, number=o.number, status=o.status)
             for o in await self.orders.for_conversation(db, actor, conversation_id)
         ]
+
+
+class SupportCommercePortImpl:
+    """support (7b, DEC-145): sotuv qatori nusxasi va ombor yozuvi — hammasi `StockService` orqali."""
+
+    def __init__(self, stock: StockService) -> None:
+        self.stock = stock
+
+    async def order_line(
+        self, db: AsyncSession, shop_id: UUID, order_id: UUID, line_id: UUID
+    ) -> SaleLine | None:
+        row = (
+            await db.execute(
+                select(Order, OrderLine)
+                .join(OrderLine, (OrderLine.shop_id == Order.shop_id) & (OrderLine.order_id == Order.id))
+                .where(Order.shop_id == shop_id, Order.id == order_id, OrderLine.id == line_id)
+            )
+        ).first()
+        if row is None:
+            return None
+        order, line = row
+        return SaleLine(
+            source="ORDER_LINE",
+            sale_id=order.id,
+            line_id=line.id,
+            branch_id=order.branch_id,
+            sku_id=line.sku_id,
+            product_id=line.product_id,
+            title=line.title_snapshot,
+            sku_code=line.sku_code_snapshot,
+            qty=line.qty,
+            sold_at=order.completed_at,
+            warranty_months=line.warranty_months,
+            unit_price_uzs_minor=line.unit_price_uzs_minor,
+            sale_status=order.status,
+            customer_name=order.customer_name,
+            customer_phone=order.customer_phone_enc,  # EncryptedString o'zi ochadi
+            customer_locale=order.customer_locale,
+            conversation_id=order.conversation_id,
+            customer_ref=order.customer_ref,
+        )
+
+    async def quick_sale_line(
+        self, db: AsyncSession, shop_id: UUID, sale_id: UUID, line_id: UUID
+    ) -> SaleLine | None:
+        row = (
+            await db.execute(
+                select(QuickSale, QuickSaleLine)
+                .join(
+                    QuickSaleLine,
+                    (QuickSaleLine.shop_id == QuickSale.shop_id)
+                    & (QuickSaleLine.quick_sale_id == QuickSale.id),
+                )
+                .where(QuickSale.shop_id == shop_id, QuickSale.id == sale_id, QuickSaleLine.id == line_id)
+            )
+        ).first()
+        if row is None:
+            return None
+        sale, line = row
+        return SaleLine(
+            source="QUICK_SALE_LINE",
+            sale_id=sale.id,
+            line_id=line.id,
+            branch_id=sale.branch_id,
+            sku_id=line.sku_id,
+            product_id=None,
+            title=line.title_snapshot,
+            sku_code=line.sku_code_snapshot,
+            qty=line.qty,
+            sold_at=sale.created_at,
+            warranty_months=line.warranty_months,
+            unit_price_uzs_minor=line.unit_price_uzs_minor,
+        )
+
+    async def quarantine_returned(
+        self, db: AsyncSession, actor: ActorContext, *, case_id: UUID, branch_id: UUID, sku_id: UUID, qty: int
+    ) -> None:
+        await self.stock.return_to_quarantine(
+            db, actor, case_id=case_id, branch_id=branch_id, sku_id=sku_id, qty=qty
+        )
+
+    async def issue_replacement(
+        self, db: AsyncSession, actor: ActorContext, *, case_id: UUID, branch_id: UUID, sku_id: UUID, qty: int
+    ) -> None:
+        await self.stock.issue_replacement(
+            db, actor, case_id=case_id, branch_id=branch_id, sku_id=sku_id, qty=qty
+        )
+
+    async def case_stock(self, db: AsyncSession, shop_id: UUID, case_id: UUID) -> CaseStock:
+        return CaseStock(**await self.stock.case_stock(db, shop_id, case_id))
 
 
 class ImportStockResultsImpl:

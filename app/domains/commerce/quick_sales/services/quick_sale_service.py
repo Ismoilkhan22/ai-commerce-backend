@@ -26,6 +26,7 @@ from app.domains.commerce.common import (
     member_names,
     read_cursor,
 )
+from app.domains.commerce.inventory.services.cost_service import current_unit_costs
 from app.domains.commerce.inventory.services.stock_service import Movement, StockService, shortage
 from app.domains.commerce.quick_sales.models.orm import QuickSale, QuickSaleLine
 from app.domains.commerce.quick_sales.schemas import (
@@ -98,6 +99,7 @@ class QuickSaleService:
         ]
         if short:
             raise InsufficientStockError("Insufficient available stock", lines=short)
+        costs = await current_unit_costs(db, actor.shop_id, quantities)  # foyda muzlaydi (DEC-146)
         lines = []
         for sku_id, qty in quantities.items():
             snap = snapshots[sku_id]
@@ -116,6 +118,7 @@ class QuickSaleService:
                     unit_price_uzs_minor=snap.uzs_amount_minor,
                     line_total_minor=qty * snap.uzs_amount_minor,
                     warranty_months=snap.warranty_months,  # kafolat nusxasi (BL-057)
+                    unit_cost_uzs_minor=costs.get(sku_id),
                 )
             )
         total = sum(sl.line_total_minor for sl in lines)
@@ -163,7 +166,16 @@ class QuickSaleService:
                 "branch_id": data.branch_id,
                 "total_minor": total,
                 "currency": "UZS",
-                "lines": [{"sku_id": line.sku_id, "qty": line.qty} for line in lines],
+                "sold_by": actor.membership_id,
+                "lines": [
+                    {
+                        "sku_id": line.sku_id,
+                        "qty": line.qty,
+                        "line_total_minor": line.line_total_minor,
+                        "unit_cost_uzs_minor": line.unit_cost_uzs_minor,
+                    }
+                    for line in lines
+                ],
             },
         )
         return (await self._out(db, actor, [sale]))[0]
@@ -245,6 +257,7 @@ class QuickSaleService:
                 created_at=sale.created_at,
                 lines=[
                     QuickSaleLineOut(
+                        id=line.id,
                         sku_id=line.sku_id,
                         title=line.title_snapshot,
                         sku_code=line.sku_code_snapshot,

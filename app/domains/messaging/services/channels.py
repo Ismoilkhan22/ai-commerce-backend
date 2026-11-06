@@ -195,6 +195,7 @@ class ChannelService:
             external_account_id=ig.id,
             display_name=f"@{ig.username}" if ig.username else None,
             token_enc=access_token,
+            scopes=list(ig.scopes) or None,
             settings={},
             version=1,
         )

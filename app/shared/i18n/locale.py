@@ -12,12 +12,26 @@ FALLBACK_LOCALE: Locale = "uz"
 _current_locale: ContextVar[Locale] = ContextVar("locale", default=FALLBACK_LOCALE)
 
 
+# Interfeys tili — `Accept-Language` bo'lsa (panel til tanlagichi har so'rovga qo'yadi). Profil tili (11 §8.2)
+# xabarlar/bot matnlariga ustun; sahifada ko'rsatiladigan ma'lumot matni (moslik izohi) — interfeys tilida
+# (QA 6a F3). Header bo'lmasa — `get_locale()`.
+_display_locale: ContextVar[Locale | None] = ContextVar("display_locale", default=None)
+
+
 def get_locale() -> Locale:
     return _current_locale.get()
 
 
 def set_locale(locale: Locale) -> None:
     _current_locale.set(locale)
+
+
+def get_display_locale() -> Locale:
+    return _display_locale.get() or _current_locale.get()
+
+
+def set_display_locale(locale: Locale | None) -> None:
+    _display_locale.set(locale)
 
 
 def negotiate_locale(accept_language: str | None, default: Locale = FALLBACK_LOCALE) -> Locale:

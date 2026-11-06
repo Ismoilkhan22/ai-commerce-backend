@@ -82,6 +82,13 @@ class QuoteExpiredError(ConflictError):
     abstract = False
 
 
+class QuoteChangedError(ConflictError):
+    """Qabulda narx yoki moslik o'zgargan: xodim yangi versiya yuboradi, xaridor qayta rozilik beradi."""
+
+    code = "QUOTE_CHANGED"
+    abstract = False
+
+
 class ApprovalRequiredError(ConflictError):
     code = "APPROVAL_REQUIRED"
     abstract = False
@@ -188,6 +195,12 @@ class BusinessRuleError(DomainError):
 
 class DiscountLimitExceededError(BusinessRuleError):
     code = "DISCOUNT_LIMIT_EXCEEDED"
+
+
+class WarrantyExpiredError(BusinessRuleError):
+    """Kafolat muddati tugagan sotuvga murojaat ochilmaydi; menejer/ega sabab bilan ochadi (DEC-145)."""
+
+    code = "WARRANTY_EXPIRED"
 
 
 class ImportFileInvalidError(BusinessRuleError):

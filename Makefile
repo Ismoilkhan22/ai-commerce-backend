@@ -2,7 +2,7 @@
 SCHEMAS := platform audit catalog commerce messaging sales_ai storefront support reporting
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: install up down bootstrap run worker outbox-worker task-worker scheduler lint format typecheck imports test check migrate seed
+.PHONY: install up down bootstrap run worker outbox-worker task-worker scheduler lint format typecheck imports test check migrate seed reporting-backfill
 
 install:
 	uv sync
@@ -63,3 +63,7 @@ migrate:
 # Lokal demo ma'lumotlari: platforma jamoasi va turli holatdagi 8 ta shop (qayta ishga tushirish xavfsiz)
 seed:
 	uv run python -m app.db.seed.dev_seed
+
+# Hisobot proyeksiyalarini mavjud ma'lumotdan qayta qurish (7c, bir martalik; worker to'xtatilgan bo'lsin)
+reporting-backfill:
+	uv run python -m app.workers.reporting_backfill

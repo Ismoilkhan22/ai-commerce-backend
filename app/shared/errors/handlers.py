@@ -116,11 +116,15 @@ def validation_fields(errors: list[Any]) -> list[dict[str, Any]]:
     return fields
 
 
-async def _domain_error_handler(_: Request, exc: Exception) -> JSONResponse:
+async def _domain_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, DomainError)
     status = status_for(exc.code)
     log = logger.error if status >= 500 else logger.warning
     log("domain_error", code=exc.code, status=status)
+    if status == 403:  # rad etilgan urinish audit'ga (TC-029); yozuvchi `app.main` da ulanadi
+        recorder = getattr(request.app.state, "denied_recorder", None)
+        if recorder is not None:
+            await recorder(request, exc)
     headers = None
     retry_after = exc.details.get("retry_after_seconds")
     if status == 429 and isinstance(retry_after, int):

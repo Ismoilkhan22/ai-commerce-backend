@@ -51,6 +51,53 @@ def format_total(total_minor: Any, locale: str) -> str:
     return f"{som:,}".replace(",", " ") + f" {_CURRENCY.get(locale, _CURRENCY['uz'])}"
 
 
+# 7b (DEC-145): kafolat murojaati — event → shablon. "approved"/"rejected" `status_changed` ning holatidan
+SUPPORT_TEMPLATES: dict[str, str] = {
+    "support.case.opened": "customer.support_case_opened",
+    "APPROVED": "customer.support_case_approved",
+    "REJECTED": "customer.support_case_rejected",
+    "support.case.ready_notice": "customer.support_case_ready",
+}
+_ITEM = {"uz": " Mahsulot: {title}.", "ru": " Товар: {title}.", "en": " Item: {title}."}
+_RESOLUTION = {
+    "REPAIR": {"uz": "ta'mirlaymiz", "ru": "отремонтируем", "en": "we will repair it"},
+    "REPLACE": {"uz": "almashtiramiz", "ru": "заменим", "en": "we will replace it"},
+    "REFUND": {
+        "uz": "qaytarishni rasmiylashtiramiz",
+        "ru": "оформим возврат",
+        "en": "we will process the return",
+    },
+}
+# Sabab matni — rad sababi kodidan, xaridor tilida; erkin izoh xaridorga ketmaydi
+_REJECT_REASON = {
+    "WARRANTY_EXPIRED": {
+        "uz": "Kafolat muddati tugagan. ",
+        "ru": "Гарантийный срок истёк. ",
+        "en": "The warranty period has expired. ",
+    },
+    "NO_DEFECT_FOUND": {
+        "uz": "Tekshiruvda nuqson topilmadi. ",
+        "ru": "При проверке дефект не найден. ",
+        "en": "No defect was found during the check. ",
+    },
+    "USER_DAMAGE": {
+        "uz": "Shikast kafolat shartiga kirmaydi. ",
+        "ru": "Повреждение не покрывается гарантией. ",
+        "en": "The damage is not covered by the warranty. ",
+    },
+    "NOT_OUR_SALE": {
+        "uz": "Bu mahsulot bizdan sotilgani tasdiqlanmadi. ",
+        "ru": "Не подтверждено, что товар продан нами. ",
+        "en": "We could not confirm this item was sold by us. ",
+    },
+    "RETURN_NOT_ALLOWED": {
+        "uz": "Qaytarish shartlariga mos kelmadi. ",
+        "ru": "Не соответствует условиям возврата. ",
+        "en": "It does not meet the return conditions. ",
+    },
+}
+
+
 class CustomerNotifier:
     def __init__(self, writer: MessageWriter, templates: CustomerTemplateService) -> None:
         self.writer = writer
@@ -85,6 +132,56 @@ class CustomerNotifier:
             author_type="SYSTEM",
             body=text,
             intent_key=f"order:{payload.get('order_id')}:{status}",
+            require_reachable=False,
+        )
+        return "sent"
+
+    async def on_support_event(self, db: AsyncSession, envelope: EventEnvelope) -> str:
+        """Kafolat murojaati holati xaridorga — murojaat suhbatga bog'langan bo'lsa (4 ta xabar: ochildi,
+        qabul qilindi, rad etildi, tayyor). Bir holatga bitta xabar: `intent_key = support:{id}:{holat}`."""
+        payload = envelope.payload
+        key = (
+            envelope.event_type
+            if envelope.event_type != "support.case.status_changed"
+            else payload.get("status")
+        )
+        template_key = SUPPORT_TEMPLATES.get(str(key))
+        raw_conversation = payload.get("conversation_id")
+        if template_key is None or not raw_conversation or envelope.shop_id is None:
+            return "skipped:no_conversation"
+        conversation = await db.get(Conversation, UUID(str(raw_conversation)), with_for_update=True)
+        if conversation is None or conversation.shop_id != envelope.shop_id:
+            return "skipped:no_conversation"
+        reach = await reachability(db, conversation)
+        if not reach.ok:
+            logger.info("messaging.support_notice_suppressed", reason=reach.reason)
+            return f"skipped:{reach.reason}"
+        locale = str(payload.get("customer_locale") or conversation.locale or "uz")
+        lang = locale if locale in _ITEM else "uz"
+        body, _ = await self.templates.resolve(db, conversation.shop_id, template_key, locale)
+        shop = await db.get(Shop, envelope.shop_id)
+        branch = await db.get(Branch, UUID(str(payload["branch_id"]))) if payload.get("branch_id") else None
+        phone = (branch.phone if branch is not None else None) or ""
+        title = payload.get("item_title")
+        variables: dict[str, Any] = {
+            "case_number": payload.get("number"),
+            "item_line": _ITEM[lang].format(title=title) if title else "",
+            "resolution_line": _RESOLUTION.get(str(payload.get("resolution")), {}).get(lang, ""),
+            "reason_line": _REJECT_REASON.get(str(payload.get("reject_reason")), {}).get(lang, ""),
+            "shop_address": branch.address if branch is not None else "",
+            "shop_phone": phone,
+            "phone_line": _PHONE[lang].format(phone=phone) if phone else "",
+            "shop_name": shop.name if shop is not None else "",
+        }
+        text = safe_render(template_key, body, variables, locale)
+        await self.writer.append_outbound(
+            db,
+            ActorContext.system(conversation.shop_id),
+            conversation,
+            origin="NOTIFICATION",
+            author_type="SYSTEM",
+            body=text,
+            intent_key=f"support:{payload.get('case_id')}:{template_key.rsplit('_', 1)[-1]}",
             require_reachable=False,
         )
         return "sent"

@@ -72,6 +72,68 @@ CUSTOMER_TEMPLATES: dict[str, CustomerTemplate] = {
             "en": "Order #{order_number} has been cancelled. If you have questions, write to the operator.",
         },
     ),
+    # 7b (DEC-145): kafolat murojaati — faqat suhbat bo'lsa, bir holatga bitta xabar (BL-060)
+    "customer.support_case_opened": _template(
+        {"case_number"},
+        {"item_line", "shop_name"},
+        {
+            "uz": "Murojaatingiz K-{case_number} qabul qilindi.{item_line} Natija haqida shu yerga yozamiz.",
+            "ru": "Ваше обращение K-{case_number} принято.{item_line} О результате напишем сюда.",
+            "en": "Your request K-{case_number} has been received.{item_line} We will write the result here.",
+        },
+    ),
+    "customer.support_case_approved": _template(
+        {"case_number"},
+        {"resolution_line", "shop_name"},
+        {
+            "uz": "K-{case_number}: murojaatingiz qabul qilindi — {resolution_line}.",
+            "ru": "K-{case_number}: ваше обращение одобрено — {resolution_line}.",
+            "en": "K-{case_number}: your request was approved — {resolution_line}.",
+        },
+    ),
+    "customer.support_case_rejected": _template(
+        {"case_number"},
+        {"reason_line", "shop_name"},
+        {
+            "uz": "K-{case_number}: afsuski, kafolat bo'yicha qabul qilib bo'lmadi. {reason_line}"
+            "Savollar bo'lsa, shu yerga yozing.",
+            "ru": "K-{case_number}: к сожалению, по гарантии принять не удалось. {reason_line}"
+            "Если есть вопросы, пишите сюда.",
+            "en": "K-{case_number}: unfortunately we could not accept this under warranty. {reason_line}"
+            "If you have questions, write here.",
+        },
+    ),
+    "customer.support_case_ready": _template(
+        {"case_number"},
+        {"shop_address", "shop_phone", "phone_line", "shop_name"},
+        {
+            "uz": "K-{case_number}: mahsulotingiz tayyor. Manzil: {shop_address}. {phone_line}",
+            "ru": "K-{case_number}: ваш товар готов. Адрес: {shop_address}. {phone_line}",
+            "en": "K-{case_number}: your item is ready. Address: {shop_address}. {phone_line}",
+        },
+    ),
+    # Instagram izohi → Direct'ga avtomatik javob (DEC-148). Narx faqat shop bog'lagan katalog mahsulotidan
+    "customer.ig_comment_price_reply": _template(
+        {"product_title", "price"},
+        {"stock_line", "product_url", "shop_name"},
+        {
+            "uz": "Salom! {product_title} — {price}, {stock_line}.\nBatafsil: {product_url}\n"
+            "Savolingiz bo'lsa, shu yerga yozing.",
+            "ru": "Здравствуйте! {product_title} — {price}, {stock_line}.\nПодробнее: {product_url}\n"
+            "Если есть вопросы, пишите сюда.",
+            "en": "Hi! {product_title} — {price}, {stock_line}.\nDetails: {product_url}\n"
+            "If you have any questions, write here.",
+        },
+    ),
+    "customer.ig_comment_generic_reply": _template(
+        set(),
+        {"shop_name"},
+        {
+            "uz": "Salom! Narx va mavjudlik bo'yicha shu yerga yozing, javob beramiz.",
+            "ru": "Здравствуйте! По цене и наличию пишите сюда, мы ответим.",
+            "en": "Hi! Write here about price and availability, and we will reply.",
+        },
+    ),
     "customer.handoff_after_hours": _template(
         set(),
         {"hours", "shop_name"},

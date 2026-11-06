@@ -1,0 +1,250 @@
+// =====================================================================
+// AI Commerce OS — `support` schemasi: kafolat va qaytarish murojaatlari (7-modul, S5-02)
+// Holat: TAKLIF 2026-10-27 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar: support.md oxirida ("Founder ko'rib chiqishi uchun qarorlar").
+// Tasdiqlangan commerce.dbml (DEC-134) O'ZGARTIRILMAYDI — kerakli kichik qo'shimchalar pastda, "commerce.dbml ga ta'sir".
+// Ko'rish: https://dbdiagram.io → shu faylni to'liq nusxalab qo'ying
+// Izohlar: db/support.md
+// Manba hujjatlar: business/02 M16, M17; business/03 BL-057…BL-059, BR-X11; business/05 FSM-11;
+//                  engineering/05 §8.5, §8.9; 07 §4.8; 19 §7.5; 20 §6; 26; 27 S5-02;
+//                  DEC-100, DEC-114, DEC-126, DEC-130, DEC-134
+// =====================================================================
+
+Project ai_commerce_os_support {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Umumiy qoidalar** — commerce.dbml bilan bir xil: UUIDv7, timestamptz, `shop_id NOT NULL`, (shop_id, id) composite FK,
+  holatlar TEXT + CHECK, RLS ENABLE + FORCE, biznes yozuvlari o'chirilmaydi, tahrirlanadigan jadvalda `version`.
+
+  **Boshqa schemalar** (faqat uuid, FK'siz): commerce.orders/order_lines/quick_sales/quick_sale_lines, catalog.skus/products,
+  platform.branches/memberships/stored_files, messaging.conversations/customer_identities.
+  Buyurtma va kafolat nusxasi CommerceQueryPort.get_order_for_support() / get_quick_sale_for_support() orqali o'qiladi.
+
+  **Ombor** — faqat commerce yozadi (DEC-126): support o'z tranzaksiyasida commerce port'ini (`SupportCommercePort`)
+  chaqiradi, commerce `StockService` orqali daftarga RETURN_QUARANTINE / WARRANTY_REPLACEMENT yozadi
+  (ref_type SUPPORT_CASE) — holat va daftar bitta COMMIT'da (7b quruvida event emas, port tanlandi). RESTOCK / WRITE_OFF —
+  commerce.stock_adjustments (support_case_id bilan).
+
+  **Xaridor ma'lumoti:** ism va telefon — faqat cases'dagi alohida ustunlarda, telefon shifrlangan (EncryptedString) + HMAC.
+  Log, outbox, audit diff'ga tushmaydi. Anonimlashtirishda tozalanadi, murojaat va raqamlar qoladi (engineering/26).
+
+  **Standart texnik jadvallar:** support.outbox_events, support.consumer_receipts (jobs.dbml).
+  Holat o'tishlari tarixi — platform.transition_log (aggregate_type = support.case).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum)
+// ---------------------------------------------------------------------
+
+Enum support.case_type {
+  WARRANTY [note: '"Mahsulot ishlamayapti" — kafolat bo\'yicha']
+  RETURN [note: '"Qaytarmoqchiman" — nuqsonsiz qaytarish so\'rovi (ruxsatni odam beradi, BL-058)']
+}
+
+Enum support.case_status {
+  NEW [note: 'Qabul qilindi (murojaat ochildi; mahsulot hali kelmagan bo\'lishi mumkin)']
+  IN_REVIEW [note: 'Diagnostika: mahsulot tekshirilmoqda, ma\'lumot yig\'ilmoqda']
+  APPROVED [note: 'Menejer/ega qabul qildi — qaror turi (resolution) tanlangan']
+  REJECTED [note: 'Menejer/ega rad etdi — sabab majburiy. Yakuniy']
+  IN_SERVICE [note: 'Xizmatda: ta\'mirlanmoqda / almashtirilmoqda / qaytarish rasmiylashtirilmoqda']
+  RESOLVED [note: 'Hal qilindi: mahsulot xaridorga qaytarildi yoki pul tizimdan tashqarida qaytarildi']
+  CLOSED [note: 'Yopildi: xaridor tasdiqladi yoki 7 kun o\'tdi. Yakuniy']
+}
+
+Enum support.case_source {
+  ORDER_LINE [note: 'Tizimdagi buyurtma qatori (COMPLETED buyurtma)']
+  QUICK_SALE_LINE [note: 'Do\'kondagi tez sotuv qatori (DEC-123)']
+  EXTERNAL [note: 'Tizimdan oldingi yoki tashqi sotuv — chek/kafolat taloni bo\'yicha, har doim menejer qarori']
+}
+
+Enum support.case_resolution {
+  REPAIR [note: 'Ta\'mirlash — xaridor mahsuloti, omborga kirmaydi']
+  REPLACE [note: 'Almashtirish — eski dona karantinga, yangi dona ombordan chiqadi']
+  REFUND [note: 'Qaytarish — dona karantinga, pul shop tomonidan tizimdan tashqarida (DEC-100)']
+}
+
+Enum support.case_outcome {
+  REPAIRED [note: 'Ta\'mirlandi va xaridorga berildi']
+  REPLACED [note: 'Yangi dona berildi']
+  RETURNED [note: 'Mahsulot qaytarib olindi, pul tizimdan tashqarida qaytarildi (05 §8.5 nomi)']
+}
+
+Enum support.reject_reason {
+  WARRANTY_EXPIRED [note: 'Kafolat muddati tugagan']
+  NO_DEFECT_FOUND [note: 'Diagnostikada nuqson topilmadi']
+  USER_DAMAGE [note: 'Mexanik shikast, suv, ruxsatsiz ochish — kafolat shartidan tashqari']
+  NOT_OUR_SALE [note: 'Bu shopdan sotilgan emas / seriya raqami mos emas']
+  RETURN_NOT_ALLOWED [note: 'Qaytarish shartlariga mos emas (BL-058)']
+  OTHER
+}
+
+Enum support.note_kind {
+  NOTE [note: 'Ichki izoh']
+  DIAGNOSIS [note: 'Diagnostika natijasi']
+  CUSTOMER_CONTACT [note: 'Xaridor bilan gaplashildi (qo\'ng\'iroq, do\'konda) — qisqa yozuv']
+}
+
+Enum support.created_via {
+  STAFF_PANEL [note: 'Xodim "Kafolat murojaati" sahifasidan']
+  CONVERSATION [note: 'Suhbatdan (inbox) — conversation_id to\'ldiriladi. AI murojaat ochmaydi, faqat operatorga uzatadi (WARRANTY)']
+  ORDER_PAGE [note: 'Buyurtma kartochkasidan']
+}
+
+// ---------------------------------------------------------------------
+// Murojaatlar (FSM-11)
+// ---------------------------------------------------------------------
+
+Table support.case_counters {
+  shop_id uuid [pk]
+  last_number int [not null, default: 0]
+  Note: 'Murojaat raqami hisoblagichi (commerce.order_counters kabi). RLS yo\'q — ichida faqat shop ID va oxirgi raqam.'
+}
+
+Table support.cases {
+  id uuid [pk]
+  shop_id uuid [not null]
+  number int [not null, note: 'Shop ichida ketma-ket, ekranda "K-12" (case_counters)']
+  type support.case_type [not null, default: 'WARRANTY']
+  status support.case_status [not null, default: 'NEW', note: 'FSM-11']
+  created_via support.created_via [not null]
+
+  source support.case_source [not null]
+  order_id uuid [note: 'commerce.orders.id — ORDER_LINE da majburiy']
+  order_line_id uuid [note: 'commerce.order_lines.id — ORDER_LINE da majburiy']
+  quick_sale_id uuid [note: 'commerce.quick_sales.id — QUICK_SALE_LINE da majburiy']
+  quick_sale_line_id uuid [note: 'commerce.quick_sale_lines.id — QUICK_SALE_LINE da majburiy']
+  external_sale_ref text [note: 'EXTERNAL: chek / kafolat taloni raqami, majburiy']
+
+  branch_id uuid [not null, note: 'platform.branches.id — murojaat qaysi filialda yuritiladi, karantin shu filialga']
+  sku_id uuid [note: 'catalog.skus.id. EXTERNAL da katalogda topilmasa NULL (unda karantin yozilmaydi)']
+  product_id uuid [note: 'catalog.products.id']
+  title_snapshot text [not null, note: 'Sotuv qatoridagi nom yoki EXTERNAL da xodim yozgani']
+  sku_code_snapshot text
+  qty int [not null, default: 1, note: 'CHECK > 0. Qatordagi sondan oshmaydi (ochiq murojaatlar yig\'indisi bilan, service)']
+  serial_number text [note: 'Ixtiyoriy: mahsulot seriya raqami — boshqa dona emasligini tekshirish uchun. PII emas']
+
+  sold_at timestamptz [not null, note: 'Buyurtma completed_at / tez sotuv created_at / EXTERNAL da xodim kiritgani']
+  warranty_months int [note: 'Sotuv qatoridagi nusxa (BL-057, DEC-114). Katalog keyin o\'zgarsa ham shu qoladi']
+  warranty_until date [note: 'sold_at + warranty_months, shop vaqt zonasida. warranty_months NULL bo\'lsa NULL']
+  within_warranty boolean [not null, note: 'Ochilgan paytda hisoblanadi. false → ekranda ogohlantirish, qaror faqat menejer/ega']
+  warranty_override_reason text [note: '7b: kafolat muddati tugagan sotuvga menejer/ega ochdi — sabab (WARRANTY_EXPIRED 422 dan o\'tish)']
+  warranty_override_by uuid [note: 'platform.memberships.id — ruxsat bergan menejer/ega']
+
+  problem_description text [not null, note: 'Muammo: "kompyuter 10 daqiqada o\'chib qolyapti". Xodim yozadi; telefon/manzil yozilmaydi (forma ogohlantiradi)']
+
+  customer_name text [note: 'PII. Buyurtmadan nusxa yoki xodim yozgani']
+  contact_phone_enc text [note: 'PII. EncryptedString — buyurtmadagi kabi (engineering/26 §4)']
+  contact_phone_hmac text [note: 'Telefon bo\'yicha qidirish (shop ichida)']
+  customer_identity_id uuid [note: 'messaging.customer_identities.id']
+  conversation_id uuid [note: 'messaging.conversations.id — xaridorga xabarlar shu suhbat orqali. NULL bo\'lsa xabar yuborilmaydi']
+  customer_locale text [not null, default: 'uz', note: 'uz | ru | en']
+  pii_erased_at timestamptz
+
+  item_received_at timestamptz [note: 'Mahsulot do\'konga jismonan topshirilgan vaqt ("qabul qilindi" bosqichi)']
+  item_received_by uuid [note: 'platform.memberships.id']
+  diagnosed_at timestamptz [note: 'Diagnostika xulosasi yozilgan vaqt (case_notes DIAGNOSIS)']
+  diagnosed_by uuid
+
+  resolution support.case_resolution [note: 'APPROVED da majburiy. IN_SERVICE da menejer sabab bilan o\'zgartira oladi (REPAIR → REPLACE)']
+  replacement_sku_id uuid [note: 'REPLACE: beriladigan SKU. Standart — sku_id; boshqa model bo\'lsa menejer tanlaydi']
+  decided_by uuid [note: 'APPROVED/REJECTED — faqat menejer yoki ega (DEC-130)']
+  decided_at timestamptz
+  decision_note text [note: 'Kafolatdan tashqarida qabul qilinsa majburiy: "mijoz doimiy, istisno"']
+  reject_reason support.reject_reason [note: 'REJECTED da majburiy']
+
+  service_started_at timestamptz
+  outcome support.case_outcome [note: 'RESOLVED da majburiy; resolution bilan mos (CHECK)']
+  refund_amount_minor bigint [note: 'REFUND: xaridorga qaytarilgan summa (UZS), faqat ma\'lumot uchun — pul tizimdan tashqarida (DEC-100)']
+  resolved_at timestamptz
+  resolved_by uuid
+  closed_at timestamptz
+  closed_by uuid [note: 'NULL — 7 kundan keyin tizim yopdi']
+
+  opened_by uuid [not null, note: 'platform.memberships.id — operator, menejer yoki ega (DEC-130)']
+  assigned_membership_id uuid [note: 'Mas\'ul xodim']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, number) [unique]
+    (shop_id, status, created_at) [note: 'Murojaatlar ro\'yxati']
+    (shop_id, order_line_id) [note: 'Shu qatorga ochilgan murojaatlar (dublikat ogohlantirishi)']
+    (shop_id, quick_sale_line_id)
+    (shop_id, contact_phone_hmac) [note: 'Telefon bo\'yicha qidirish']
+    (shop_id, branch_id, status)
+    (shop_id, assigned_membership_id, status)
+    (shop_id, resolved_at) [note: 'Partial: WHERE status = RESOLVED — 7 kunlik avtomatik yopish ishi']
+  }
+  Note: '''
+  Kafolat yoki qaytarish murojaati (FSM-11). Buyurtma qatori, tez sotuv qatori yoki tashqi sotuvdan ochiladi.
+  CHECK: source = ORDER_LINE → order_id, order_line_id NOT NULL; QUICK_SALE_LINE → quick_sale_id, quick_sale_line_id NOT NULL;
+         EXTERNAL → ikkalasi NULL, external_sale_ref NOT NULL;
+         status = REJECTED → reject_reason, decided_by NOT NULL; status IN (APPROVED, IN_SERVICE, RESOLVED) → resolution NOT NULL;
+         status IN (RESOLVED, CLOSED) va resolution bor → outcome NOT NULL va mos (REPAIR↔REPAIRED, REPLACE↔REPLACED, REFUND↔RETURNED);
+         → IN_SERVICE faqat item_received_at NOT NULL bo'lsa; qty > 0; refund_amount_minor >= 0.
+  Qaror (APPROVED/REJECTED) — faqat menejer/ega (DEC-130). within_warranty = false yoki EXTERNAL → decision_note majburiy.
+  Ombor: IN_SERVICE ga o'tishda resolution IN (REPLACE, REFUND) va sku_id bor → port → commerce RETURN_QUARANTINE (+qty).
+         RESOLVED (REPLACED) → port → commerce WARRANTY_REPLACEMENT (replacement_sku_id, −qty). REPAIR — omborga ta'sir yo'q.
+  RLS (FORCE).
+  '''
+}
+
+Table support.case_notes {
+  id uuid [pk]
+  shop_id uuid [not null]
+  case_id uuid [not null]
+  kind support.note_kind [not null, default: 'NOTE']
+  body text [not null, note: 'CHECK 1…2000 belgi. Ichki — xaridorga ko\'rinmaydi']
+  author_membership_id uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, case_id, created_at)
+  }
+  Note: 'Ichki izohlar va diagnostika yozuvlari. Faqat qo\'shiladi (commerce.order_notes kabi). RLS (FORCE).'
+}
+
+Table support.case_attachments {
+  id uuid [pk]
+  shop_id uuid [not null]
+  case_id uuid [not null]
+  file_id uuid [not null, note: 'platform.stored_files.id — purpose SUPPORT_EVIDENCE (yangi qiymat), private. Shu shopniki — service tekshiradi']
+  caption text [note: 'Ixtiyoriy: "korpusdagi yoriq"']
+  source_message_id uuid [note: 'messaging.messages.id — xaridor chatda yuborgan rasm biriktirilsa (nusxa emas, fayl havolasi)']
+  added_by uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, case_id)
+    (shop_id, case_id, file_id) [unique]
+  }
+  Note: 'Murojaat rasmlari va hujjatlari (M16, 1-band). Ko\'pi bilan 10 ta. RLS (FORCE).'
+}
+
+// ---------------------------------------------------------------------
+// commerce.dbml ga ta'sir (tasdiqlangan faylga migratsiyada qo'shiladi; support.md §5)
+// ---------------------------------------------------------------------
+// 1. Enum commerce.ledger_reason ga WARRANTY_REPLACEMENT: qoldiq −qty, ref_type SUPPORT_CASE (ref_type allaqachon bor).
+// 2. commerce.stock_adjustments ga ixtiyoriy support_case_id uuid (FK'siz) — karantindagi donani RESTOCK / WRITE_OFF
+//    qilganda qaysi murojaatdan kelgani; indeks (shop_id, support_case_id).
+// 3. shared/contracts/support.py: SupportCommercePort (order_line, quick_sale_line, quarantine_returned, issue_replacement, case_stock).
+// 4. platform.file_purpose ga SUPPORT_EVIDENCE.
+
+// ---------------------------------------------------------------------
+// Bog'lanishlar
+// ---------------------------------------------------------------------
+
+Ref: support.case_notes.(shop_id, case_id) > support.cases.(shop_id, id) [delete: restrict]
+Ref: support.case_attachments.(shop_id, case_id) > support.cases.(shop_id, id) [delete: restrict]
+
+TableGroup kafolat {
+  support.cases
+  support.case_notes
+  support.case_attachments
+  support.case_counters
+}

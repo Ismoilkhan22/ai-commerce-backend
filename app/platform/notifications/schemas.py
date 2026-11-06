@@ -20,7 +20,16 @@ Priority = Literal["HIGH", "NORMAL", "LOW"]
 TaskStatus = Literal["OPEN", "DONE", "RESOLVED", "CANCELLED"]
 # Ekranda qayerga o'tish: frontend `route` + `id` dan shop paneli manzilini quradi
 LinkRoute = Literal[
-    "order", "adjustment", "stock", "exchange_rates", "notification_settings", "conversation", "channels"
+    "order",
+    "adjustment",
+    "stock",
+    "exchange_rates",
+    "notification_settings",
+    "conversation",
+    "channels",
+    "lead",
+    "quote",
+    "support_case",  # 7b: kafolat murojaati
 ]
 
 

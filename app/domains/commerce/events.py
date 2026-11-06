@@ -143,6 +143,7 @@ async def stock_changed(
                 "reserved": balance.reserved,
                 "allocated": balance.allocated,
                 "available": balance.on_hand - balance.reserved - balance.allocated,
+                "quarantine_qty": balance.quarantine_qty,  # hisobot (7c): tekshiruvdagi donalar
                 "stock_version": balance.version,
                 "reason": entry.reason,
             },

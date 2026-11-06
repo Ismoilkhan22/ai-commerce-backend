@@ -12,7 +12,8 @@ Leader ulanishi uzilsa PostgreSQL qulfni o'zi bo'shatadi — boshqa nusxa 10 s i
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -36,6 +37,16 @@ TIMEZONE = ZoneInfo("Asia/Tashkent")
 LEADER_LOCK = "scheduler_leader"
 LEADER_RETRY_S = 10
 KEEPALIVE_S = 30
+# Bir vaqtda bajariluvchi ishlar soni: har ish qulf uchun 1 ta ulanishni butun davomida ushlaydi va
+# yozuv uchun yana 1 tasini so'raydi — cheklovsiz bo'lsa startda pool to'lib, hamma kutib qoladi
+MAX_CONCURRENT_JOBS = 4
+STARTUP_JITTER_S = 15.0
+
+
+def first_run_offset(job: ScheduledJob, rng: random.Random | None = None) -> float:
+    """Oraliqli ishning birinchi ishga tushishi: 0..STARTUP_JITTER_S (oraliqdan oshmaydi) soniya kechikish."""
+    assert job.every_seconds is not None
+    return (rng or random).uniform(0.0, min(STARTUP_JITTER_S, float(job.every_seconds)))
 
 
 async def _try_lock(conn: AsyncConnection, name: str) -> bool:
@@ -56,9 +67,18 @@ async def _record(rt: WorkerRuntime, values: dict[str, Any], run_id: Any = None)
     return run_id
 
 
-async def run_job(rt: WorkerRuntime, job: ScheduledJob) -> JobResult | None:
+async def run_job(
+    rt: WorkerRuntime, job: ScheduledJob, gate: asyncio.Semaphore | None = None
+) -> JobResult | None:
     """Ishni bir marta bajaradi va `platform.job_runs` ga yozadi. Boshqa nusxa ishlatayotgan bo'lsa —
-    SKIPPED."""
+    SKIPPED. `gate` — bir vaqtdagi ishlar sonini cheklaydi (ulanish pool'i to'lib qolmasin)."""
+    if gate is None:
+        return await _run_job(rt, job)
+    async with gate:
+        return await _run_job(rt, job)
+
+
+async def _run_job(rt: WorkerRuntime, job: ScheduledJob) -> JobResult | None:
     lock = f"job:{job.name}"
     started = utcnow()
     async with rt.database.write_engine.connect() as raw:
@@ -103,18 +123,24 @@ def _trigger(job: ScheduledJob) -> IntervalTrigger | CronTrigger:
 
 def build_scheduler(rt: WorkerRuntime) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
+    gate = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
     for job in rt.jobs:
         scheduler.add_job(
             run_job,
             _trigger(job),
-            args=[rt, job],
+            args=[rt, job, gate],
             id=job.name,
             max_instances=1,
             coalesce=True,
             misfire_grace_time=300,
             # Oraliqli ishlar ishga tushishi bilan bir marta (holat bo'yicha — o'tkazib yuborilganlar
             # yetib olinadi)
-            next_run_time=datetime.now(TIMEZONE) if job.every_seconds is not None else None,
+            # va hammasi bir soniyada emas — tasodifiy kechikish bilan (startda ulanishlar to'planmasin)
+            next_run_time=(
+                datetime.now(TIMEZONE) + timedelta(seconds=first_run_offset(job))
+                if job.every_seconds is not None
+                else None
+            ),
         )
     return scheduler
 

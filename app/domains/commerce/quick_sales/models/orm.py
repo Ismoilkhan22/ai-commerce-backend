@@ -73,3 +73,4 @@ class QuickSaleLine(IdMixin, ShopScopedMixin, Base):
     unit_price_uzs_minor: Mapped[int] = mapped_column(BigInteger)
     line_total_minor: Mapped[int] = mapped_column(BigInteger)
     warranty_months: Mapped[int | None] = mapped_column(Integer)
+    unit_cost_uzs_minor: Mapped[int | None] = mapped_column(BigInteger)  # sotuv paytidagi tannarx nusxasi

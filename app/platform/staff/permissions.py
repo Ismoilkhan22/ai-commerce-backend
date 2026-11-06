@@ -29,6 +29,8 @@ PLATFORM_ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = {
             "platform.category.edit",
             "platform.dead_letter.view",  # fon ishlari: bajarilmagan ishlar va ish jurnali (05 §7)
             "platform.dead_letter.replay",
+            "platform.ai_eval.view",  # 6c: AI baholash, bake-off, shoplar "AI sifati"
+            "platform.ai_eval.manage",  # to'plamlar va yugurishlar (LLM xarajati bor)
         }
     ),
     # Platforma jamoasi bo'limi faqat adminga (business/15 §5) — support jamoani ko'rmaydi

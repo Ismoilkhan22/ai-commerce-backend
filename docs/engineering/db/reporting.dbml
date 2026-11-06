@@ -1,0 +1,478 @@
+// =====================================================================
+// AI Commerce OS — `reporting` schemasi: hisobot read model'lari (7-modul, S5-01)
+// Holat: TAKLIF 2026-10-27 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar: reporting.md oxirida ("Founder ko'rib chiqishi uchun qarorlar").
+// Ko'rish: https://dbdiagram.io → shu faylni to'liq nusxalab qo'ying
+// Izohlar: db/reporting.md
+// Manba hujjatlar: business/02 M18; business/03 BL-063…BL-066; engineering/05 §3, §8; 07 §4.9; 19 (hammasi); 26;
+//                  db/jobs.md, db/sales_ai.md §11 (platform.ai_usage), db/commerce_cost_price.md; DEC-100a, DEC-112, DEC-119, DEC-123
+// =====================================================================
+
+Project ai_commerce_os_reporting {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Read model'lar:** boshqa domenlar event'laridan quriladigan lokal jadvallar (19 §2). Yozuvchi — faqat reporting
+  tinglovchilari va rejali ishlar. Metrikalar faqat shu schemadan hisoblanadi; boshqa schemaga JOIN yo'q.
+
+  **Qoidalar (19 §3):**
+  - Idempotent upsert: `aggregate_version` (yoki `cost_version`, `stock_version`) kattasi yutadi; eski event bosib o'tmaydi.
+  - Shaxsiy ma'lumot YO'Q: xaridor ismi, telefoni, manzili, xabar/izoh matni, username saqlanmaydi. Faqat ID, kod, son, summa, vaqt.
+  - Har jadvalda `shop_id NOT NULL`, RLS ENABLE + FORCE. Boshqa schemadagi ID'lar — uuid, FK'siz.
+  - `*_day` ustunlari — shop vaqt zonasidagi sana (Asia/Tashkent), proyeksiya paytida hisoblanadi ("kecha" = shop vaqti, M18).
+  - Qayta qurish: egasi domenning Query Port backfill metodlari bilan, shop bo'yicha (19 §3.3).
+  - Xodim ID'si (`*_staff_id`) — platform.memberships.id; ismi hisobot so'rovida platform'dan olinadi, bu yerda saqlanmaydi.
+
+  **Standart texnik jadvallar:** reporting.consumer_receipts (jobs.dbml). reporting outbox chiqarmaydi.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum) — manba domendagi qiymatlar nusxasi
+// ---------------------------------------------------------------------
+
+Enum reporting.sale_channel {
+  TELEGRAM
+  INSTAGRAM
+  WEB_CHAT
+  STOREFRONT [note: 'Sayt savatchasi (suhbatsiz)']
+  OFFLINE [note: 'Do\'kon: tez sotuv yoki xodim qo\'lda (kanal yo\'q)']
+}
+
+Enum reporting.author_kind {
+  CUSTOMER
+  AI
+  STAFF
+  SYSTEM [note: 'Xabarnoma, salomlashish — javob vaqtiga kirmaydi']
+}
+
+Enum reporting.comment_sentiment {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  SPAM
+  UNDETERMINED [note: 'Ishonch past yoki hali baholanmagan']
+}
+
+// ---------------------------------------------------------------------
+// Texnik
+// ---------------------------------------------------------------------
+
+Table reporting.projection_checkpoints {
+  shop_id uuid [not null]
+  projection text [not null, note: 'order_facts, conversation_facts, ...']
+  last_event_id uuid
+  last_occurred_at timestamptz [note: 'data_as_of manbai (19 §5, BL-066)']
+  rebuilt_at timestamptz [note: 'Oxirgi to\'liq qayta qurish']
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, projection) [pk]
+  }
+  Note: 'Har proyeksiya qayergacha yangilangan. Javobdagi data_as_of — so\'rovdagi proyeksiyalarning eng eskisi. RLS (FORCE).'
+}
+
+// ---------------------------------------------------------------------
+// Sotuv: buyurtmalar, qatorlar, tez sotuv
+// ---------------------------------------------------------------------
+
+Table reporting.order_facts {
+  shop_id uuid [not null]
+  order_id uuid [not null]
+  status text [not null, note: 'FSM-08 holati (commerce nusxasi)']
+  source text [not null, note: 'AI | STOREFRONT | STAFF | QUOTE']
+  channel reporting.sale_channel [not null, note: 'Suhbat kanali; suhbatsiz sayt — STOREFRONT; xodim suhbatsiz — OFFLINE']
+  branch_id uuid
+  assigned_staff_id uuid
+  lead_id uuid
+  total_minor bigint [not null]
+  currency text [not null, default: 'UZS']
+  line_count int
+  created_at timestamptz [not null]
+  created_day date [not null]
+  submitted_at timestamptz
+  confirmed_at timestamptz
+  completed_at timestamptz
+  completed_day date
+  cancelled_at timestamptz
+  cancelled_day date
+  cancel_reason_code text [note: 'STAFF_CANCELLED | EXPIRED — erkin matn yo\'q']
+  cancel_from_status text
+  paid_mark_at timestamptz [note: 'Tekshirilmagan belgi (DEC-100a) → UNVERIFIED_PAID_MARK flag']
+  paid_mark_method text
+  aggregate_version bigint [not null]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, order_id) [pk]
+    (shop_id, completed_day) [note: 'Partial: WHERE status = COMPLETED']
+    (shop_id, created_day, source, channel)
+    (shop_id, status) [note: 'Hozirgi holat snapshot metrikalari']
+    (shop_id, assigned_staff_id, completed_day)
+  }
+  Note: 'Bir buyurtma — bir qator. Manba: commerce.order.* (05 §8.2). RLS (FORCE).'
+}
+
+Table reporting.order_line_facts {
+  shop_id uuid [not null]
+  order_id uuid [not null]
+  sku_id uuid [not null]
+  product_id uuid
+  category_id uuid [note: 'Sotuv paytidagi toifa (product_dim dan nusxa) — tarix barqaror']
+  branch_id uuid
+  channel reporting.sale_channel [not null]
+  source text [not null]
+  assigned_staff_id uuid
+  completed_at timestamptz [not null]
+  completed_day date [not null]
+  qty int [not null]
+  line_total_minor bigint [not null, note: 'Chegirma bilan, so\'mda']
+  unit_cost_uzs_minor bigint [note: 'commerce_cost_price.md — NULL = tannarx noma\'lum']
+  cost_total_minor bigint [note: 'qty × unit_cost; NULL bo\'lsa foydaga kirmaydi (PARTIAL_COST_DATA)']
+
+  indexes {
+    (shop_id, order_id, sku_id) [pk]
+    (shop_id, completed_day, category_id)
+    (shop_id, sku_id, completed_day)
+  }
+  Note: 'Topshirilgan buyurtma qatorlari. Manba: commerce.order.completed lines[]. Qaytadan kelsa — bir xil natija (PK). RLS (FORCE).'
+}
+
+Table reporting.quick_sale_facts {
+  shop_id uuid [not null]
+  sale_id uuid [not null]
+  sku_id uuid [not null]
+  product_id uuid
+  category_id uuid
+  branch_id uuid [not null]
+  sold_by_staff_id uuid
+  recorded_at timestamptz [not null]
+  recorded_day date [not null]
+  qty int [not null]
+  line_total_minor bigint [not null]
+  unit_cost_uzs_minor bigint
+  cost_total_minor bigint
+
+  indexes {
+    (shop_id, sale_id, sku_id) [pk]
+    (shop_id, recorded_day, branch_id)
+    (shop_id, sku_id, recorded_day)
+  }
+  Note: 'Do\'kondagi tez sotuv, qator darajasida (DEC-123). Manba: commerce.quick_sale.recorded lines[]. Kanal — OFFLINE. RLS (FORCE).'
+}
+
+Table reporting.support_case_facts {
+  shop_id uuid [not null]
+  case_id uuid [not null]
+  type text [not null, note: 'WARRANTY | RETURN']
+  source text [note: 'ORDER_LINE | QUICK_SALE_LINE | EXTERNAL']
+  status text [not null]
+  sku_id uuid
+  branch_id uuid
+  within_warranty boolean
+  resolution text [note: 'REPAIR | REPLACE | REFUND']
+  outcome text [note: 'REPAIRED | REPLACED | RETURNED']
+  reject_reason text
+  refund_amount_minor bigint [note: 'Ma\'lumot uchun (tizimdan tashqarida) — sof sotuv metrikasida ayiriladi']
+  opened_at timestamptz [not null]
+  opened_day date [not null]
+  decided_at timestamptz
+  resolved_at timestamptz
+  resolved_day date
+  closed_at timestamptz
+  aggregate_version bigint [not null]
+
+  indexes {
+    (shop_id, case_id) [pk]
+    (shop_id, status)
+    (shop_id, opened_day)
+    (shop_id, sku_id) [note: '"Qaysi mahsulot ko\'p buziladi"']
+  }
+  Note: 'Kafolat murojaatlari (19 §7.5). Manba: support.case.* (support.md §5). RLS (FORCE).'
+}
+
+// ---------------------------------------------------------------------
+// Mahsulot va ombor
+// ---------------------------------------------------------------------
+
+Table reporting.product_dim {
+  shop_id uuid [not null]
+  sku_id uuid [not null]
+  product_id uuid [not null]
+  title text [not null, note: 'Mahsulot + variant nomi (biznes ma\'lumoti, PII emas)']
+  sku_code text
+  category_id uuid
+  category_name text [note: 'Hisobot tili uchun shop toifasi nomi (ko\'rsatish)']
+  status text [note: 'PUBLISHED | HIDDEN | ARCHIVED']
+  current_price_minor bigint
+  currency text
+  price_uzs_minor bigint [note: 'Joriy narx so\'mda (USD × joriy kurs) — ombor qiymati sotuv narxida']
+  product_version bigint
+  price_version bigint
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, sku_id) [pk]
+    (shop_id, category_id)
+  }
+  Note: '''
+  Mahsulot o'lchami. Manba: catalog.product.*, catalog.sku.changed, catalog.price.changed, catalog.exchange_rate.updated;
+  toifa nomi va SKU nomi — event kelganda CatalogQueryPort'dan bir marta o'qiladi (dim uchun ruxsat, 05 §3.1). RLS (FORCE).
+  '''
+}
+
+Table reporting.sku_cost_dim {
+  shop_id uuid [not null]
+  sku_id uuid [not null]
+  avg_unit_cost_uzs_minor bigint [not null]
+  cost_version bigint [not null]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, sku_id) [pk]
+  }
+  Note: 'Joriy o\'rtacha tannarx. Manba: commerce.sku_cost.changed (commerce_cost_price.md). Faqat reporting.margin.read metrikalari o\'qiydi. RLS (FORCE).'
+}
+
+Table reporting.stock_facts {
+  shop_id uuid [not null]
+  branch_id uuid [not null]
+  sku_id uuid [not null]
+  on_hand int [not null]
+  reserved int [not null]
+  allocated int [not null]
+  available int [not null]
+  quarantine_qty int [not null, default: 0, note: 'commerce.stock.changed payload\'iga qo\'shiladi (reporting.md §5)']
+  active_reservations int [not null, default: 0]
+  oldest_reservation_at timestamptz
+  stock_version bigint [not null]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, branch_id, sku_id) [pk]
+    (shop_id, sku_id)
+  }
+  Note: 'Hozirgi qoldiq. Manba: commerce.stock.changed (absolyut qiymatlar), commerce.reservation.*. RLS (FORCE).'
+}
+
+Table reporting.stock_value_daily {
+  shop_id uuid [not null]
+  day date [not null]
+  branch_id uuid [not null]
+  units int [not null, note: 'on_hand yig\'indisi (karantin kirmaydi)']
+  quarantine_units int [not null, default: 0]
+  value_at_price_minor bigint [not null, note: 'Σ on_hand × product_dim.price_uzs_minor']
+  value_at_cost_minor bigint [note: 'Σ on_hand × sku_cost_dim.avg — faqat tannarxi bor SKU\'lar']
+  units_without_cost int [not null, default: 0, note: 'Tannarxi noma\'lum donalar → PARTIAL_COST_DATA']
+  computed_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, day, branch_id) [pk]
+  }
+  Note: 'Kun oxiridagi ombor qiymati (rejali ish, shop vaqti 23:59 dan keyin). "Ombor qiymati qanday o\'zgardi" grafigi. Joriy qiymat — stock_facts dan. RLS (FORCE).'
+}
+
+// ---------------------------------------------------------------------
+// Suhbatlar, operatorlar, voronka
+// ---------------------------------------------------------------------
+
+Table reporting.conversation_facts {
+  shop_id uuid [not null]
+  conversation_id uuid [not null]
+  channel reporting.sale_channel [not null, note: 'TELEGRAM | INSTAGRAM | WEB_CHAT']
+  started_at timestamptz [not null]
+  started_day date [not null]
+  from_ig_comment boolean [not null, default: false, note: 'Instagram izohiga javobdan boshlangan (instagram_comments.md)']
+  first_meaningful_reply_at timestamptz [note: 'Avtomatik salom hisoblanmaydi (19 §7.2)']
+  first_reply_author reporting.author_kind
+  first_reply_staff_id uuid
+  pending_inbound_since timestamptz [note: 'Javobsiz birinchi kiruvchi xabar vaqti — message_facts.response_seconds uchun ichki holat']
+  inbound_count int [not null, default: 0]
+  ai_reply_count int [not null, default: 0]
+  staff_reply_count int [not null, default: 0]
+  handoff_count int [not null, default: 0]
+  last_handoff_reason text
+  has_order boolean [not null, default: false, note: 'commerce.order.drafted conversation_id bilan — konversiya']
+  has_lead boolean [not null, default: false]
+  last_message_at timestamptz
+
+  indexes {
+    (shop_id, conversation_id) [pk]
+    (shop_id, started_day, channel)
+  }
+  Note: 'Suhbat bo\'yicha yig\'ma (19 §3). Manba: messaging.message.*, messaging.conversation.*, commerce.order.drafted, commerce.lead.created. RLS (FORCE).'
+}
+
+Table reporting.message_facts {
+  shop_id uuid [not null]
+  message_id uuid [not null]
+  conversation_id uuid [not null]
+  channel reporting.sale_channel [not null]
+  direction text [not null, note: 'IN | OUT']
+  author reporting.author_kind [not null]
+  staff_id uuid [note: 'STAFF bo\'lsa']
+  occurred_at timestamptz [not null]
+  day date [not null]
+  hour smallint [not null, note: 'Shop vaqtidagi soat 0–23 — "qaysi soatda yuklama"']
+  response_seconds int [note: 'OUT (AI/STAFF): javobsiz kiruvchi xabardan shu javobgacha. Salom/xabarnomada NULL']
+
+  indexes {
+    (shop_id, message_id) [pk]
+    (shop_id, day, author)
+    (shop_id, staff_id, day) [note: 'Operator samaradorligi']
+  }
+  Note: '''
+  Har xabar — bitta qator, matnsiz. AI va inson javoblari, operator javob vaqti (p50/p90 so'rovda hisoblanadi).
+  Manba: messaging.message.received / sent. 13 oy saqlanadi, keyin o'chiriladi (kunlik metrikalar uchun yetarli). RLS (FORCE).
+  '''
+}
+
+Table reporting.handoff_facts {
+  shop_id uuid [not null]
+  handoff_id uuid [not null]
+  conversation_id uuid [not null]
+  channel reporting.sale_channel [not null]
+  reason text [not null, note: 'messaging.handoff_reason kodi']
+  requested_by text [not null, note: 'AI | STAFF | SYSTEM | CUSTOMER']
+  opened_at timestamptz [not null]
+  opened_day date [not null]
+  in_inbox_hours boolean [note: 'Ish vaqtida ochildimi — ish vaqtidan tashqaridagilar kutish vaqtidan alohida']
+  taken_at timestamptz
+  taken_by_staff_id uuid
+  first_staff_reply_at timestamptz
+  first_staff_reply_by uuid
+  status text [not null, note: 'OPEN | TAKEN | CANCELLED']
+
+  indexes {
+    (shop_id, handoff_id) [pk]
+    (shop_id, opened_day)
+    (shop_id, taken_by_staff_id, opened_day)
+  }
+  Note: '''
+  Operatorga uzatish: kutish (opened → taken) va javob (taken → first reply) vaqtlari, sabab bo'yicha.
+  Manba: yangi messaging.handoff.opened va messaging.conversation.handed_off (+ handoff_id), messaging.message.sent (reporting.md §5). RLS (FORCE).
+  '''
+}
+
+Table reporting.lead_facts {
+  shop_id uuid [not null]
+  lead_id uuid [not null]
+  source text [not null, note: 'AI | STAFF']
+  channel reporting.sale_channel
+  status text [not null]
+  lost_reason text
+  lost_reason_inferred boolean
+  budget_minor bigint
+  created_at timestamptz [not null]
+  created_day date [not null]
+  won_at timestamptz
+  lost_at timestamptz
+  aggregate_version bigint [not null]
+
+  indexes {
+    (shop_id, lead_id) [pk]
+    (shop_id, created_day, channel)
+  }
+  Note: 'Manba: commerce.lead.created / status_changed. RLS (FORCE).'
+}
+
+Table reporting.quote_facts {
+  shop_id uuid [not null]
+  quote_id uuid [not null]
+  lead_id uuid
+  status text [not null]
+  current_revision int
+  compatibility text [note: 'PASS | REVIEW_REQUIRED | BLOCK']
+  total_minor bigint
+  drafted_by text [note: 'AI | STAFF']
+  drafted_at timestamptz [not null]
+  approved_at timestamptz
+  sent_at timestamptz
+  sent_day date
+  accepted_at timestamptz
+  accepted_order_id uuid
+  expired_at timestamptz
+  aggregate_version bigint [not null]
+
+  indexes {
+    (shop_id, quote_id) [pk]
+    (shop_id, sent_day)
+  }
+  Note: 'Manba: commerce.quote.* (05 §8.2; accepted — 6a event\'i). RLS (FORCE).'
+}
+
+// ---------------------------------------------------------------------
+// AI xarajati va Instagram izohlari
+// ---------------------------------------------------------------------
+
+Table reporting.ai_usage_daily {
+  shop_id uuid [not null]
+  day date [not null]
+  purpose text [not null, note: 'platform.llm_purpose: SALES_TURN, SUMMARY, CLASSIFY, COMMENT_CLASSIFY, REPORT_ASSISTANT']
+  model_id text [not null]
+  calls int [not null]
+  tokens_in bigint [not null]
+  tokens_out bigint [not null]
+  cache_read_tokens bigint [not null, default: 0]
+  cache_write_tokens bigint [not null, default: 0]
+  cost_micros bigint [not null, note: 'USD × 10^6 (platform.ai_usage bilan bir xil)']
+  computed_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, day, purpose, model_id) [pk]
+  }
+  Note: '''
+  AI ishlatilishi va xarajati kunlik. Event emas: har soatda rejali ish platform.ai_usage dan bugungi va kechagi kunni
+  qayta yig'adi (idempotent qayta yozish). platform.ai_usage 13 oyda tozalanadi — bu jadval qoladi.
+  Shop'ga ko'rinadigan narx — tarif bo'yicha (DEC-119); xom USD xarajat faqat reporting.ai_cost.read. RLS (FORCE).
+  '''
+}
+
+Table reporting.comment_facts {
+  shop_id uuid [not null]
+  comment_id uuid [not null, note: 'messaging.ig_comments.id']
+  post_id uuid [not null, note: 'messaging.ig_posts.id']
+  commented_at timestamptz [not null]
+  day date [not null]
+  trigger text [not null, note: 'PLUS | PRICE_QUESTION | NONE']
+  sentiment reporting.comment_sentiment [not null, default: 'UNDETERMINED']
+  sentiment_source text [note: 'AI | STAFF — hisobotda "AI bahosi" belgisi (DEC-132)']
+  auto_reply_status text [note: 'SENT | SKIPPED | FAILED | NULL (javob kerak emas)']
+  converted_to_conversation boolean [not null, default: false, note: 'Xaridor Direct\'da javob yozdi']
+  deleted boolean [not null, default: false]
+  aggregate_version bigint [not null]
+
+  indexes {
+    (shop_id, comment_id) [pk]
+    (shop_id, day, sentiment)
+    (shop_id, post_id)
+  }
+  Note: 'Instagram izohlari — matnsiz, muallifsiz (DEC-132). Manba: messaging.ig_comment.* (instagram_comments.md §6). RLS (FORCE).'
+}
+
+TableGroup sotuv {
+  reporting.order_facts
+  reporting.order_line_facts
+  reporting.quick_sale_facts
+  reporting.support_case_facts
+}
+
+TableGroup mahsulot_ombor {
+  reporting.product_dim
+  reporting.sku_cost_dim
+  reporting.stock_facts
+  reporting.stock_value_daily
+}
+
+TableGroup suhbat_voronka {
+  reporting.conversation_facts
+  reporting.message_facts
+  reporting.handoff_facts
+  reporting.lead_facts
+  reporting.quote_facts
+}
+
+TableGroup ai_izohlar {
+  reporting.ai_usage_daily
+  reporting.comment_facts
+  reporting.projection_checkpoints
+}

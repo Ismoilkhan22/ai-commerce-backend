@@ -21,6 +21,7 @@ MODEL_MODULES: dict[str, tuple[str, ...]] = {
         "app.platform.storage.models.orm",
         "app.platform.jobs.models.orm",
         "app.platform.notifications.models.orm",
+        "app.platform.llm.models.orm",
         "app.shared.events.models",  # outbox_events, consumer_receipts (har outbox schemasida)
     ),
     "audit": ("app.platform.audit.models.orm",),
@@ -35,13 +36,18 @@ MODEL_MODULES: dict[str, tuple[str, ...]] = {
         "app.domains.commerce.inventory.models.orm",
         "app.domains.commerce.quick_sales.models.orm",
         "app.domains.commerce.orders.models.orm",
+        "app.domains.commerce.quotes.models.orm",
         "app.shared.events.models",
     ),
-    "messaging": ("app.domains.messaging.models.orm", "app.shared.events.models"),
-    "sales_ai": (),
+    "messaging": (
+        "app.domains.messaging.models.orm",
+        "app.domains.messaging.models.ig",
+        "app.shared.events.models",
+    ),
+    "sales_ai": ("app.domains.sales_ai.models.orm", "app.shared.events.models"),
     "storefront": ("app.domains.storefront.models.orm", "app.shared.events.models"),
-    "support": (),
-    "reporting": (),
+    "support": ("app.domains.support.models.orm", "app.shared.events.models"),
+    "reporting": ("app.domains.reporting.models.orm", "app.shared.events.models"),
 }
 
 

@@ -29,6 +29,7 @@ FILE_PURPOSES = (
     "EXPORT_FILE",
     "SITE_LOGO",
     "CHAT_ATTACHMENT",  # 5b: suhbat rasmi (xaridor yuborgan yoki operator biriktirgan), yopiq
+    "SUPPORT_EVIDENCE",  # 7b: kafolat murojaati rasmi (nuqson, chek), yopiq
 )
 
 

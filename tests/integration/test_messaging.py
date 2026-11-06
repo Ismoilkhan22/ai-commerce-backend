@@ -354,6 +354,33 @@ def test_blocked_customer_marks_failed_and_channel_unavailable(world: World) -> 
     assert inbox.conversation(conversation_id)["customer"]["blocked"] is False
 
 
+def test_telegram_auth_revoked_degrades_channel_opens_owner_task_and_blocks_sends(world: World) -> None:
+    """UAT-M09, TC-011: bot tokeni bekor qilindi — kanal DEGRADED, egaga vazifa, keyingi yuborish FAILED."""
+    inbox = Inbox(world)
+    conversation_id = _queued_reply(world, inbox)
+    inbox.fake.send_errors = [ChannelSendError("AUTH_REVOKED")]
+    _drain_retrying(world)
+    channel = _ok(
+        world.client.get(f"/api/v1/shop/channels/{inbox.account['id']}", headers=_bearer(inbox.owner))
+    )
+    assert channel["status"] == "DEGRADED"
+    assert [t for t in _tasks(world, inbox.owner) if t["type"] == "CHANNEL_DEGRADED"]  # egaga vazifa
+    last = inbox.messages(conversation_id)[-1]
+    assert last["delivery_status"] == "FAILED" and last["last_error_code"] == "AUTH_REVOKED"
+    # DEGRADED kanal hali "yuborish mumkin" (tiklanishi mumkin); keyingi yuborish toza FAILED bo'ladi
+    _ok(inbox.reply(conversation_id, "Yana urinib ko'ramiz"), 201)
+    inbox.fake.send_errors = [ChannelSendError("AUTH_REVOKED")]
+    _drain_retrying(world)
+    again = inbox.messages(conversation_id)[-1]
+    assert again["delivery_status"] == "FAILED" and again["last_error_code"] == "AUTH_REVOKED"
+    after = _ok(
+        world.client.get(f"/api/v1/shop/channels/{inbox.account['id']}", headers=_bearer(inbox.owner))
+    )
+    assert after["status"] == "DEGRADED"
+    assert len([t for t in _tasks(world, inbox.owner) if t["type"] == "CHANNEL_DEGRADED"]) == 1
+    assert inbox.fake.sent == []  # tashqariga hech narsa ketmadi
+
+
 # ------------------------------------------------------------------ FSM-04
 def test_resolve_reopen_and_customer_reopens(world: World) -> None:
     inbox = Inbox(world)
@@ -686,6 +713,21 @@ def test_webchat_needs_live_site_and_is_rate_limited(world: World) -> None:
     chat = Chat(site)
     codes = [chat.send(f"xabar {i}").status_code for i in range(11)]
     assert codes[:10] == [201] * 10 and codes[10] == 429  # sessiya bo'yicha daqiqasiga 10 ta
+
+
+def test_webchat_refuses_visitors_when_shop_is_suspended_or_closed(world: World) -> None:
+    """UAT-M01: to'xtatilgan/yopilgan shopda sayt chati ochiq sessiyaga ham xabar qabul qilmaydi."""
+    site = Site(world)
+    _ok(_post(world, site.owner, "/channels/webchat"), 201)
+    chat = Chat(site)
+    assert chat.send("salom").status_code == 201
+    for status in ("SUSPENDED", "CLOSED"):
+        _admin_sql(world, "UPDATE platform.shops SET status = $2 WHERE id = $1", site.shop.id, status)
+        refused = chat.send("yana salom")
+        assert refused.status_code in (404, 409), (status, refused.text)
+        assert _code(refused) in ("SITE_NOT_AVAILABLE", "NOT_FOUND")
+        new_session = world.client.post(f"/api/v1/storefront/{site.slug}/chat/sessions")
+        assert new_session.status_code in (404, 409), (status, new_session.text)
 
 
 # ------------------------------------------------------------------ xaridorga buyurtma holati (S4-06)

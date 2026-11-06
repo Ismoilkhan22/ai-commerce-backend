@@ -114,6 +114,43 @@ Har tugma bosilishi `platform/audit` ga yoziladi (kim, qachon, sabab).
 6. Tiklash nuqtasidan keyingi yo'qolgan davr: kanal provayderlari qayta yuborgan event'lar dedup bilan qabul qilinadi; shoplarga yo'qolgan davr haqida xabar (o'sha davrdagi buyurtmalarni qo'lda tekshirish).
 7. Vaqt (RTO) va yo'qolgan davr (RPO) jurnalga yoziladi.
 
+#### RB-08 pilot buyruqlari — kunlik `pg_dump` dan tiklash (S0-10, bitta VPS)
+
+Pilotda WAL/PITR hali yo'q: backup — har kuni 03:00 (Toshkent) to'liq `pg_dump --format=custom`, 14 kun
+(`deploy/backup/pg_backup.sh`, `backup` konteyneri). Demak **RPO ≤ 24 soat** (22 §7.1 maqsadi 1 soat — PITR bilan keyin).
+Fayllar: `${BACKUP_HOST_DIR}/daily/commerce_os-<sana>.dump`, `globals-<sana>.sql` (rollar), `.sha256`.
+
+```
+C="docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod"
+
+1. Yozishni to'xtatish:   $C stop api outbox-worker task-worker scheduler
+2. Faylni tanlash:        ls -lh /var/backups/commerce-os/daily/   (hodisadan oldingi eng so'nggisi)
+   Butunlik:              cd /var/backups/commerce-os/daily && sha256sum -c commerce_os-<sana>.sha256
+3. Hozirgi holatni saqlab qo'yish (tiklash noto'g'ri ketsa qaytish uchun):
+                          $C exec backup /backup/pg_backup.sh
+4. Bo'sh DB'ga tiklash:
+   $C exec -T postgres psql -U postgres -c "DROP DATABASE IF EXISTS commerce_os_restore"
+   $C exec -T postgres psql -U postgres -c "CREATE DATABASE commerce_os_restore"
+   $C exec -T postgres psql -U postgres < globals-<sana>.sql   # rollar; "already exists" — normal (egalik saqlanadi)
+   $C exec -T postgres pg_restore -U postgres -d commerce_os_restore --exit-on-error < commerce_os-<sana>.dump
+5. Tekshiruv (RB-08 3-qadam): jadvallar soni har schemada; ledger = balans; RLS siyosatlari:
+   $C exec -T postgres psql -U postgres -d commerce_os_restore -c "SELECT schemaname, count(*) FROM pg_tables GROUP BY 1"
+   $C exec -T postgres psql -U postgres -d commerce_os_restore -c "SELECT count(*) FROM pg_policies"
+6. Almashtirish (nomlarni o'zgartirish — eski DB o'chirilmaydi, bir hafta saqlanadi):
+   $C exec -T postgres psql -U postgres -c "ALTER DATABASE commerce_os RENAME TO commerce_os_broken_<sana>"
+   $C exec -T postgres psql -U postgres -c "ALTER DATABASE commerce_os_restore RENAME TO commerce_os"
+7. Huquqlar va migratsiya: $C run --rm migrate      (bootstrap idempotent: rollar, GRANT'lar; alembic head)
+8. Redis navbatini tozalash (tiklangan DB bilan mos emas): $C exec redis redis-cli -n 1 FLUSHDB
+9. Ishga tushirish:       $C up -d   →   curl -fsS https://api.<domen>/health/ready
+10. RB-08 4–7-qadamlar (outbox qayta yuboradi, shoplarga xabar, RTO/RPO jurnalga).
+```
+
+Mashq (TC-033, oyiga bir marta): 4–5-qadamlar `commerce_os_restore` bilan, 6-qadamsiz — production'ga tegmaydi;
+keyin `DROP DATABASE commerce_os_restore`. Vaqt va natija M08 jurnaliga yoziladi.
+
+Backup boshqa joyda ham bo'lishi shart (VPS diski o'lsa, ikkala nusxa ham yo'qoladi): M08 "Backup" bo'limidagi
+`rclone` nusxasi — boshqa UZ ombor (DEC-013, xorijga emas).
+
 ### RB-09 — Noto'g'ri PC moslik natijasi (SEV-1, agar xaridorga yuborilgan bo'lsa)
 1. Qoidami yoki texnik ma'lumot xatosimi — `catalog` moslik natijalari jurnalidan (ruleset versiyasi, spec versiyasi).
 2. Ruleset rollback yoki spec tuzatish (ikki kishi tekshiruvi, `17`).
@@ -182,6 +219,7 @@ Postmortem ayblash uchun emas: maqsad — xuddi shu hodisa takrorlanmasligi uchu
 - [ ] Global AI o'chirish, kanal chiquvchi xabarlarini to'xtatish va `outbox.paused` staging'da sinalgan
 - [ ] RB-03, RB-06, RB-08, RB-11, RB-14 staging'da mashq qilingan, natija yozilgan
 - [ ] Tiklash mashqi (TC-033) o'tgan, RPO/RTO yozilgan
+- [ ] Kunlik backup ishlayapti (`backup.finished` logi) va boshqa joyga nusxalanyapti (M08 "Backup")
 - [ ] Dead-letter ro'yxati va replay (RB-13) platforma panelida ishlaydi
 - [ ] Shop egalari uchun "AI o'chirildi" va "kanal uzildi" xabarlari tayyor (`20`)
 - [ ] Break-glass jarayoni va audit ishlaydi

@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Production secret fayllari (progress/M08-deploy.md, 22 §5.1) — hech qachon commit qilinmaydi
+.env.prod
+deploy/secrets/*
+!deploy/secrets/*.example
+deploy/app.env

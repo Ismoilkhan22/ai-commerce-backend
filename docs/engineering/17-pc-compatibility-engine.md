@@ -206,6 +206,8 @@ class CatalogQueryPort(Protocol):
 
 `explanation` — backend `locale` bo'yicha qoida shablonidan (`11` i18n). AI uni ma'nosini o'zgartirmasdan aytadi.
 
+Panelda `locale` — interfeys tili (`Accept-Language`, `get_display_locale`; QA 6a F3). Muzlagan natijada matn emas, `message_key` + `facts` saqlanadi va o'qishda qayta yasaladi (`app/shared/compat_text.py`). Bog'lanmagan qism bo'lsa ham qaror qoidalari bog'langan qismlarda ishlaydi — ma'lum BLOCK yashirinmaydi (`pc-2026-10-v2`, QA 6a F2).
+
 | Kim | Qanday | Natija qayerda saqlanadi |
 |---|---|---|
 | `sales_ai` (`catalog.check_compatibility` tool) | Query Port | `sales_ai.ai_tool_executions` (hash) — faqat log |

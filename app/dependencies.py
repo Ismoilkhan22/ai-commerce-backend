@@ -10,20 +10,32 @@ from typing import Any
 
 from app.config.settings import Settings, get_settings
 from app.shared.contracts.catalog import CatalogQueryPort
-from app.shared.contracts.commerce import ConversationOrdersPort, OrderQueryPort, StockQueryPort
+from app.shared.contracts.commerce import (
+    ConversationOrdersPort,
+    OrderQueryPort,
+    SalesDraftsPort,
+    StockQueryPort,
+)
 from app.shared.contracts.imports import ImportStockResults, ImportStockSource
-from app.shared.contracts.messaging import ChatAvailabilityPort
+from app.shared.contracts.messaging import AiConversationPort, ChatAvailabilityPort, ConversationLookupPort
+from app.shared.contracts.reporting import ReportingSourcePort
+from app.shared.contracts.support import SupportCommercePort
 
 __all__ = [
     "Settings",
+    "get_ai_conversations",
     "get_catalog_query",
     "get_chat_availability",
+    "get_conversation_lookup",
     "get_conversation_orders",
     "get_import_stock_results",
     "get_import_stock_source",
     "get_order_query",
+    "get_reporting_sources",
+    "get_sales_drafts",
     "get_settings",
     "get_stock_query",
+    "get_support_commerce",
 ]
 
 
@@ -68,8 +80,43 @@ def get_chat_availability() -> ChatAvailabilityPort:
     return ChatAvailabilityPortImpl()
 
 
+def get_conversation_lookup() -> ConversationLookupPort:
+    """Lead/taklif: suhbat shu shopnikimi (6a, QA 6a F11)."""
+    from app.domains.messaging.query_port import ChatAvailabilityPortImpl
+
+    return ChatAvailabilityPortImpl()
+
+
 def get_import_stock_results() -> ImportStockResults:
     """catalog import hisobotida qoldiq natijasini va joriy qoldiqni shu orqali o'qiydi."""
     from app.domains.commerce.query_port import ImportStockResultsImpl
 
     return ImportStockResultsImpl()
+
+
+def get_ai_conversations(messaging: Any) -> AiConversationPort:
+    """sales_ai (6b) suhbat kontekstini o'qiydi va javobni fencing bilan topshiradi."""
+    from app.domains.messaging.query_port import AiConversationPortImpl
+
+    return AiConversationPortImpl(messaging.core, messaging.writer, messaging.ai)
+
+
+def get_sales_drafts(commerce: Any) -> SalesDraftsPort:
+    """AI tool'lari faqat qoralama yaratadi: lead, taklif, buyurtma (BL-110)."""
+    from app.domains.commerce.quotes.ai_drafts import SalesDraftsPortImpl
+
+    return SalesDraftsPortImpl(commerce.leads, commerce.quotes, commerce.orders)
+
+
+def get_support_commerce(commerce: Any) -> SupportCommercePort:
+    """support (7b) sotuv qatori nusxasi va ombor yozuvi — commerce'ning StockService'i orqali (DEC-126)."""
+    from app.domains.commerce.query_port import SupportCommercePortImpl
+
+    return SupportCommercePortImpl(commerce.stock)
+
+
+def get_reporting_sources() -> ReportingSourcePort:
+    """reporting (7c) qayta qurish manbasi va tannarx: mavjud jadvallardan sintetik event'lar (19 §3.3)."""
+    from app.db.reporting_sources import ReportingSourceImpl
+
+    return ReportingSourceImpl()

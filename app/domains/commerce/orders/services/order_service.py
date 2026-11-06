@@ -298,7 +298,7 @@ class OrderService:
             shop_id=actor.shop_id,
             number=number,
             status="DRAFT",
-            source="STAFF",
+            source="AI" if actor.actor_type == "AI_AGENT" else "STAFF",  # DEC-100c
             conversation_id=conversation_id,
             customer_ref=customer_ref,
             branch_id=data.branch_id,

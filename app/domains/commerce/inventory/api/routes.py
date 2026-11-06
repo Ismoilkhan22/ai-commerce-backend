@@ -21,6 +21,10 @@ from app.domains.commerce.inventory.schemas import (
     ReceiptList,
     ReceiptOut,
     RejectIn,
+    SkuCostHistory,
+    SkuCostList,
+    SkuCostOut,
+    SkuCostSetIn,
     SkuPickList,
     StockList,
 )
@@ -80,6 +84,9 @@ async def _adjustment_command(
     assert isinstance(result, AdjustmentOut)
     return result
 
+
+CanViewCost = Annotated[RequestContext, Depends(require_permission(perm.COST_VIEW))]
+CanEditCost = Annotated[RequestContext, Depends(require_permission(perm.COST_EDIT))]
 
 CanPickSku = Annotated[RequestContext, Depends(require_permission(perm.CATALOG_VIEW))]
 
@@ -261,3 +268,40 @@ async def reject_adjustment(
         lambda: svc.stock.reject_adjustment(ctx.db, ctx.actor, adjustment_id, version, body.note),
     )
     return _with_etag(response, result)
+
+
+# ------------------------------------------------------------------ tannarx (DEC-146): faqat ega
+
+
+@router.get("/costs", response_model=SkuCostList)
+async def list_costs(
+    ctx: CanViewCost, svc: Commerce, limit: Limit = DEFAULT_LIMIT, cursor: Cursor = None
+) -> SkuCostList:
+    """Mahsulotlarning joriy o'rtacha tannarxi (so'mda). Ro'yxatda yo'q mahsulot — tannarx noma'lum."""
+    return await svc.stock.costs.list_costs(ctx.db, ctx.actor, limit=limit, cursor=cursor)
+
+
+@router.get("/costs/{sku_id}", response_model=SkuCostOut)
+async def get_cost(sku_id: UUID, ctx: CanViewCost, svc: Commerce) -> SkuCostOut:
+    return await svc.stock.costs.get(ctx.db, ctx.actor, sku_id)
+
+
+@router.get("/costs/{sku_id}/history", response_model=SkuCostHistory)
+async def cost_history(
+    sku_id: UUID, ctx: CanViewCost, svc: Commerce, limit: Limit = DEFAULT_LIMIT, cursor: Cursor = None
+) -> SkuCostHistory:
+    """ "Nega tannarx o'zgardi?": har kirim va qo'lda to'g'rilash — oldingi va keyingi o'rtacha bilan."""
+    return await svc.stock.costs.history(ctx.db, ctx.actor, sku_id, limit=limit, cursor=cursor)
+
+
+@router.put("/costs/{sku_id}", response_model=SkuCostOut)
+async def set_cost(sku_id: UUID, body: SkuCostSetIn, ctx: CanEditCost, svc: Commerce, key: IdemKey) -> Any:
+    """Tizimgacha bo'lgan qoldiq yoki xato o'rtachani qo'lda qo'yish; izoh majburiy (`MANUAL_SET`)."""
+    return await run_idempotent(
+        ctx.db,
+        ctx.actor.shop_id,
+        f"commerce.cost.set:{sku_id}",
+        key,
+        body,
+        lambda: svc.stock.costs.set_manual(ctx.db, ctx.actor, sku_id, body),
+    )

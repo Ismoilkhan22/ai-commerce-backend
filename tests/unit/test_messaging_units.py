@@ -6,9 +6,10 @@ import hashlib
 import hmac
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 
-from app.domains.messaging.channels.instagram import parse_webhook, verify_signature
+from app.domains.messaging.channels.instagram import _token_revoked, parse_webhook, verify_signature
 from app.domains.messaging.channels.telegram import parse_update, split_text
 from app.domains.messaging.common import customer_phone, mask_phone, within_inbox_hours
 from app.domains.messaging.services.notify import format_total
@@ -136,3 +137,19 @@ def test_money_and_phone_helpers() -> None:
     assert customer_phone("+44 20 7946 0958") == "+442079460958"  # chet el raqami
     assert customer_phone("12") is None
     assert mask_phone("+998901234567") == "+99890 *** ** 67"
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "revoked"),
+    [
+        (401, {}, True),
+        (403, {}, True),
+        (400, {"error": {"type": "OAuthException", "code": 190}}, True),  # token yaroqsiz/eskirgan
+        (400, {"error": {"code": 102}}, True),
+        (400, {"error": {"code": 551}}, False),  # 24 soatlik oyna yopilgan — boshqa xato
+        (404, {}, False),
+    ],
+)
+def test_instagram_send_error_maps_revoked_token(status: int, body: dict[str, object], revoked: bool) -> None:
+    assert _token_revoked(httpx.Response(status, json=body)) is revoked
+    assert _token_revoked(httpx.Response(status, content=b"not json")) is (status in (401, 403))

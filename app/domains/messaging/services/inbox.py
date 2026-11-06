@@ -257,7 +257,30 @@ class InboxService:
         reach = await reachability(db, conversation)
         names = await member_names(db, conversation.shop_id, [conversation.assignee_membership_id])
         name = names.get(conversation.assignee_membership_id) if conversation.assignee_membership_id else None
-        return detail_out(actor, conversation, identity, handoff, unread, reach.ok, name)
+        gate = await self.core.gate(db, conversation.shop_id)
+        return detail_out(
+            actor, conversation, identity, handoff, unread, reach.ok, name, ai_speaks=gate.speaks
+        )
+
+    async def resume_ai(
+        self, db: AsyncSession, actor: ActorContext, conversation_id: UUID, expected_version: int
+    ) -> ConversationOut:
+        """Operator suhbatni AI'ga qaytaradi (6b): faqat AI shu shopda javob bersa (SUGGEST/AUTO, faol)."""
+        conversation = await self._load(db, actor, conversation_id, lock=True)
+        check_version(conversation.version, expected_version)
+        gate = await self.core.gate(db, conversation.shop_id)
+        if not gate.speaks:
+            raise InvalidTransitionError(
+                "AI is not available for this shop",
+                entity="messaging.conversation",
+                **{"from": conversation.status},
+                command="RETURN_TO_AI",
+                reason=(gate.reason or "OFF").lower(),
+            )
+        await self.core.transition(db, actor, conversation, "RETURN_TO_AI", "AI_ACTIVE")
+        await self.core.close_handoff(db, actor, conversation, status="CANCELLED")
+        await self.writer.conversation_changed(db, actor, conversation, "ai_resumed")
+        return await self._detail(db, actor, conversation)
 
     async def messages(
         self,

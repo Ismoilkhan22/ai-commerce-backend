@@ -50,6 +50,7 @@ from app.domains.commerce.inventory.schemas import (
     StockItem,
     StockList,
 )
+from app.domains.commerce.inventory.services.cost_service import CostService, current_unit_costs
 from app.domains.commerce.schemas import member_ref
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.notifications.services.notifications import NotificationService
@@ -111,6 +112,7 @@ class StockService:
         self.audit = audit
         self.files = files
         self.catalog = catalog
+        self.costs = CostService(audit, catalog)
         self.tasks = TaskService()
         self.notifications = NotificationService()
 
@@ -208,6 +210,155 @@ class StockService:
         await stock_changed(db, actor, entries, balances)
         return entries
 
+    # ================================================================== kafolat (7b, DEC-145)
+    async def return_to_quarantine(
+        self, db: AsyncSession, actor: ActorContext, *, case_id: UUID, branch_id: UUID, sku_id: UUID, qty: int
+    ) -> bool:
+        """Qaytgan dona tekshiruvga (RETURN_QUARANTINE): sotilgan dona omborga qaytmaydi, shuning uchun
+        `on_hand` o'zgarmaydi, faqat `quarantine_qty` +qty. Bir murojaat bir SKU'ni bir marta (daftar kaliti):
+        takror chaqiruv hech narsa yozmaydi (`False`)."""
+        assert actor.shop_id is not None
+        if await self._case_entry(db, actor.shop_id, "RETURN_QUARANTINE", case_id, sku_id) is not None:
+            return False
+        movement = Movement(
+            branch_id, sku_id, "RETURN_QUARANTINE", "SUPPORT_CASE", case_id, on_hand=0, quarantine=qty
+        )
+        await self.apply(db, actor, [movement], create=True, paths={movement.key: "qty"})
+        return True
+
+    async def issue_replacement(
+        self, db: AsyncSession, actor: ActorContext, *, case_id: UUID, branch_id: UUID, sku_id: UUID, qty: int
+    ) -> bool:
+        """Yangi dona xaridorga berildi (WARRANTY_REPLACEMENT): `on_hand` -qty. Sotuvga mavjud son yetmasa —
+        `InsufficientStockError` (band mahsulot berilmaydi, BL-019). Takror chaqiruv hech narsa yozmaydi."""
+        assert actor.shop_id is not None
+        if await self._case_entry(db, actor.shop_id, "WARRANTY_REPLACEMENT", case_id, sku_id) is not None:
+            return False
+        movement = Movement(branch_id, sku_id, "WARRANTY_REPLACEMENT", "SUPPORT_CASE", case_id, on_hand=-qty)
+        balances = await self.lock_balances(db, actor.shop_id, [movement.key])
+        balance = balances.get(movement.key)
+        if balance is None or balance.available < qty:
+            raise InsufficientStockError(
+                "Insufficient available stock for the replacement",
+                lines=[shortage(balance, branch_id, sku_id, qty)],
+            )
+        await self.apply(db, actor, [movement], balances, paths={movement.key: "qty"})
+        return True
+
+    async def case_stock(self, db: AsyncSession, shop_id: UUID, case_id: UUID) -> dict[str, int]:
+        """Murojaat kartochkasi uchun: karantinga tushgan, sotuvga qaytarilgan, hisobdan chiqarilgan va
+        almashtirish uchun chiqarilgan sonlar."""
+        ledger: dict[str, int] = dict(
+            (
+                await db.execute(
+                    select(
+                        StockLedger.reason, func.coalesce(func.sum(func.abs(StockLedger.delta_on_hand)), 0)
+                    )
+                    .where(
+                        StockLedger.shop_id == shop_id,
+                        StockLedger.ref_type == "SUPPORT_CASE",
+                        StockLedger.ref_id == case_id,
+                    )
+                    .group_by(StockLedger.reason)
+                )
+            ).all()
+        )
+        quarantined = (
+            await db.scalar(
+                select(func.coalesce(func.sum(StockLedger.delta_quarantine), 0)).where(
+                    StockLedger.shop_id == shop_id,
+                    StockLedger.ref_type == "SUPPORT_CASE",
+                    StockLedger.ref_id == case_id,
+                    StockLedger.reason == "RETURN_QUARANTINE",
+                )
+            )
+            or 0
+        )
+        done = dict(
+            (
+                await db.execute(
+                    select(StockAdjustment.kind, func.coalesce(func.sum(StockAdjustment.delta), 0))
+                    .where(
+                        StockAdjustment.shop_id == shop_id,
+                        StockAdjustment.support_case_id == case_id,
+                        StockAdjustment.status == "APPROVED",
+                    )
+                    .group_by(StockAdjustment.kind)
+                )
+            ).all()
+        )
+        return {
+            "quarantined": int(quarantined),
+            "restocked": int(done.get("RESTOCK", 0)),
+            "written_off": int(done.get("WRITE_OFF", 0)),
+            "replacement_issued": int(ledger.get("WARRANTY_REPLACEMENT", 0)),
+        }
+
+    @staticmethod
+    async def _case_entry(
+        db: AsyncSession, shop_id: UUID, reason: str, case_id: UUID, sku_id: UUID
+    ) -> UUID | None:
+        return await db.scalar(
+            select(StockLedger.id).where(
+                StockLedger.shop_id == shop_id,
+                StockLedger.reason == reason,
+                StockLedger.ref_type == "SUPPORT_CASE",
+                StockLedger.ref_id == case_id,
+                StockLedger.sku_id == sku_id,
+            )
+        )
+
+    async def _check_case_quarantine(self, db: AsyncSession, actor: ActorContext, data: AdjustmentIn) -> None:
+        """RESTOCK / WRITE_OFF `support_case_id` bilan: shu murojaat shu SKU'ni shu filialda karantinga
+        yozgan bo'lishi va tuzatishlar yig'indisi karantinga tushgandan oshmasligi shart."""
+        assert actor.shop_id is not None
+        if data.kind not in ("RESTOCK", "WRITE_OFF"):
+            raise ValidationError(
+                "Only RESTOCK or WRITE_OFF may reference a case", fields=[field("support_case_id", "invalid")]
+            )
+        quarantined = int(
+            await db.scalar(
+                select(func.coalesce(func.sum(StockLedger.delta_quarantine), 0)).where(
+                    StockLedger.shop_id == actor.shop_id,
+                    StockLedger.reason == "RETURN_QUARANTINE",
+                    StockLedger.ref_type == "SUPPORT_CASE",
+                    StockLedger.ref_id == data.support_case_id,
+                    StockLedger.branch_id == data.branch_id,
+                    StockLedger.sku_id == data.sku_id,
+                )
+            )
+            or 0
+        )
+        if quarantined <= 0:
+            raise ValidationError(
+                "Case has no quarantined unit here", fields=[field("support_case_id", "invalid")]
+            )
+        used = int(
+            await db.scalar(
+                select(func.coalesce(func.sum(StockAdjustment.delta), 0)).where(
+                    StockAdjustment.shop_id == actor.shop_id,
+                    StockAdjustment.support_case_id == data.support_case_id,
+                    StockAdjustment.branch_id == data.branch_id,
+                    StockAdjustment.sku_id == data.sku_id,
+                    StockAdjustment.status.in_(("PENDING", "APPROVED")),
+                )
+            )
+            or 0
+        )
+        if used + data.delta > quarantined:
+            raise InsufficientStockError(
+                "Not enough quarantined stock for this case",
+                lines=[
+                    {
+                        "sku_id": data.sku_id,
+                        "branch_id": data.branch_id,
+                        "requested": data.delta,
+                        "available": quarantined - used,
+                        "quarantine": quarantined - used,
+                    }
+                ],
+            )
+
     # ================================================================== qoldiq va daftar
     async def list_balances(
         self,
@@ -276,6 +427,7 @@ class StockService:
             ensure_branch_scope(actor, branch_id)
         ids = await self.catalog.pick_sku_ids(db, actor.shop_id, q, limit)
         snapshots = await self.catalog.get_skus(db, actor.shop_id, ids)
+        roles = await self.catalog.sku_spec_categories(db, actor.shop_id, ids)
         balances: dict[UUID, StockBalance] = {}
         policy = await load_policy(db, actor.shop_id)
         if branch_id is not None and ids:
@@ -305,6 +457,7 @@ class StockService:
                     product_title=snap.product_title or snap.title,
                     variant_name=snap.variant_name,
                     sku_code=snap.sku_code,
+                    spec_category=roles.get(sku_id),
                     product_status=snap.product_status,
                     sku_status=snap.sku_status,
                     orderable=snap.sellable and priced,
@@ -450,6 +603,9 @@ class StockService:
             quantities[line.sku_id] = quantities.get(line.sku_id, 0) + line.qty
         snapshots = await self.catalog.get_skus(db, actor.shop_id, list(quantities))
         self._ensure_known(snapshots, [line.sku_id for line in data.lines], "lines")
+        cost_entries = await self.costs.entries_for_receipt(
+            db, actor, data.lines
+        )  # tannarx: faqat ega (DEC-146)
         receipt = StockReceipt(
             shop_id=actor.shop_id,
             branch_id=data.branch_id,
@@ -462,16 +618,20 @@ class StockService:
         first_line: dict[UUID, str] = {}
         for index, line in enumerate(data.lines):
             first_line.setdefault(line.sku_id, f"lines[{index}].qty")
-        await self.apply(
-            db,
-            actor,
-            [
-                Movement(data.branch_id, sku_id, "RECEIPT", "RECEIPT", receipt.id, on_hand=qty)
-                for sku_id, qty in quantities.items()
-            ],
-            create=True,
-            paths={(data.branch_id, sku_id): path for sku_id, path in first_line.items()},
-        )
+        movements = [
+            Movement(data.branch_id, sku_id, "RECEIPT", "RECEIPT", receipt.id, on_hand=qty)
+            for sku_id, qty in quantities.items()
+        ]
+        paths = {(data.branch_id, sku_id): path for sku_id, path in first_line.items()}
+        if cost_entries:
+            # O'rtacha kirimdan OLDINGI qoldiq bilan hisoblanadi: avval qoldiq qulflanadi, so'ng B o'qiladi,
+            # keyin kirim qo'llanadi va tannarx shu tranzaksiyada yoziladi
+            balances = await self.lock_balances(db, actor.shop_id, (m.key for m in movements), create=True)
+            basis = await self.costs.basis_qty(db, actor.shop_id, (e.sku_id for e in cost_entries))
+            await self.apply(db, actor, movements, balances, paths=paths)
+            await self.costs.record_receipt(db, actor, receipt.id, cost_entries, basis)
+        else:
+            await self.apply(db, actor, movements, create=True, paths=paths)
         await self.audit.record(
             db,
             action="commerce.stock.received",
@@ -610,6 +770,8 @@ class StockService:
             await self._usable_evidence(db, actor, data.evidence_file_id)
         balances = await self.lock_balances(db, actor.shop_id, [(data.branch_id, data.sku_id)], create=True)
         balance = balances[(data.branch_id, data.sku_id)]
+        if data.support_case_id is not None:  # soxta murojaat ID'si 422; karantindan ko'p chiqarish 409
+            await self._check_case_quarantine(db, actor, data)
         self._check_adjustment(balance, data.kind, data.delta)  # so'rovda ham — imkonsiz so'rov yuborilmasin
         adjustment = StockAdjustment(
             shop_id=actor.shop_id,
@@ -623,6 +785,7 @@ class StockService:
             requested_by=actor.membership_id,
             import_batch_id=import_batch_id,  # katalog importi farqi (5c, DEC-140)
             target_on_hand=target_on_hand,
+            support_case_id=data.support_case_id,
         )
         db.add(adjustment)
         await db.flush()
@@ -945,6 +1108,12 @@ class StockService:
         balance = balances[key]
         before = balance.on_hand
         await self.apply(db, actor, [self._movement(adjustment)], balances, paths={key: "delta"})
+        if adjustment.kind == "WRITE_OFF" or (
+            adjustment.kind == "ADJUSTMENT" and adjustment.delta < 0
+        ):  # yo'qotish qiymati uchun nusxa (DEC-146)
+            adjustment.unit_cost_uzs_minor = (
+                await current_unit_costs(db, adjustment.shop_id, [adjustment.sku_id])
+            ).get(adjustment.sku_id)
         adjustment.status = "APPROVED"
         adjustment.decided_by = actor.membership_id
         adjustment.decided_at = utcnow()
@@ -1043,6 +1212,7 @@ class StockService:
                     on_hand_before=r.on_hand_before,
                     on_hand_after=r.on_hand_after,
                     target_on_hand=r.target_on_hand,
+                    support_case_id=r.support_case_id,
                     current_on_hand=(
                         current.get((r.branch_id, r.sku_id), 0) if r.status == "PENDING" else None
                     ),

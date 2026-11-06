@@ -149,6 +149,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `INSUFFICIENT_AVAILABLE_STOCK` | 409 | Tasdiqlash / tez sotuv paytida qoldiq yetmadi (TC-002, TC-027) | yo'q |
 | `PRICE_CHANGED` | 409 | Narx snapshot'dan farq qiladi — xaridordan qayta rozilik (TC-031) | yo'q |
 | `QUOTE_EXPIRED` | 409 | Taklif muddati o'tgan | yo'q |
+| `QUOTE_CHANGED` | 409 | Qabulda narx yoki moslik o'zgargan — xodim yangi versiya yuboradi, xaridor qayta rozilik beradi (DEC-142 Q6) | yo'q |
 | `APPROVAL_REQUIRED` | 409 | Tasdiqsiz yuborib bo'lmaydi: taklif `REVIEW`, moslik `REVIEW_REQUIRED` (TC-008), chegirma tasdiq kutyapti | yo'q |
 | `EXCHANGE_RATE_STALE` | 409 | Dollar kursi eskirgan (UAT-M05) — yangi taklif berilmaydi | kurs yangilangach |
 | `PRODUCT_NOT_AVAILABLE` | 409 | Mahsulot chiqarilmagan, yashirilgan yoki arxivda (UAT-M07) | yo'q |
@@ -190,6 +191,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `SHOP_HAS_OPEN_ORDERS` | `{"open_orders": {"CONFIRMED": 3, "PROCESSING": 2}, "total": 5}` — faqat noldan kattalari |
 | `SITE_NOT_AVAILABLE` | `{"state": "COMING_SOON" \| "PAUSED", "preview": false}` |
 | `QUOTE_EXPIRED` | `{"expired_at"}` |
+| `QUOTE_CHANGED` | `{"lines": [{"sku_id", "title", "reason": "price" \| "not_available", "old_uzs_minor", "new_uzs_minor"}], "compatibility": {"old", "new", "new_rule_ids"} \| null}`; `new_rule_ids` — tasdiqdan keyin paydo bo'lgan BLOCK/REVIEW qoidalari (QA 6a F13); saytda `sku_id` yo'q |
 | `APPROVAL_REQUIRED` | `{"reason": "COMPATIBILITY_REVIEW" \| "QUOTE_REVIEW" \| "DISCOUNT", "approver_roles": ["MANAGER", "OWNER"]}`; chegirmada + `line_ids` |
 | `EXCHANGE_RATE_STALE` | `{"rate_effective_at", "max_age_hours"}` |
 | `RULE_BLOCK` | `{"ruleset_version", "findings": [{"rule_id", "severity"}]}` |
@@ -469,6 +471,14 @@ Holat: 3-modul backend'i qurilgan (2026-10-26, [progress/M03](progress/M03-comme
 | `POST /shop/orders/{id}/paid-mark` (bir marta) | `commerce.order.paid_mark` | Idem |
 | `POST /shop/orders/{id}/notes` (`Location` — buyurtma kartochkasi) | `commerce.order.note` | Idem |
 | `GET /shop/orders/{id}/history` — holat tarixi: kim (ism), qachon, `command`, `from_status → to_status`, sabab (xaridor ma'lumotisiz) | `commerce.order.view` | — |
+| `GET /shop/leads` (`status=A,B`, `assigned=me\|unassigned\|<id>`, `source=AI\|STAFF`, `q` — raqam yoki ism, cursor), `GET …/counts`, `GET …/{id}`, `GET …/{id}/history` | `commerce.lead.view` | — |
+| `POST /shop/leads` (suhbatda ochiq lead bo'lsa — o'sha qaytadi, begona operatorniki — 403; `conversation_id` shu shopniki bo'lmasa — 422; telefon faqat `consent_contact: true` bilan), `PATCH …/{id}` (yopilgan lead — 409), `POST …/{id}/qualify`, `…/lose` (`reason` majburiy; ochiq takliflar bekor), `…/reopen`, `…/take` | `commerce.lead.edit` | Idem (yaratish) / IfM |
+| `POST /shop/leads/{id}/assign` | `commerce.lead.assign` | IfM |
+| `GET /shop/quotes` (`status`, `lead_id`, `mine`, cursor), `GET …/{id}` (qoralamada jonli moslik, keyin muzlagan; `allowed_actions`, `price_changed`, `approver_discount_limit_pct`), `GET …/{id}/revisions/{n}`, `GET …/{id}/history` | `commerce.quote.view` | — |
+| `POST /shop/quotes` (lead bo'lmasa — avtomatik), `PUT …/{id}/lines` (to'liq ro'yxat; narx katalogdan), `POST …/{id}/submit` (BLOCK — 422 `RULE_BLOCK`; `RISKY_ONLY` + PASS + chegirmasiz — avto-tasdiq), `…/revise`, `…/cancel` | `commerce.quote.draft` | Idem + IfM |
+| `POST /shop/quotes/{id}/approve` (`note` — REVIEW_REQUIRED da majburiy; o'zi tuzganini — 403 `SELF_APPROVAL_NOT_ALLOWED`; chegirma limitdan katta — `DISCOUNT_LIMIT_EXCEEDED`), `…/return` (`reason`, yangi versiya) | `commerce.quote.approve` | Idem + IfM |
+| `POST /shop/quotes/{id}/send` → `{quote, public_path: "/q/{token}", public_url}` (token faqat javobda; takror — yangi havola), `…/accept` (xodim belgilaydi → DRAFT buyurtma), `…/reject` | `commerce.quote.send` | Idem + IfM |
+| `POST /shop/pc-builds/check` `{lines, full_build, branch_id?}` → moslik + narx + mavjudlik; `POST /shop/pc-builds/candidates` `{role, lines, q?, branch_id?, only_compatible?, limit≤20}` | `commerce.quote.draft` | — (saqlanmaydi) |
 
 Buyurtma javobida xaridor telefoni va manzili bor — takroriy so'rov himoyasi faqat ID'ni saqlaydi, takror kelgan so'rov buyurtmaning **joriy** holatini qaytaradi (26 §4). Omborchiga telefon yashirilgan holda, manzil faqat yetkazishda (10 §6.8). Telefon: harf bo'lsa yoki `+998` bilan 12 raqam bo'lmasa — `invalid_format`; 9 raqam — faqat mamlakat kodisiz.
 
@@ -501,6 +511,24 @@ Buyurtma javobida xaridor telefoni va manzili bor — takroriy so'rov himoyasi f
 | `POST /shop/ai/knowledge/{id}/publish`, `POST …/{id}/rollback` | `sales_ai.knowledge.publish` | Idem |
 | `POST /shop/ai/sandbox/messages` | `sales_ai.knowledge.test` | Idem |
 
+**6b amalda (2026-10-26, [progress/M06b](progress/M06b-ai-runtime.md)):**
+
+| Metod va yo'l | Ruxsat | Idem / IfM |
+|---|---|---|
+| `GET /shop/ai/settings` (javobda `auto_readiness`, `ETag`) | `sales_ai.settings.view` | — |
+| `PATCH /shop/ai/settings` (rejim `OFF/SHADOW/SUGGEST/AUTO`, ish vaqti, limitlar, profil, kill switch) | `sales_ai.settings.edit` | IfM |
+| `GET /shop/ai/status` (provayder, amaldagi rejim, pauza sababi, bugungi va oylik xarajat — USD micros) | `sales_ai.settings.view` | — |
+| `GET /shop/ai/knowledge`, `POST /shop/ai/knowledge` | `sales_ai.settings.view` / `sales_ai.settings.edit` | — |
+| `PATCH /shop/ai/knowledge/{id}` | `sales_ai.settings.edit` | IfM |
+| `POST /shop/ai/knowledge/{id}/publish`, `POST …/{id}/retire` | `sales_ai.settings.edit` | — |
+| `POST /shop/ai/sandbox/messages`, `DELETE /shop/ai/sandbox/sessions/{id}` | `sales_ai.knowledge.test` | — |
+| `GET /shop/conversations/{id}/ai/suggestions`, `GET …/ai/turns` | `sales_ai.suggestion.review` | — |
+| `POST /shop/conversations/{id}/ai/suggestions/{reply_id}/send` (`{body?}` — tahrirlab yuborish) | `sales_ai.suggestion.review` | Idem |
+| `POST /shop/conversations/{id}/ai/suggestions/{reply_id}/discard` | `sales_ai.suggestion.review` | — |
+| `POST /shop/conversations/{id}/resume-ai` | `messaging.conversation.takeover` | IfM |
+
+Yangi xato kodi yo'q: rejimni provayder sozlanmagan holda yoqish — 409 `INVALID_STATE_TRANSITION` (`reason: AI_NOT_CONFIGURED`); eskirgan taklif — 409 `INVALID_STATE_TRANSITION` (`reason: speaker_changed`); bilim bazasi hajmi — 422 `RULE_BLOCK` (`reason: KNOWLEDGE_LIMIT`); sinov oynasida limit — 429 `AI_QUOTA_EXCEEDED`; provayder sozlanmagan — 503 `PROVIDER_UNAVAILABLE`. Realtime signallar: `ai.suggestion.ready`, `ai.suggestion.reviewed`, `ai.turn.completed` (faqat ID'lar).
+
 ### 9.7 `storefront` (4-modul, DEC-135 — [progress/M04](progress/M04-storefront.md))
 
 | Surface | Metod va yo'l | Ruxsat | Idem |
@@ -521,7 +549,7 @@ Ommaviy o'qish: IP + shop bo'yicha 120/daq (IP — `X-Forwarded-For` faqat ishon
 |---|---|---|
 | `POST /storefront/{slug}/order-requests` | commerce | Savatcha → buyurtma so'rovi: darhol `PENDING_CONFIRMATION`, biriktirilmagan, band qilinmaydi, to'lovsiz (DEC-115, DEC-100b). Majburiy: `consent_version` (joriy versiya), olib ketishda `branch_id` (ochiq olib ketish joyi), yetkazishda `delivery_address` (`delivery_enabled` bo'lsa). Idem (`Idempotency-Key` = `orders.source_request_id`): takror — o'sha buyurtma, yangi `tracking_token`. Javob 201: `number`, `status: RECEIVED`, `tracking_token`, `tracking_path`, qatorlarda `available_in_branch`. Chegara: IP + shop + telefon — 10 daqiqada 5, IP + shop — 20 |
 | `GET /storefront/{slug}/orders/{tracking_token}` | commerce | Faqat o'z buyurtmasi: raqam, xaridorga ko'rinadigan holat (`RECEIVED`, `CONFIRMED`, `PREPARING`, `READY`, `COMPLETED`, `CANCELLED`), qatorlar, summa, olib ketish filiali. Telefon, manzil, izoh yo'q. Bazada tokenning faqat SHA-256 xeshi; noto'g'ri token — 404. 30/daq per IP |
-| `GET /storefront/{slug}/quotes/{token}`, `POST …/quotes/{token}/accept`, `POST …/quotes/{token}/reject` | commerce | Taklif havolasi (FSM-06 `SENT → ACCEPTED/REJECTED`). Idem |
+| `GET /storefront/{slug}/quotes/{token}`, `POST …/quotes/{token}/accept`, `POST …/quotes/{token}/reject` | commerce | Taklif havolasi (FSM-06 `SENT → ACCEPTED/REJECTED`, 6a): PII yo'q, bazada tokenning SHA-256 xeshi; noto'g'ri/boshqa shop tokeni — 404. Moslik xaridorga soddalashtirilgan (`expert_checked`, izoh; ichki qoida nomlari yo'q). Qabul: narx va moslik qayta (`QUOTE_CHANGED`), muddat (`QUOTE_EXPIRED`, rad etishda ham); javob `{status, order_number, tracking_path}`, takror — o'sha buyurtma, yangi holat havolasi. Idem (qabul). Chegara: ko'rish 30/daq per IP, qabul/rad 10 per 10 daq |
 | `POST /storefront/{slug}/chat/sessions` → `{token, expires_at, poll_interval_seconds}`, `GET …/chat/messages?after_seq=`, `POST …/chat/messages` `{client_message_id, body}`, `POST …/chat/contact` `{name?, phone?, consent: true}` → 204 (ism yoki telefon majburiy; `notice_version` yoziladi) | messaging | Saytdagi chat (5b): faqat LIVE sayt; token header'da — `X-Chat-Session` (sayt ilovasi httpOnly cookie'dan uzatadi); mehmon tili — `X-Customer-Locale` (yoki `Accept-Language`); rasmli xabarda `image_url` (imzoli, 5 daq); javoblar polling bilan (4 s), SSE — keyin ([08](08-cache-and-realtime.md) §6.6). Chegaralar: sessiya 10/soat per IP, o'qish 120/daq per IP + sessiya, yozish 20/daq per IP va 10/daq per sessiya; boshqa shop sessiyasi — 404. `GET /storefront/{slug}/site` da `chat_enabled` |
 
 ### 9.9 `support` va `reporting`

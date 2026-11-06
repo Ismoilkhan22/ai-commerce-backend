@@ -1,0 +1,277 @@
+# Production — bitta VPS (pilot, 22 §3). Ishga tushirish (backend repo ildizidan):
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+# deploy/.env.prod — compose o'zgaruvchilari (domen, tag, postgres paroli); deploy/app.env — ilova sozlamalari.
+# Qadamlar va .env qiymatlari: docs/engineering/progress/M08-deploy.md, 22 §3.1–3.2.
+#
+# Tashqariga faqat nginx (80/443). PostgreSQL, Redis, API, worker'lar — faqat ichki `cos` tarmog'ida.
+# nginx va shop sayti serverining IP'lari qat'iy: backend TRUSTED_PROXIES aynan shu ikkisiga ishonadi.
+name: cos-prod   # dev compose (commerce-os) volume'lari bilan aralashmasin
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }   # `docker compose logs` — 22 §3.2 "Loglarni ko'rish"
+
+x-backend: &backend
+  image: cos-backend:${BACKEND_TAG:?BACKEND_TAG kerak (git SHA)}
+  build:
+    context: ${BACKEND_DIR:-..}
+    dockerfile: deploy/docker/Dockerfile
+    args: { APP_VERSION: "${BACKEND_TAG}" }
+  env_file: [app.env]
+  environment:
+    APP_VERSION: ${BACKEND_TAG}
+    TZ: UTC
+  restart: unless-stopped
+  logging: *logging
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  networks: [cos]
+
+x-frontend: &frontend
+  restart: unless-stopped
+  logging: *logging
+  security_opt: ["no-new-privileges:true"]
+  environment:
+    NODE_ENV: production
+    PORT: "3000"
+    SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+  deploy: { resources: { limits: { memory: 384m } } }
+
+services:
+  # ---------------- Ma'lumotlar ----------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD kerak}
+      POSTGRES_DB: commerce_os
+    # 8 GB RAM'li VPS uchun boshlang'ich qiymatlar (Postgres'ga ~2 GB)
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_connections=120
+      - -c
+      - log_min_duration_statement=1000   # 1 s dan sekin so'rovlar (parametrlarsiz)
+      - -c
+      - log_statement=none
+    shm_size: 256mb
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d commerce_os"]
+      interval: 5s
+      retries: 20
+    deploy: { resources: { limits: { memory: 2g } } }
+    networks: [cos]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    # AOF everysec (22 §7.3). noeviction: arq navbati (db1) hech qachon jim o'chirilmasin
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec",
+              "--maxmemory", "384mb", "--maxmemory-policy", "noeviction"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    deploy: { resources: { limits: { memory: 512m } } }
+    networks: [cos]
+
+  # Har kuni 03:00 (Toshkent) pg_dump, 14 kun saqlanadi → ${BACKUP_HOST_DIR} (25 RB-08)
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    entrypoint: ["/backup/entrypoint.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: commerce_os
+      TZ: Asia/Tashkent
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+    volumes:
+      - ./backup:/backup:ro
+      - ${BACKUP_HOST_DIR:-/var/backups/commerce-os}:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 512m } } }
+    networks: [cos]
+
+  # ---------------- Backend (bitta image, 22 §2) ----------------
+  # Bir martalik: rollar/schemalar (idempotent) + har schema `alembic upgrade head`. api va worker'lar shundan keyin
+  migrate:
+    <<: *backend
+    command: ["migrate"]
+    restart: "no"
+    environment:
+      APP_VERSION: ${BACKEND_TAG}
+      SERVICE_NAME: migrate
+      DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/commerce_os
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *backend
+    command: ["api"]
+    environment:
+      APP_VERSION: ${BACKEND_TAG}
+      SERVICE_NAME: api
+      WEB_CONCURRENCY: ${API_WORKERS:-2}
+    volumes: [storage:/app/var/storage]   # faqat STORAGE_BACKEND=local bo'lsa ishlatiladi
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 1g } } }
+
+  outbox-worker:
+    <<: *backend
+    command: ["outbox-worker"]
+    environment: { APP_VERSION: "${BACKEND_TAG}", SERVICE_NAME: outbox-worker }
+    healthcheck: { disable: true }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 384m } } }
+
+  task-worker:
+    <<: *backend
+    command: ["task-worker"]
+    environment: { APP_VERSION: "${BACKEND_TAG}", SERVICE_NAME: task-worker }
+    volumes: [storage:/app/var/storage]
+    healthcheck: { disable: true }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 768m } } }
+
+  scheduler:
+    <<: *backend
+    command: ["scheduler"]
+    environment: { APP_VERSION: "${BACKEND_TAG}", SERVICE_NAME: scheduler }
+    healthcheck: { disable: true }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 256m } } }
+
+  # ---------------- Frontend (ai-commerce-frontend/Dockerfile, standalone) ----------------
+  shop-dashboard:
+    <<: *frontend
+    image: cos-shop-dashboard:${FRONTEND_TAG:?FRONTEND_TAG kerak (git SHA)}
+    build: &frontend-build
+      context: ${FRONTEND_DIR:-../../ai-commerce-frontend}
+      args:
+        APP: shop-dashboard
+        NEXT_PUBLIC_API_URL: https://api.${PLATFORM_DOMAIN}
+        NEXT_PUBLIC_SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+        NEXT_PUBLIC_APP_ENV: production
+        NEXT_PUBLIC_APP_VERSION: ${FRONTEND_TAG}
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+      HEALTH_PATH: /login
+    networks: [cos]
+
+  platform-admin:
+    <<: *frontend
+    image: cos-platform-admin:${FRONTEND_TAG}
+    build:
+      <<: *frontend-build
+      args:
+        APP: platform-admin
+        NEXT_PUBLIC_API_URL: https://api.${PLATFORM_DOMAIN}
+        NEXT_PUBLIC_SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+        NEXT_PUBLIC_APP_ENV: production
+        NEXT_PUBLIC_APP_VERSION: ${FRONTEND_TAG}
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+      HEALTH_PATH: /login
+    networks: [cos]
+
+  shop-storefront:
+    <<: *frontend
+    image: cos-shop-storefront:${FRONTEND_TAG}
+    build:
+      <<: *frontend-build
+      args:
+        APP: shop-storefront
+        NEXT_PUBLIC_API_URL: https://api.${PLATFORM_DOMAIN}
+        NEXT_PUBLIC_SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+        NEXT_PUBLIC_APP_ENV: production
+        NEXT_PUBLIC_APP_VERSION: ${FRONTEND_TAG}
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SENTRY_DSN: ${FRONTEND_SENTRY_DSN:-}
+      HEALTH_PATH: /healthz
+      # SSR ma'lumoti ichki tarmoqdan, nginx'siz: API sayt serveri IP'sini ko'radi (TRUSTED_PROXIES'da)
+      API_INTERNAL_URL: http://api:8000
+      STOREFRONT_HOST_SUFFIXES: ${PLATFORM_DOMAIN}
+      # nginx ortida — majburiy (22 §8): aks holda hamma mehmon bitta IP bo'lib qoladi
+      STOREFRONT_TRUSTED_PROXY_HOPS: "1"
+      STOREFRONT_ASSET_ORIGINS: ${STOREFRONT_ASSET_ORIGINS:-}
+    networks:
+      cos: { ipv4_address: 172.30.0.20 }
+
+  # ---------------- Chekka qatlam ----------------
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    logging: *logging
+    ports: ["80:80", "443:443"]
+    environment:
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?PLATFORM_DOMAIN kerak (masalan platforma.uz)}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/40-reload-loop.sh:/docker-entrypoint.d/40-reload-loop.sh:ro   # sertifikat yangilansa — reload
+      - letsencrypt:/etc/letsencrypt:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/nginx-health"]
+      interval: 15s
+      retries: 3
+    depends_on: [api, shop-dashboard, platform-admin, shop-storefront]
+    deploy: { resources: { limits: { memory: 128m } } }
+    networks:
+      cos: { ipv4_address: 172.30.0.10 }
+
+  # Let's Encrypt wildcard (DNS-01, Cloudflare DNS API). Birinchi sertifikat — M08 "Birinchi deploy" 4-qadam
+  certbot:
+    image: certbot/dns-cloudflare:v4.2.0
+    restart: unless-stopped
+    logging: *logging
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --quiet --dns-cloudflare --dns-cloudflare-credentials /run/secrets/cloudflare.ini; sleep 12h & wait $${!}; done"]
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - ./secrets/cloudflare.ini:/run/secrets/cloudflare.ini:ro
+    networks: [cos]
+
+networks:
+  cos:
+    ipam:
+      # Dinamik IP'lar faqat .128–.254 dan: qat'iy .10 (nginx) va .20 (sayt) boshqa konteynerga tushib qolmasin
+      config: [{ subnet: 172.30.0.0/24, ip_range: 172.30.0.128/25 }]
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:
+  letsencrypt:

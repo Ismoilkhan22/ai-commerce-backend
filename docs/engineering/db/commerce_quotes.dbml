@@ -1,0 +1,333 @@
+// =====================================================================
+// AI Commerce OS — `commerce` schemasiga qo'shimcha: leadlar va PC takliflari (6-modul, S3-05)
+// Holat: TAKLIF 2026-10-26 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar: commerce_quotes.md oxirida ("Founder ko'rib chiqishi uchun qarorlar").
+// Tasdiqlangan commerce.dbml (DEC-134) O'ZGARTIRILMAYDI — bu fayl unga qo'shiladigan jadvallar va
+//        orders ga qo'shiladigan 2 ta FK'ni ko'rsatadi (pastda, "commerce.dbml ga ta'sir").
+// Ko'rish: https://dbdiagram.io → shu faylni to'liq nusxalab qo'ying
+// Izohlar: db/commerce_quotes.md
+// Manba hujjatlar: business/02 M08, M12; business/03 BL-027…BL-030, BL-041…BL-047, BL-110; business/05 FSM-05, FSM-06;
+//                  engineering/07 §4.4, 12 §5, 14 §4.5–4.8, 17 §7, §9; engineering/27 S3-05, S3-06;
+//                  DEC-100c, DEC-100e, DEC-102, DEC-103, DEC-109, DEC-110, DEC-121, DEC-127, DEC-134
+// =====================================================================
+
+Project ai_commerce_os_commerce_quotes {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Umumiy qoidalar** — commerce.dbml bilan bir xil: UUIDv7, timestamptz, `shop_id NOT NULL`, (shop_id, id) composite FK,
+  holatlar TEXT + CHECK, RLS ENABLE + FORCE, biznes yozuvlari o'chirilmaydi.
+
+  **Pul:** butun son minor units. Xaridor so'mda ko'radi (DEC-121): har qator o'z valyutasi + kurs nusxasi + so'mdagi narx.
+  **Boshqa schemalar:** catalog.skus/products/price_versions/exchange_rates/reference_hardware_specs,
+  messaging.conversations/customer_identities, sales_ai.ai_turns, platform.memberships — faqat uuid, FK'siz.
+
+  **Standart texnik jadvallar:** commerce.outbox_events, commerce.consumer_receipts (jobs.dbml).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum)
+// ---------------------------------------------------------------------
+
+Enum commerce.lead_status {
+  NEW [note: 'Yangi: suhbatdan yoki xodim qo\'lda yaratdi']
+  QUALIFIED [note: 'Aniqlandi: byudjet va maqsad ma\'lum']
+  QUOTED [note: 'Taklif yuborildi']
+  WON [note: 'Yutildi: lead buyurtmasi topshirildi (COMPLETED)']
+  LOST [note: 'Yo\'qotildi — sabab bilan']
+}
+
+Enum commerce.lead_lost_reason {
+  TOO_EXPENSIVE [note: 'Qimmat']
+  OUT_OF_STOCK [note: 'Mahsulot yo\'q']
+  NOT_COMPATIBLE [note: 'Mos yig\'ma topilmadi']
+  NO_RESPONSE [note: 'Javob bermadi']
+  BOUGHT_ELSEWHERE [note: 'Raqobatchidan oldi']
+  OTHER
+}
+
+Enum commerce.actor_kind {
+  AI [note: 'AI sotuvchi qoralamasi (DEC-100c)']
+  STAFF [note: 'Xodim']
+  CUSTOMER [note: 'Xaridor (taklifni qabul qilish / rad etish)']
+  SYSTEM [note: 'Rejali ish (muddat tugashi)']
+}
+
+Enum commerce.quote_status {
+  DRAFT [note: 'Qoralama: AI yoki operator tuzmoqda']
+  REVIEW [note: 'Tekshiruvda: menejer/ega tasdig\'ini kutmoqda']
+  APPROVED [note: 'Tasdiqlandi: narxlar muzlatildi, hali yuborilmagan']
+  SENT [note: 'Xaridorga yuborildi (havola + kanal xabari), muddat boshlandi']
+  ACCEPTED [note: 'Xaridor qabul qildi → DRAFT buyurtma yaratildi']
+  REJECTED [note: 'Xaridor rad etdi yoki menejer qaytardi']
+  EXPIRED [note: 'Muddati o\'tdi (quote_ttl_hours, DEC-103)']
+  CANCELLED [note: 'Yangi versiya bilan almashtirildi yoki lead yopildi — yuborilmagan holatda']
+}
+
+Enum commerce.compat_decision {
+  PASS
+  REVIEW_REQUIRED
+  BLOCK
+}
+
+Enum commerce.compat_stage {
+  SUBMIT [note: 'Tekshiruvga yuborishda (revision muzlaganda)']
+  APPROVAL [note: 'Menejer tasdiqlaganda (agar ruleset yoki spec o\'zgargan bo\'lsa qayta)']
+  ACCEPT [note: 'Xaridor qabul qilganda (17 §9, BL-030)']
+}
+
+Enum commerce.quote_line_role {
+  CPU
+  MOTHERBOARD
+  RAM
+  GPU
+  STORAGE
+  PSU
+  CASE
+  CPU_COOLER
+  MONITOR
+  PERIPHERAL
+  SERVICE [note: 'Yig\'ish xizmati, OS o\'rnatish — SKU sifatida katalogda']
+  OTHER
+}
+
+// ---------------------------------------------------------------------
+// Leadlar (FSM-05)
+// ---------------------------------------------------------------------
+
+Table commerce.leads {
+  id uuid [pk]
+  shop_id uuid [not null]
+  number int [not null, note: 'Shop ichida ketma-ket (lead_counters), ekranda "L-57"']
+  status commerce.lead_status [not null, default: 'NEW', note: 'FSM-05']
+  source commerce.actor_kind [not null, note: 'AI | STAFF']
+  conversation_id uuid [note: 'messaging.conversations.id — qaysi suhbatdan. Xodim qo\'lda yaratsa bo\'sh bo\'lishi mumkin']
+  customer_identity_id uuid [note: 'messaging.customer_identities.id']
+  customer_name text [note: 'Rozilik bilan; PII o\'chirilganda tozalanadi']
+  contact_phone_enc text [note: 'EncryptedString. Faqat consent_contact_at bo\'lsa (BL-042)']
+  contact_phone_hmac text [note: 'Shop ichida dublikat qidirish uchun (BL-042)']
+  consent_contact_at timestamptz [note: 'Xaridor kontakt saqlashga rozi bo\'lgan vaqt']
+  requirements jsonb [not null, default: '{}', note: 'Slot nusxasi: {budget_minor, currency, workloads[], monitor_needed, brand_prefs[], notes} — PII yo\'q']
+  budget_minor bigint [note: 'requirements dan, saralash/hisobot uchun ustunga chiqarilgan (UZS)']
+  assigned_membership_id uuid [note: 'platform.memberships.id — mas\'ul operator']
+  lost_reason commerce.lead_lost_reason [note: 'LOST da majburiy']
+  lost_reason_inferred boolean [not null, default: false, note: 'AI taxmin qildi → ekranda "ehtimoliy" (business/05)']
+  lost_note text
+  won_order_id uuid [note: 'WON ga olib kelgan buyurtma']
+  merged_into_lead_id uuid [note: 'Operator qo\'lda birlashtirsa (M12) — eski lead shunga ishora qiladi']
+  ai_request_id text [note: 'AI tool idempotency kaliti (14 §3.1) — takroriy capture_lead ikkinchi lead yaratmaydi']
+  created_by uuid [note: 'Xodim; AI bo\'lsa NULL']
+  pii_erased_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, number) [unique]
+    (shop_id, ai_request_id) [unique, note: 'Partial: WHERE ai_request_id IS NOT NULL']
+    (shop_id, conversation_id) [unique, note: 'Partial: WHERE status IN (NEW, QUALIFIED, QUOTED) AND merged_into_lead_id IS NULL — bitta suhbatda bitta ochiq lead']
+    (shop_id, status, updated_at) [note: 'Kanban ro\'yxati']
+    (shop_id, contact_phone_hmac) [note: 'Dublikat qidirish (faqat shop ichida)']
+    (shop_id, assigned_membership_id, status)
+  }
+  Note: '''
+  Sotuv imkoniyati. AI capture_lead (14 §4.5) yoki xodim yaratadi. QUOTED — birinchi taklif SENT bo'lganda avtomatik;
+  WON — lead'ga bog'langan buyurtma COMPLETED bo'lganda avtomatik (event), LOST — xodim (sabab bilan) yoki 30 kun
+  jimlikdan keyin rejali ish taklif qiladi (vazifa, avtomatik yopmaydi). LOST → QUALIFIED (xaridor qaytdi).
+  Telegram va Instagram'dagi bir xaridor avtomatik birlashtirilmaydi (M12) — faqat qo'lda, merged_into_lead_id.
+  RLS (FORCE).
+  '''
+}
+
+Table commerce.lead_counters {
+  shop_id uuid [pk]
+  last_number int [not null, default: 0]
+  Note: 'order_counters bilan bir xil naqsh. RLS kerak emas.'
+}
+
+// ---------------------------------------------------------------------
+// PC takliflari (FSM-06)
+// ---------------------------------------------------------------------
+
+Table commerce.quote_counters {
+  shop_id uuid [pk]
+  last_number int [not null, default: 0]
+  Note: 'Taklif raqami shop ichida ketma-ket ("T-1042"). RLS kerak emas.'
+}
+
+Table commerce.quotes {
+  id uuid [pk]
+  shop_id uuid [not null]
+  number int [not null]
+  lead_id uuid [not null, note: 'Har taklif lead\'ga tegishli (lead bo\'lmasa — taklif yaratishda avtomatik ochiladi)']
+  conversation_id uuid [note: 'messaging — taklif qaysi suhbatga yuboriladi']
+  status commerce.quote_status [not null, default: 'DRAFT', note: 'FSM-06']
+  current_revision_id uuid [note: 'Oxirgi revision. DRAFT da tahrirlanadi, REVIEW dan boshlab muzlaydi']
+  current_revision_no int [not null, default: 1]
+  created_by_kind commerce.actor_kind [not null, note: 'AI | STAFF']
+  created_by uuid [note: 'Xodim; AI bo\'lsa NULL, ai_turn_id revision\'da']
+  public_token_hash text [note: 'Xaridor havolasi /q/{token} — faqat sha256 (havola o\'zi bazada yo\'q). SENT da yaratiladi']
+  sent_at timestamptz
+  sent_by uuid
+  expires_at timestamptz [note: 'sent_at + shop_policies.quote_ttl_hours (DEC-103, standart 24)']
+  accepted_at timestamptz
+  accepted_order_id uuid [note: 'Qabuldan yaratilgan DRAFT buyurtma (orders.quote_id → shu)']
+  rejected_at timestamptz
+  rejected_by_kind commerce.actor_kind
+  reject_reason text
+  cancelled_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, number) [unique]
+    (shop_id, lead_id)
+    (shop_id, status, updated_at) [note: 'Tasdiq navbati: status = REVIEW']
+    public_token_hash [unique, note: 'Partial: WHERE public_token_hash IS NOT NULL. Global — havola shopni o\'zi topadi']
+    expires_at [note: 'Partial: WHERE status = SENT — muddat ishi']
+  }
+  Note: '''
+  Faqat PC yig'ma va maxsus narx uchun (DEC-100e). Oddiy mahsulot taklifsiz buyurtma qoralamasiga ketadi.
+
+  DRAFT ──(AI/operator "tekshiruvga")──▶ REVIEW ──(menejer/ega)──▶ APPROVED ──(yuborish)──▶ SENT
+  DRAFT ──(RISKY_ONLY rejimi: PASS, chegirma yo'q, summa < chegara)──▶ APPROVED (avtomatik, DEC-102)
+  SENT ──(xaridor qabul)──▶ ACCEPTED [DRAFT buyurtma]   SENT ──(muddat)──▶ EXPIRED   SENT ──(rad)──▶ REJECTED
+  REVIEW ──(menejer qaytardi)──▶ DRAFT [yangi revision]   REJECTED/EXPIRED ──(qayta ishlash)──▶ yangi revision, DRAFT
+  DRAFT/REVIEW/APPROVED ──(bekor)──▶ CANCELLED
+
+  Kim tasdiqlaydi: menejer (DEC-110 chegirma limiti ichida) yoki ega; o'zi tuzgan taklifni o'zi tasdiqlay olmaydi (DEC-109).
+  AI hech qachon tasdiqlamaydi va yubormaydi — yuborish operator/menejer tugmasi (AI faqat "tayyorlanmoqda" deydi).
+  BLOCK moslikli revision REVIEW ga o'tolmaydi. REVIEW_REQUIRED — tasdiqlovchi approval_note (dalil) yozishi shart.
+  RLS (FORCE).
+  '''
+}
+
+Table commerce.quote_revisions {
+  id uuid [pk]
+  shop_id uuid [not null]
+  quote_id uuid [not null]
+  revision int [not null, note: '1, 2, 3… — yangi versiya eskisini o\'zgartirmaydi (BL-043)']
+  requirements jsonb [not null, default: '{}', note: 'Byudjet, ish turi, afzalliklar — nusxa']
+  exchange_rate_id uuid [note: 'catalog.exchange_rates — dollarli qator bo\'lsa majburiy']
+  exchange_rate_snapshot numeric(18,6)
+  subtotal_uzs_minor bigint [not null, default: 0]
+  discount_uzs_minor bigint [not null, default: 0]
+  total_uzs_minor bigint [not null, default: 0, note: 'Xaridor ko\'radigan jami, so\'mda']
+  currency text [not null, default: 'UZS']
+  compatibility_decision commerce.compat_decision [note: 'SUBMIT snapshot natijasi, ro\'yxat uchun ustunga chiqarilgan']
+  ruleset_version text [note: 'Kod ichidagi RULESET_VERSION ("pc-2026-10-v1") — muzlagan. Qoidalar faqat kodda, jadvali yo\'q']
+  created_by_kind commerce.actor_kind [not null]
+  created_by uuid
+  ai_turn_id uuid [note: 'sales_ai.ai_turns.id — AI qoralamasi bo\'lsa (audit, baholash)']
+  ai_request_id text [note: 'AI tool idempotency kaliti — takroriy prepare_quote_draft ikkinchi revision yaratmaydi']
+  submitted_at timestamptz [note: 'REVIEW ga yuborilgan — shu paytdan qatorlar o\'zgarmaydi']
+  approved_by uuid
+  approved_at timestamptz
+  approval_mode text [note: 'MANUAL | AUTO_RISKY_ONLY (DEC-102)']
+  approval_note text [note: 'REVIEW_REQUIRED tasdig\'ida majburiy — dalil (FSM-06)']
+  returned_note text [note: 'Menejer qaytarsa — sabab']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1, note: 'Faqat DRAFT da tahrirlash uchun (If-Match)']
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, quote_id, revision) [unique]
+    (shop_id, ai_request_id) [unique, note: 'Partial: WHERE ai_request_id IS NOT NULL']
+  }
+  Note: '''
+  Narx nusxasi revision'da: qatorlar commerce tomonida katalogdan o'qiladi, AI'dan olinmaydi (14 §4.6, BL-041).
+  submitted_at bo'lgandan keyin qatorlar, jami va kurs o'zgarmaydi (trigger). Qabulda va buyurtma tasdig'ida narx va moslik
+  baribir qayta tekshiriladi (DEC-127, DEC-134, BL-030): farq bo'lsa — PRICE_CHANGED / moslik o'zgardi, xaridordan qayta rozilik.
+  RLS (FORCE).
+  '''
+}
+
+Table commerce.quote_lines {
+  id uuid [pk]
+  shop_id uuid [not null]
+  quote_revision_id uuid [not null]
+  position int [not null]
+  role commerce.quote_line_role [not null, note: 'Yig\'madagi o\'rni — katalog toifasidan (spec_category)']
+  sku_id uuid [not null]
+  product_id uuid [not null]
+  title_snapshot text [not null]
+  sku_code_snapshot text [not null]
+  qty int [not null, note: 'CHECK > 0']
+  price_version_id uuid [not null]
+  unit_price_minor bigint [not null]
+  currency text [not null, note: 'UZS | USD']
+  unit_price_uzs_minor bigint [not null, note: 'Kurs bo\'yicha so\'mda, aniq so\'mgacha (DEC-133)']
+  discount_pct numeric(5,2) [not null, default: 0, note: 'Faqat xodim; AI chegirma qo\'ya olmaydi (DEC-110). Tasdiqlovchi limiti tekshiriladi']
+  line_total_uzs_minor bigint [not null]
+  warranty_months int [note: 'Nusxa (BL-057)']
+  spec_id uuid [note: 'catalog.reference_hardware_specs — bog\'langan bo\'lsa']
+  spec_version int [note: 'Moslik tekshirilgan spec versiyasi (BL-030)']
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, quote_revision_id, position) [unique]
+    (shop_id, quote_revision_id, sku_id) [unique, note: 'Bir revision\'da bir SKU — bitta qator (qty bilan)']
+  }
+  Note: 'Hammasi nusxa. RLS (FORCE). Maksimal 15 qator (14 §4.6).'
+}
+
+Table commerce.quote_compatibility_snapshots {
+  id uuid [pk]
+  shop_id uuid [not null]
+  quote_revision_id uuid [not null]
+  stage commerce.compat_stage [not null]
+  ruleset_version text [not null]
+  decision commerce.compat_decision [not null]
+  can_publish boolean [not null]
+  findings jsonb [not null, note: '17 §7 CompatibilityResult.findings — rule_id, severity, facts, evidence (spec_id, version, source_url). Tushuntirish matni locale bo\'yicha qayta yasaladi']
+  spec_versions jsonb [not null, note: '{sku_id: {spec_id, version}}']
+  estimated_power_w int
+  checked_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, quote_revision_id, stage) [unique, note: 'Har bosqichda bitta muzlagan natija']
+  }
+  Note: '''
+  Moslik natijasi taklif bilan muzlatiladi (BL-030, 17 §7). Engine o'zi yozmaydi — egasi commerce (ADR-032).
+  Ruleset yoki spec o'zgarsa (catalog.pc_ruleset.activated / catalog.hardware_spec.updated): yuborilmagan
+  (DRAFT/REVIEW/APPROVED) takliflar qayta tekshiriladi; SENT o'zgarmaydi, ACCEPT bosqichida joriy versiya bilan qayta.
+  O'zgarmaydi (faqat INSERT). RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// commerce.dbml ga ta'sir (tasdiqlangan faylga migratsiyada qo'shiladi)
+// ---------------------------------------------------------------------
+// 1. Enum commerce.order_source ga QUOTE qo'shiladi (commerce.dbml 98-qator izohi).
+// 2. orders.quote_id va orders.quote_revision_id ga FK:
+//    (shop_id, quote_id) → commerce.quotes.(shop_id, id), (shop_id, quote_revision_id) → commerce.quote_revisions.(shop_id, id).
+// 3. orders.lead_id (yangi ustun, ixtiyoriy) — lead WON avtomatikasi uchun; AI order_draft va qabuldan to'ldiriladi.
+
+// ---------------------------------------------------------------------
+// Bog'lanishlar
+// ---------------------------------------------------------------------
+
+Ref: commerce.leads.(shop_id, merged_into_lead_id) > commerce.leads.(shop_id, id)
+Ref: commerce.quotes.(shop_id, lead_id) > commerce.leads.(shop_id, id) [delete: restrict]
+Ref: commerce.quotes.(shop_id, current_revision_id) > commerce.quote_revisions.(shop_id, id)
+Ref: commerce.quote_revisions.(shop_id, quote_id) > commerce.quotes.(shop_id, id) [delete: restrict]
+Ref: commerce.quote_lines.(shop_id, quote_revision_id) > commerce.quote_revisions.(shop_id, id) [delete: restrict]
+Ref: commerce.quote_compatibility_snapshots.(shop_id, quote_revision_id) > commerce.quote_revisions.(shop_id, id) [delete: restrict]
+
+TableGroup leadlar {
+  commerce.leads
+  commerce.lead_counters
+}
+
+TableGroup pc_takliflari {
+  commerce.quotes
+  commerce.quote_revisions
+  commerce.quote_lines
+  commerce.quote_compatibility_snapshots
+  commerce.quote_counters
+}

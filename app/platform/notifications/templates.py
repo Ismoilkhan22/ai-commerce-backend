@@ -111,6 +111,19 @@ TEMPLATES: dict[str, Template] = {
             "en": "Warehouse staff requested an adjustment — approval needed.",
         },
     ),
+    "staff.support_case_opened": Template(
+        "NORMAL",
+        {
+            "uz": "Yangi kafolat murojaati K-{case_number}",
+            "ru": "Новое гарантийное обращение K-{case_number}",
+            "en": "New warranty case K-{case_number}",
+        },
+        {
+            "uz": "Murojaat ochildi — qaror menejer yoki ega tomonidan qabul qilinadi.",
+            "ru": "Обращение открыто — решение принимает менеджер или владелец.",
+            "en": "A case was opened — a manager or owner makes the decision.",
+        },
+    ),
     "staff.stock_reconcile_mismatch": Template(
         "HIGH",
         {
@@ -178,6 +191,33 @@ TEMPLATES: dict[str, Template] = {
             "uz": "Xaridorga xabar yetmadi ({error_code}). Suhbatni oching va boshqa yo'l bilan bog'laning.",
             "ru": "Сообщение не дошло ({error_code}). Откройте диалог и свяжитесь другим способом.",
             "en": "Message not delivered ({error_code}). Open the conversation and reach out another way.",
+        },
+    ),
+    # 6b: AI sotuvchi (M06 §8) — limit tugadi, AI to'xtadi, suhbatlar operatorga
+    "staff.ai_budget_warning": Template(
+        "NORMAL",
+        {
+            "uz": "AI xarajati {period} limitning 80% iga yetdi",
+            "ru": "Расход AI достиг 80% лимита ({period})",
+            "en": "AI spend reached 80% of the {period} limit",
+        },
+        {
+            "uz": "Limit tugasa AI to'xtaydi va suhbatlar operatorga o'tadi.",
+            "ru": "Когда лимит закончится, AI остановится и диалоги перейдут к оператору.",
+            "en": "When the limit is reached the AI pauses and conversations go to operators.",
+        },
+    ),
+    "staff.ai_budget_exceeded": Template(
+        "HIGH",
+        {
+            "uz": "AI sotuvchi to'xtadi — {period} limit tugadi",
+            "ru": "AI-продавец остановлен — исчерпан лимит ({period})",
+            "en": "AI seller paused — {period} cost limit reached",
+        },
+        {
+            "uz": "Yangi suhbatlar operatorga o'tadi. Limitni AI sozlamalarida oshirishingiz mumkin.",
+            "ru": "Новые диалоги переходят к оператору. Лимит можно поднять в настройках AI.",
+            "en": "New conversations go to operators. You can raise the limit in AI settings.",
         },
     ),
 }

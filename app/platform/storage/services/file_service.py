@@ -86,6 +86,8 @@ PURPOSES: dict[str, PurposeRule] = {
     "SITE_LOGO": PurposeRule("storefront.site.edit", True, MAX_LOGO_BYTES, IMAGE_TYPES),
     # Suhbat rasmi (5b): operator biriktiradi; xaridor yuborgani worker orqali (`store_system`)
     "CHAT_ATTACHMENT": PurposeRule("messaging.conversation.reply", False, MAX_IMAGE_BYTES, IMAGE_TYPES),
+    # Kafolat murojaati rasmi (7b, DEC-145): nuqson surati, chek. Yopiq, imzoli havola
+    "SUPPORT_EVIDENCE": PurposeRule("support.case.service", False, MAX_IMAGE_BYTES, IMAGE_TYPES),
     # Katalog importi (5c): XLSX yoki CSV, 10 MB (18 §4). Jadval ekanini import moduli to'liq tekshiradi
     "IMPORT_FILE": PurposeRule("catalog.import.run", False, MAX_IMPORT_BYTES, DOCUMENT_TYPES),
 }

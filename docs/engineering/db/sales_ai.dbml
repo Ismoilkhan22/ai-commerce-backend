@@ -1,0 +1,489 @@
+// =====================================================================
+// AI Commerce OS — `sales_ai` schemasi: AI sotuvchi + `platform/llm` jadvallari (6-modul, S3-01, S3-04, S3-07, S3-08)
+// Holat: TAKLIF 2026-10-26 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar: sales_ai.md oxirida ("Founder ko'rib chiqishi uchun qarorlar"). Arxitektura: ../ai/M06-architecture.md
+// Ko'rish: https://dbdiagram.io → shu faylni to'liq nusxalab qo'ying
+// Izohlar: db/sales_ai.md
+// Manba hujjatlar: business/02 M11, M19; business/08; business/03 BL-037…BL-041, BL-067, BL-069, BL-110;
+//                  engineering/07 §4.1 (ai_usage, llm_pii_refs), §4.6; 12 §8; 14 (hammasi); 16; 26 §4–§8;
+//                  engineering/27 S3-00…S3-08; DEC-009, DEC-016, DEC-100c, DEC-102, DEC-110, DEC-118, DEC-119, ADR-027
+// =====================================================================
+
+Project ai_commerce_os_sales_ai {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Umumiy qoidalar** — boshqa schemalar bilan bir xil: UUIDv7, timestamptz, shop jadvallarida `shop_id NOT NULL`,
+  (shop_id, id) composite FK, holatlar TEXT + CHECK, RLS ENABLE + FORCE (shop jadvallari).
+  Global jadvallar (prompt_versions, eval_*) — shop_id yo'q, faqat platform surface yozadi.
+
+  **Boshqa schemalar** (faqat uuid, FK'siz): messaging.conversations/messages, commerce.leads/quotes/orders,
+  catalog.skus, platform.memberships, platform.stored_files.
+
+  **Shaxsiy ma'lumot (DEC-016, 26):** LLM'ga faqat redact qilingan matn. AI javobi matni — reply_text_enc (EncryptedString).
+  Tool argumentlari va natijalari — faqat redact qilingan / ID va dalil. Token → haqiqiy qiymat — platform.llm_pii_refs.
+
+  **Standart texnik jadvallar:** sales_ai.outbox_events, sales_ai.consumer_receipts (jobs.dbml).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum)
+// ---------------------------------------------------------------------
+
+Enum sales_ai.ai_mode {
+  OFF [note: 'AI javob bermaydi — hammasi operatorga (standart, ega yoqmaguncha)']
+  SHADOW [note: 'AI yozadi, hech kimga ko\'rsatilmaydi — operator javobi bilan solishtirish (16 §5)']
+  SUGGEST [note: 'AI taklif yozadi, operator ko\'rib yuboradi (pilotning 1-haftasi)']
+  AUTO [note: 'AI o\'zi yuboradi, xavfli holatda operatorga uzatadi']
+}
+
+Enum sales_ai.version_status {
+  DRAFT
+  APPROVED [note: 'Ega tasdiqladi (profil, bilim) / eval o\'tdi (prompt)']
+  ACTIVE [note: 'Faqat prompt_versions: hozir ishlatilayotgan']
+  RETIRED
+}
+
+Enum sales_ai.knowledge_kind {
+  FAQ [note: 'Savol-javob: "Yetkazib berasizmi?"']
+  POLICY [note: 'Siyosat matni: yetkazish, kafolat, qaytarish, to\'lov']
+}
+
+Enum sales_ai.ai_stage {
+  IDLE
+  QUALIFYING [note: 'Ehtiyojni aniqlayapti']
+  RECOMMENDING [note: 'Mahsulot / yig\'ma tavsiya qilyapti']
+  QUOTE_PENDING [note: 'Taklif qoralamasi menejerda']
+  ORDER_DRAFTED [note: 'Buyurtma qoralamasi yaratildi, operator chaqirildi']
+  HANDED_OFF
+  STOPPED [note: 'AI o\'chirildi yoki limit']
+}
+
+Enum sales_ai.turn_status {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+Enum sales_ai.turn_outcome {
+  REPLY_QUEUED [note: 'AUTO: javob messaging AiReplyService.queue ga topshirildi']
+  SUGGESTED [note: 'SUGGEST: operator ekranida taklif']
+  SHADOWED [note: 'SHADOW: saqlandi, ko\'rsatilmadi']
+  DISCARDED [note: 'Fencing: speaker_version o\'zgardi yoki yangiroq xabar keldi']
+  HANDOFF [note: 'Operatorga uzatildi (sabab handoff_reason da)']
+  NO_REPLY [note: 'Javob kerak emas (masalan, faqat "rahmat" va suhbat yopilgan)']
+  ERROR [note: 'Provayder / ichki xato — handoff bilan']
+}
+
+Enum sales_ai.handoff_reason {
+  CUSTOMER_REQUEST
+  PURCHASE_INTENT
+  PRICE_UNKNOWN
+  COMPATIBILITY_REVIEW
+  DISCOUNT_REQUEST
+  COMPLAINT
+  WARRANTY_OR_RETURN
+  PAYMENT_QUESTION
+  VALIDATION_FAILED
+  TOOL_ERROR
+  PROVIDER_UNAVAILABLE
+  BUDGET_EXCEEDED
+  UNSUPPORTED_REQUEST
+  SECURITY
+  REFUSAL [note: 'Model xavfsizlik sababli javob bermadi (stop_reason = refusal)']
+}
+
+Enum sales_ai.tool_decision {
+  ALLOWED
+  DENIED [note: 'Ruxsat, sxema yoki budget tufayli rad (VALIDATION_FAILED, FORBIDDEN, BUDGET_EXCEEDED)']
+}
+
+Enum sales_ai.feedback_verdict {
+  SENT_AS_IS [note: 'Operator taklifni o\'zgartirmay yubordi']
+  EDITED [note: 'Tahrirlab yubordi']
+  REJECTED [note: 'Yubormadi, o\'zi yozdi']
+  FLAGGED [note: 'Xato deb belgiladi (AUTO yoki SHADOW javobi)']
+}
+
+Enum sales_ai.eval_run_status {
+  RUNNING
+  PASSED [note: 'Nol toqat ro\'yxati buzilmadi va chegaralar o\'tdi']
+  FAILED
+  ERROR
+}
+
+Enum platform.llm_purpose {
+  SALES_TURN [note: 'AI sotuvchi navbati']
+  SUMMARY [note: 'Suhbat xulosasi']
+  CLASSIFY [note: 'Til / niyat / PII tekshiruvi (arzon model)']
+  EVAL_JUDGE [note: 'Baholash (shop\'ga hisoblanmaydi)']
+  REPORT_ASSISTANT [note: 'Keyin — S5 hisobot yordamchisi']
+}
+
+// ---------------------------------------------------------------------
+// Sozlamalar va bilim (S3-07)
+// ---------------------------------------------------------------------
+
+Table sales_ai.agent_settings {
+  shop_id uuid [pk]
+  mode sales_ai.ai_mode [not null, default: 'OFF']
+  active_profile_version_id uuid [note: 'Hozir ishlatilayotgan shop profili versiyasi']
+  languages text[] [not null, default: '{uz,ru}', note: 'AI javob beradigan tillar; boshqa tilda — handoff UNSUPPORTED yoki shu tillardan birida']
+  allowed_tools text[] [not null, note: 'Platforma ruxsat bergan ro\'yxatdan kichik to\'plam. Standart — hammasi (14 §4). Yozuvchi tool o\'chirilsa, AI faqat maslahat beradi']
+  handoff_rules jsonb [not null, default: '{}', note: '{"always_handoff_on": ["COMPLAINT","WARRANTY_OR_RETURN"], "max_ai_turns_before_offer_human": 8, "outside_hours": "ANSWER_AND_NOTE"}']
+  daily_cost_cap_minor bigint [note: 'Kunlik AI xarajati chegarasi (USD sent). NULL — faqat tarif limiti (DEC-119)']
+  greeting_enabled boolean [not null, default: true, note: 'Birinchi xabarga AI o\'zini AI deb tanishtiradi (14 §14.10)']
+  kill_switch_at timestamptz [note: 'Platforma yoki ega favqulodda o\'chirdi — mode o\'zgarmaydi, lekin AI ishlamaydi']
+  kill_switch_reason text
+  model_alias text [note: 'Faqat platforma o\'zgartiradi (bake-off natijasi). NULL — global standart']
+  updated_by uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  Note: '''
+  Har shopga bitta qator. Ega o'zgartiradi (sales_ai.settings.edit). Rejim almashinuvi: OFF → SHADOW → SUGGEST → AUTO
+  (AUTO ga faqat oxirgi 7 kunda SHADOW/SUGGEST sifati ko'rsatkichlari chegaradan o'tgan bo'lsa ruxsat — ekranda ko'rsatiladi,
+  ega baribir qaror qiladi, business/13 6.4). Limit tugasa mode o'zgarmaydi — runtime speaker'ni PAUSED qiladi (BL-040).
+  Chegirma haqida maydon YO'Q: AI chegirma aytmaydi va va'da qilmaydi (DEC-110, 16 §5 nol toqat).
+  RLS (FORCE).
+  '''
+}
+
+Table sales_ai.agent_profile_versions {
+  id uuid [pk]
+  shop_id uuid [not null]
+  version int [not null]
+  status sales_ai.version_status [not null, default: 'DRAFT', note: 'DRAFT → APPROVED (ega) → RETIRED']
+  shop_display_name text [not null]
+  tone text [not null, default: 'FRIENDLY', note: 'FRIENDLY | FORMAL | CONCISE']
+  about_text text [note: 'Shop haqida qisqa (≤ 1000 belgi) — promptning 2-qatlami']
+  extra_instructions text [note: 'Ega qo\'shimcha ko\'rsatmasi (≤ 1000 belgi). Platforma qoidalarini bekor qila olmaydi — alohida ishonchsiz blok sifatida']
+  content_hash text [not null, note: 'Prompt cache va audit uchun']
+  approved_by uuid
+  approved_at timestamptz
+  created_by uuid
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, version) [unique]
+  }
+  Note: 'O\'zgarmaydi (yangi versiya — yangi qator). Har AI javobi qaysi versiya bilan yozilgani ai_turns da (14 §5). RLS (FORCE).'
+}
+
+Table sales_ai.knowledge_items {
+  id uuid [pk]
+  shop_id uuid [not null]
+  kind sales_ai.knowledge_kind [not null]
+  locale text [not null, note: 'uz | uz-Cyrl | ru | en']
+  title text [not null]
+  body text [not null, note: '≤ 2000 belgi. Ishonchsiz kontent sifatida promptga kiradi (14 §5)']
+  status sales_ai.version_status [not null, default: 'DRAFT']
+  version int [not null, default: 1]
+  supersedes_id uuid [note: 'Tahrir — yangi qator, eskisi RETIRED']
+  approved_by uuid
+  approved_at timestamptz
+  created_by uuid
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, status, kind)
+  }
+  Note: '''
+  Stage 1: APPROVED bandlar to'liq matn sifatida promptga kiradi (jami ≤ ~6k token, oshsa saqlashda ogohlantirish).
+  Embedding/semantik qidiruv yo'q — faqat o'lchangan foyda bo'lsa (16 §4). RLS (FORCE).
+  '''
+}
+
+Table sales_ai.prompt_versions {
+  id uuid [pk]
+  key text [not null, note: '"shop_seller" (Stage 1 da bitta)']
+  version text [not null, note: '"seller-2026-11-v1" — kodda PROMPT_VERSION bilan mos']
+  status sales_ai.version_status [not null, default: 'DRAFT']
+  code_ref text [not null, note: 'Git SHA — prompt matni repo\'da (PR review + eval)']
+  content_hash text [not null]
+  eval_run_id uuid [note: 'Aktivlashtirishdan oldin o\'tgan eval']
+  activated_by uuid
+  activated_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (key, version) [unique]
+    key [unique, note: 'Partial: WHERE status = ACTIVE']
+  }
+  Note: 'Global (shop_id yo\'q). Platforma tizim prompti kodda; jadval faqat ro\'yxat va aktivlashtirish.'
+}
+
+// ---------------------------------------------------------------------
+// Suhbat holati va navbatlar (S3-04)
+// ---------------------------------------------------------------------
+
+Table sales_ai.ai_sessions {
+  shop_id uuid [not null]
+  conversation_id uuid [not null, note: 'messaging.conversations.id']
+  stage sales_ai.ai_stage [not null, default: 'IDLE']
+  slots jsonb [not null, default: '{}', note: '{budget:{amount_minor,currency}, workloads[], brand_prefs[], selected_sku_ids[], fulfillment_method, locale} — PII yo\'q']
+  lead_id uuid [note: 'commerce.leads — capture_lead dan keyin']
+  last_quote_id uuid
+  last_order_id uuid
+  summary_redacted text [note: 'Eski xabarlar xulosasi, PII\'siz (≤ 1500 belgi)']
+  summary_upto_seq bigint [note: 'Xulosa qaysi xabargacha']
+  turn_count int [not null, default: 0]
+  handoff_count int [not null, default: 0]
+  last_turn_at timestamptz
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, conversation_id) [pk]
+  }
+  Note: 'Bitta suhbat — bitta qator. conversation_summaries shu yerga qo\'shilgan (07 dan farq). 12 oyda suhbat bilan birga o\'chiriladi. RLS (FORCE).'
+}
+
+Table sales_ai.ai_turns {
+  id uuid [pk, note: '= reply_id; messaging.messages.ai_reply_id shu id']
+  shop_id uuid [not null]
+  conversation_id uuid [not null]
+  trigger_message_id uuid [not null, note: 'Qaysi kiruvchi xabarga javob']
+  trigger_seq bigint [not null]
+  speaker_version int [not null, note: 'Navbat boshlangandagi versiya — fencing (12 §8)']
+  mode sales_ai.ai_mode [not null]
+  status sales_ai.turn_status [not null, default: 'QUEUED']
+  outcome sales_ai.turn_outcome
+  handoff_reason sales_ai.handoff_reason
+  provider text [note: '"anthropic" | "gemini" | "fake" — LLM_PROVIDER (ai/M06-architecture.md §4)']
+  model_alias text [note: '"seller" — aniq model model_id da']
+  model_id text [note: '"claude-sonnet-5-5" / "gemini-…" — provayder javobidan']
+  fallback_used boolean [not null, default: false, note: 'Server-side fallback modelga o\'tildi']
+  prompt_version text
+  profile_version int
+  reply_text_enc text [note: 'EncryptedString — tayyor javob REDACT holatida ([PHONE_1] tokenlari bilan). Haqiqiy qiymatga almashtirish messaging\'ga topshirishda (14 §7.5)']
+  reply_locale text
+  validator_codes text[] [note: 'Javob tekshiruvi (14 §8): PRICE_MISMATCH, UNKNOWN_SKU, FORBIDDEN_CLAIM, LANGUAGE …']
+  rewrite_count int [not null, default: 0, note: '0 yoki 1']
+  tool_call_count int [not null, default: 0]
+  tokens_in int [not null, default: 0]
+  tokens_out int [not null, default: 0]
+  cache_read_tokens int [not null, default: 0]
+  cache_write_tokens int [not null, default: 0]
+  cost_micros bigint [not null, default: 0, note: 'USD × 10^6 — provayder narxi bo\'yicha']
+  latency_ms int
+  provider_request_ids text[] [note: 'Qo\'llab-quvvatlash uchun']
+  error_code text
+  trace_id text
+  started_at timestamptz
+  finished_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, conversation_id, trigger_message_id) [unique, note: 'Bitta kiruvchi xabarga bitta navbat — worker qayta ishga tushsa ham (TC-AI-02)']
+    (shop_id, created_at) [note: 'Hisobot, xarajat']
+    (shop_id, outcome, created_at)
+  }
+  Note: '''
+  Har AI navbatining to'liq izi (14 §13). LLM chaqiruvi DB tranzaksiyasi ichida emas: QUEUED → RUNNING (qisqa tranzaksiya),
+  LLM + tool'lar, keyin COMPLETED + outbox [sales_ai.reply.ready] (yana qisqa tranzaksiya).
+  SUGGEST rejimida inbox taklif matnini SalesAiQueryPort.get_suggestion(turn_id) orqali oladi.
+  Saqlash: 12 oy (messaging bilan), keyin reply_text_enc tozalanadi, raqamlar qoladi. RLS (FORCE).
+  '''
+}
+
+Table sales_ai.ai_tool_executions {
+  id uuid [pk]
+  shop_id uuid [not null]
+  turn_id uuid [not null]
+  seq int [not null, note: 'Navbat ichidagi tartib (≤ 6, 14 §3.1)']
+  tool text [not null, note: '"catalog.search" — ichki nom (API\'da catalog_search)']
+  decision sales_ai.tool_decision [not null]
+  args_redacted jsonb [not null, note: 'Redact qilingan argumentlar (PHONE_1 kabi tokenlar)']
+  result_summary jsonb [note: 'Faqat ID va dalil: {sku_ids[], decision, error_code, observed_at} — matn yo\'q']
+  result_hash text [note: 'To\'liq natija sha256 — validator va eval uchun']
+  idempotency_key text [note: 'Yozuvchi tool: hash(conversation_id, message_id, tool, normalized_args)']
+  emitted_event_id uuid [note: 'sales_ai.outbox_events.id (qoralama so\'rovi)']
+  error_code text
+  latency_ms int
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, turn_id, seq) [unique]
+    (shop_id, idempotency_key) [unique, note: 'Partial: WHERE idempotency_key IS NOT NULL — yozuvchi tool ikki marta bajarilmaydi']
+  }
+  Note: 'Saqlash 90 kun (07 §4.6), keyin o\'chiriladi (ai_turns raqamlari qoladi). RLS (FORCE).'
+}
+
+Table sales_ai.ai_feedback {
+  id uuid [pk]
+  shop_id uuid [not null]
+  turn_id uuid [not null]
+  membership_id uuid [not null, note: 'Kim baholadi']
+  verdict sales_ai.feedback_verdict [not null]
+  error_tags text[] [not null, default: '{}', note: 'WRONG_PRICE | WRONG_PRODUCT | HALLUCINATION | MISSED_HANDOFF | WRONG_LANGUAGE | TONE | TOO_LONG | OTHER']
+  sent_message_id uuid [note: 'messaging.messages — operator yuborgan yakuniy xabar (EDITED/SENT_AS_IS)']
+  edit_distance_pct int [note: 'Tahrir ulushi 0–100 — avtomatik hisoblanadi']
+  comment text [note: '≤ 500 belgi, PII yozmaslik so\'raladi']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, turn_id, membership_id) [unique]
+    (shop_id, verdict, created_at)
+  }
+  Note: '''
+  Operator bahosi (16 §2 "Operator tuzatishlari"). SUGGEST da yuborish/rad etish avtomatik yoziladi; FLAGGED — qo'lda.
+  Regression to'plamiga faqat shop opt-in bilan va redact qilingan holda o'tadi (DEC-118). RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Baholash (S3-00, S3-08) — global, platforma
+// ---------------------------------------------------------------------
+
+Table sales_ai.eval_datasets {
+  id uuid [pk]
+  key text [not null, note: '"dialogs", "pc", "redteam", "redaction"']
+  version int [not null]
+  manifest jsonb [not null, note: '16 §3: license_basis, owner, source, consent_scope, retention, rows, split_seed, label_schema']
+  file_id uuid [not null, note: 'platform.stored_files (purpose AI_DATASET, private) — JSONL']
+  checksum text [not null, note: 'SHA-256']
+  rows int [not null]
+  frozen boolean [not null, default: false, note: 'Golden test to\'plami muzlatiladi']
+  created_by uuid
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (key, version) [unique]
+  }
+  Note: 'Global (shop_id yo\'q). Sintetik yoki opt-in + anonim (16 §1).'
+}
+
+Table sales_ai.eval_runs {
+  id uuid [pk]
+  dataset_id uuid [not null]
+  prompt_version text [not null]
+  provider text [not null, note: 'Bir xil to\'plam ikki provayderda yuritilib solishtiriladi (A15)']
+  model_alias text [not null]
+  model_id text [not null]
+  ruleset_version text
+  git_sha text [not null]
+  status sales_ai.eval_run_status [not null, default: 'RUNNING']
+  metrics jsonb [not null, default: '{}', note: '{tool_selection_acc, slot_acc, handoff_acc, avg_latency_ms, p95_latency_ms, cost_per_case_micros}']
+  zero_tolerance_violations int [not null, default: 0, note: '16 §5: noto\'g\'ri narx, mavjud bo\'lmagan SKU, "tasdiqlandi", boshqa shop, chegirma, ruxsatsiz amal']
+  cost_micros bigint [not null, default: 0]
+  started_by uuid
+  started_at timestamptz [not null, default: `now()`]
+  finished_at timestamptz
+
+  indexes {
+    (dataset_id, started_at)
+  }
+  Note: 'Global. PASSED faqat zero_tolerance_violations = 0 bo\'lsa. prompt_versions.eval_run_id shu yerga ishora qiladi. Bepul Gemini kaliti bilan faqat sintetik to\'plamlar (A14).'
+}
+
+Table sales_ai.eval_results {
+  id uuid [pk]
+  run_id uuid [not null]
+  case_id text [not null, note: 'Dataset ichidagi qator ID']
+  passed boolean [not null]
+  failure_codes text[] [not null, default: '{}']
+  judge_score numeric(4,2) [note: '0–5, LLM-judge (Opus) — faqat sifat ballari uchun; nol toqat qoidalari deterministik']
+  tools_called text[] [not null, default: '{}']
+  latency_ms int
+  cost_micros bigint
+  transcript_file_id uuid [note: 'Muvaffaqiyatsiz holatlar uchun redact qilingan transkript (stored_files)']
+
+  indexes {
+    (run_id, case_id) [unique]
+  }
+  Note: 'Global.'
+}
+
+// ---------------------------------------------------------------------
+// platform/llm — barcha LLM chaqiruvlari uchun umumiy (07 §4.1)
+// ---------------------------------------------------------------------
+
+Table platform.llm_pii_refs {
+  id uuid [pk, note: '= contact_ref_id — domenlararo event\'da shu UUID ketadi (14 §7.4)']
+  shop_id uuid [not null]
+  conversation_id uuid [not null]
+  token text [not null, note: '"PHONE_1", "ADDRESS_1", "NAME_1", "EMAIL_1", "CARD_1"']
+  kind text [not null, note: 'PHONE | ADDRESS | NAME | EMAIL | CARD']
+  value_enc text [not null, note: 'EncryptedString. CARD — hech qachon qayta tiklanmaydi (value_enc = mask)']
+  value_hmac text [not null, note: 'Bir suhbatda bir qiymatga bitta token']
+  resolved_by_commerce_at timestamptz [note: 'commerce bir marta o\'qib o\'z jadvaliga yozgan vaqt (14 §7.4)']
+  expires_at timestamptz [not null, note: 'Suhbat saqlash muddati bilan (26 §5); kontakt ref — 30 kun']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, conversation_id, token) [unique]
+    (shop_id, conversation_id, value_hmac) [unique]
+    expires_at
+  }
+  Note: 'Redaction xaritasi. Faqat platform/llm va SalesAiQueryPort.resolve_contact_ref o\'qiydi. RLS (FORCE). Xaridor so\'rovi bilan o\'chiriladi (26).'
+}
+
+Table platform.ai_usage {
+  id uuid [pk]
+  shop_id uuid [note: 'EVAL_JUDGE da NULL (platforma xarajati)']
+  occurred_at timestamptz [not null, default: `now()`]
+  provider text [not null, note: '"anthropic" | "gemini" | "fake"']
+  model_id text [not null]
+  purpose platform.llm_purpose [not null]
+  ref_id uuid [note: 'ai_turns.id yoki eval_runs.id']
+  tokens_in int [not null]
+  tokens_out int [not null]
+  cache_read_tokens int [not null, default: 0]
+  cache_write_tokens int [not null, default: 0]
+  cost_micros bigint [not null, note: 'USD × 10^6']
+
+  indexes {
+    (shop_id, occurred_at) [note: 'Kunlik/oylik limit: SUM(cost_micros) WHERE occurred_at >= bugun']
+    (purpose, occurred_at)
+  }
+  Note: '''
+  Har LLM chaqiruvi (07 §4.1). platform/billing check_ai_quota shu jadvaldan (+ Redis kunlik hisoblagich) oladi.
+  Saqlash 13 oy; keyin reporting agregatlari qoladi. RLS (shop_id bo\'lgan qatorlar uchun).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Bog'lanishlar
+// ---------------------------------------------------------------------
+
+Ref: sales_ai.agent_settings.(shop_id, active_profile_version_id) > sales_ai.agent_profile_versions.(shop_id, id)
+Ref: sales_ai.knowledge_items.(shop_id, supersedes_id) > sales_ai.knowledge_items.(shop_id, id)
+Ref: sales_ai.ai_tool_executions.(shop_id, turn_id) > sales_ai.ai_turns.(shop_id, id) [delete: cascade]
+Ref: sales_ai.ai_feedback.(shop_id, turn_id) > sales_ai.ai_turns.(shop_id, id) [delete: cascade]
+Ref: sales_ai.eval_runs.dataset_id > sales_ai.eval_datasets.id [delete: restrict]
+Ref: sales_ai.eval_results.run_id > sales_ai.eval_runs.id [delete: cascade]
+Ref: sales_ai.prompt_versions.eval_run_id > sales_ai.eval_runs.id
+
+TableGroup ai_sozlamalari {
+  sales_ai.agent_settings
+  sales_ai.agent_profile_versions
+  sales_ai.knowledge_items
+  sales_ai.prompt_versions
+}
+
+TableGroup ai_navbatlari {
+  sales_ai.ai_sessions
+  sales_ai.ai_turns
+  sales_ai.ai_tool_executions
+  sales_ai.ai_feedback
+}
+
+TableGroup baholash {
+  sales_ai.eval_datasets
+  sales_ai.eval_runs
+  sales_ai.eval_results
+}
+
+TableGroup platform_llm {
+  platform.llm_pii_refs
+  platform.ai_usage
+}

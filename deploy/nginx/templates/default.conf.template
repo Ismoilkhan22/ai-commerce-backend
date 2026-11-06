@@ -1,0 +1,198 @@
+# AI Commerce OS — bitta VPS uchun nginx (22 §3, §8). ${PLATFORM_DOMAIN} — envsubst bilan (rasmiy nginx image'ning
+# /etc/nginx/templates mexanizmi; faqat mavjud env o'zgaruvchilari almashtiriladi, nginx'ning $uri va h.k. tegmaydi).
+#
+#   api.${PLATFORM_DOMAIN}     → api:8000          (REST, /api/v1/ws WebSocket, fayllar)
+#   panel.${PLATFORM_DOMAIN}   → shop-dashboard    (shop paneli)
+#   admin.${PLATFORM_DOMAIN}   → platform-admin    (platforma jamoasi)
+#   {slug}.${PLATFORM_DOMAIN}  → shop-storefront   (shop saytlari)
+#   ${PLATFORM_DOMAIN}         → panel.'ga yo'naltirish (landing keyin)
+
+# ---------- Kirish logi: yo'l query string'SIZ (09 §4.2, 22 §3) ----------
+# $uri (query yo'q) + token ko'rinishidagi yo'l bo'laklari (buyurtma holati, PC taklifi, taklifnoma havolasi,
+# ID'lar) {seg} bilan niqoblanadi — ikki bo'lakkacha. Referer yozilmaydi (unda query bo'lishi mumkin).
+map $uri $cos_uri_1 {
+    "~^(?<p1>.*?/)[A-Za-z0-9_-]{20,}(?<p2>/.*)?$"  "$p1{seg}$p2";
+    default                                         $uri;
+}
+map $cos_uri_1 $cos_log_uri {
+    "~^(?<q1>.*?/)[A-Za-z0-9_-]{20,}(?<q2>/.*)?$"  "$q1{seg}$q2";
+    default                                         $cos_uri_1;
+}
+log_format cos_json escape=json
+    '{"time":"$time_iso8601","service":"nginx","remote_addr":"$remote_addr","host":"$host",'
+    '"method":"$request_method","path":"$cos_log_uri","status":$status,"bytes":$body_bytes_sent,'
+    '"request_time":$request_time,"upstream_time":"$upstream_response_time","request_id":"$request_id",'
+    '"user_agent":"$http_user_agent"}';
+access_log /dev/stdout cos_json;
+error_log /dev/stderr warn;
+
+# ---------- Umumiy ----------
+server_tokens off;
+resolver 127.0.0.11 valid=10s ipv6=off;  # Docker DNS: konteyner qayta yaratilsa yangi IP olinadi
+resolver_timeout 3s;
+client_max_body_size 2m;                 # JSON so'rovlar (ilova chegarasi 1 MB); fayl yuklash — pastda alohida
+client_body_buffer_size 128k;
+gzip on;
+gzip_types text/css application/javascript application/json image/svg+xml text/plain;
+gzip_min_length 1024;
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ""      "";
+}
+proxy_connect_timeout 5s;   # location'larda kerak bo'lsa oshiriladi (WebSocket, fayl yuklash)
+proxy_send_timeout    60s;
+proxy_read_timeout    60s;
+
+# Tashqi qatlamdagi qo'pol chegara (IP bo'yicha). Aniq limitlar ilovada (08 §5)
+limit_req_zone $binary_remote_addr zone=api:10m  rate=20r/s;
+limit_req_zone $binary_remote_addr zone=site:10m rate=30r/s;
+limit_req_status 429;
+limit_conn_zone $binary_remote_addr zone=perip:10m;
+
+# ---------- HTTP → HTTPS ----------
+server {
+    listen 80 default_server;
+    server_name _;
+    location = /nginx-health { access_log off; return 200 "ok\n"; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+# Noma'lum domen (IP bilan kirish, boshqa domen) — TLS qo'l siqishi rad etiladi
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+# ---------- API ----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name api.${PLATFORM_DOMAIN};
+    ssl_certificate     /etc/letsencrypt/live/${PLATFORM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PLATFORM_DOMAIN}/privkey.pem;
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+
+    limit_req  zone=api burst=60 nodelay;
+    limit_conn perip 50;
+    set $api_upstream http://api:8000;
+
+    # WebSocket (08 §6): ticket query'da — logda yo'q ($uri). Heartbeat 25 s, shuning uchun uzun timeout
+    location = /api/v1/ws {
+        include /etc/nginx/snippets/proxy.conf;   # Upgrade/Connection shu yerda
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_buffering off;
+        proxy_pass $api_upstream;
+    }
+
+    # Fayl yuklash: import (XLSX/CSV) 10 MB, rasm 5 MB, logotip 2 MB — maqsad bo'yicha aniq chegara ilovada
+    # (file_service.PURPOSES); nginx'da eng kattasi + multipart zaxirasi. Tana diskka emas, to'g'ridan oqadi
+    location = /api/v1/shop/files {
+        client_max_body_size 11m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_read_timeout 120s;
+        proxy_pass $api_upstream;
+    }
+
+    # Ochiq fayllar (mahsulot rasmi) va imzoli havolalar — ilova Cache-Control beradi
+    location /api/v1/public/files/ {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+
+    location /api/ {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+
+    # Uptime monitor uchun: /health/live, /health/ready
+    location /health/ {
+        access_log off;
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+
+    location / { return 404; }
+}
+
+# ---------- Shop paneli ----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name panel.${PLATFORM_DOMAIN};
+    ssl_certificate     /etc/letsencrypt/live/${PLATFORM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PLATFORM_DOMAIN}/privkey.pem;
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+
+    limit_req zone=site burst=100 nodelay;
+    set $panel_upstream http://shop-dashboard:3000;
+
+    location / {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $panel_upstream;
+    }
+}
+
+# ---------- Platforma paneli ----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name admin.${PLATFORM_DOMAIN};
+    ssl_certificate     /etc/letsencrypt/live/${PLATFORM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PLATFORM_DOMAIN}/privkey.pem;
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    # Ixtiyoriy: faqat ofis/VPN IP'laridan (snippets/admin-allowlist.conf da IP'larni yozing)
+    # include /etc/nginx/snippets/admin-allowlist.conf;
+
+    limit_req zone=site burst=100 nodelay;
+    set $admin_upstream http://platform-admin:3000;
+
+    location / {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $admin_upstream;
+    }
+}
+
+# ---------- Asosiy domen ----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${PLATFORM_DOMAIN} www.${PLATFORM_DOMAIN};
+    ssl_certificate     /etc/letsencrypt/live/${PLATFORM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PLATFORM_DOMAIN}/privkey.pem;
+    include /etc/nginx/snippets/tls.conf;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    return 302 https://panel.${PLATFORM_DOMAIN}$request_uri;
+}
+
+# ---------- Shop saytlari: {slug}.${PLATFORM_DOMAIN} ----------
+# Aniq nomlar (api., panel., admin.) wildcard'dan oldin tanlanadi. Slug'ni sayt ilovasi Host'dan oladi
+# (STOREFRONT_HOST_SUFFIXES). Diqqat: slug'i api/panel/admin/www bo'lgan shop sayti ochilmaydi (aniq nom ustun) —
+# backend'da band slug'lar ro'yxati hali yo'q (M08 "Ochiq qolganlar").
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name *.${PLATFORM_DOMAIN};
+    ssl_certificate     /etc/letsencrypt/live/${PLATFORM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PLATFORM_DOMAIN}/privkey.pem;
+    include /etc/nginx/snippets/tls.conf;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    limit_req  zone=site burst=100 nodelay;
+    limit_conn perip 50;
+    set $site_upstream http://shop-storefront:3000;
+
+    location / {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $site_upstream;
+    }
+}

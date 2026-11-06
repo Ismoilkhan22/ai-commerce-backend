@@ -1,0 +1,122 @@
+// =====================================================================
+// AI Commerce OS — `commerce` ga qo'shimcha taklif: tannarx (sotib olish narxi) — foyda hisoboti uchun (7-modul, S5-01)
+// Holat: TAKLIF 2026-10-27 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar: commerce_cost_price.md oxirida.
+// Tasdiqlangan commerce.dbml (DEC-134) O'ZGARTIRILMAYDI — bu fayl 3 ta yangi jadval va mavjud jadvallarga
+//        qo'shiladigan ustunlarni ko'rsatadi (pastda, "commerce.dbml ga ta'sir").
+// Usul: o'rtacha tortilgan tannarx (moving weighted average), shop × SKU bo'yicha, so'mda.
+// Izohlar: db/commerce_cost_price.md
+// Manba: commerce.md §3 ("tannarx hozir yozilmaydi"), business/02 M18, BL-063, BL-065; engineering/19 §6, §7.6
+// =====================================================================
+
+Project ai_commerce_os_commerce_cost_price {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Umumiy qoidalar commerce.dbml bilan bir xil. Pul — butun son minor units. Tannarx doim so'mga o'giriladi (foyda = so'mdagi
+  sotuv − so'mdagi tannarx). Tannarxni faqat `commerce.cost.read` / `commerce.cost.edit` ruxsati bor xodim ko'radi
+  (ega; menejer — ega bersa). Operator va omborchiga API javobida ham qaytmaydi (BL-065).
+  '''
+}
+
+Enum commerce.cost_change_reason {
+  RECEIPT [note: 'Kirim tannarx bilan kiritildi']
+  LATE_ENTRY [note: 'Tannarxsiz kirimga keyin tannarx qo\'shildi (hozirgi qoldiq bilan qayta o\'rtachalanadi)']
+  MANUAL_SET [note: 'Ega boshlang\'ich / to\'g\'rilangan tannarxni qo\'lda qo\'ydi (masalan, tizimgacha bo\'lgan qoldiq)']
+  IMPORT [note: 'Katalog importidagi ixtiyoriy "tannarx" ustuni (boshlang\'ich qoldiq)']
+}
+
+// Mavjud jadval — faqat bog'lanishni ko'rsatish uchun (to'liq ta'rif commerce.dbml da)
+Table commerce.stock_receipts {
+  id uuid [pk]
+  shop_id uuid [not null]
+  Note: 'commerce.dbml dagi jadval — o\'zgarmaydi'
+}
+
+Table commerce.stock_receipt_costs {
+  id uuid [pk]
+  shop_id uuid [not null]
+  receipt_id uuid [not null]
+  sku_id uuid [not null, note: 'Daftardagi RECEIPT qatori bilan bir xil SKU']
+  qty int [not null, note: 'Daftardagi RECEIPT miqdori nusxasi (o\'rtacha hisob uchun). CHECK > 0']
+  unit_cost_minor bigint [not null, note: 'Bitta dona sotib olish narxi asl valyutada. CHECK > 0']
+  cost_currency text [not null, note: 'UZS | USD (DEC-121)']
+  exchange_rate_id uuid [note: 'catalog.exchange_rates.id — USD bo\'lsa']
+  exchange_rate_snapshot numeric(18,6) [note: 'USD bo\'lsa majburiy (CHECK)']
+  unit_cost_uzs_minor bigint [not null, note: 'So\'mdagi tannarx, eng yaqin so\'mgacha']
+  late_entry boolean [not null, default: false, note: 'Kirimdan keyin qo\'shilgan']
+  entered_by uuid [not null, note: 'platform.memberships.id — commerce.cost.edit ruxsati bilan']
+  entered_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, receipt_id, sku_id) [unique, note: 'Bir kirimda bir SKU — bitta tannarx (daftar kaliti bilan mos)']
+    (shop_id, sku_id, entered_at)
+  }
+  Note: '''
+  Kirim qatorining tannarxi. Kirim qatorlari daftarda turadi (commerce.md §3), shuning uchun tannarx alohida jadvalda —
+  daftar umumiy va faqat qo'shiladigan bo'lib qoladi. O'zgarmaydi: xato tannarx MANUAL_SET bilan to'g'rilanadi.
+  RLS (FORCE).
+  '''
+}
+
+Table commerce.sku_costs {
+  shop_id uuid [not null]
+  sku_id uuid [not null, note: 'catalog.skus.id — FK\'siz']
+  avg_unit_cost_uzs_minor bigint [not null, note: 'Joriy o\'rtacha tannarx, so\'mda. CHECK > 0']
+  basis_qty int [not null, note: 'Oxirgi hisobdagi qoldiq (hamma filial: qoldiq + tekshiruvda) — tushuntirish uchun']
+  cost_version bigint [not null, default: 1, note: 'Har o\'zgarishda +1 — event tartibi']
+  last_reason commerce.cost_change_reason [not null]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, sku_id) [pk]
+  }
+  Note: '''
+  Shop × SKU joriy o'rtacha tannarxi. Kirim (yoki LATE_ENTRY / MANUAL_SET / IMPORT) bilan bir tranzaksiyada yangilanadi:
+    yangi = (eski × B + kirim_narxi × kirim_soni) / (B + kirim_soni),  B = kirimdan oldingi shop bo'yicha qoldiq + tekshiruvda.
+  Qator yo'q yoki B = 0 → yangi = kirim narxi. Sotuv, band, tuzatish o'rtachani o'zgartirmaydi.
+  Qator yo'q SKU — "tannarx noma'lum": sotuv qatorida unit_cost NULL, hisobotda NO_COST_DATA / PARTIAL_COST_DATA.
+  Event: commerce.sku_cost.changed (sku_id, avg_unit_cost_uzs_minor, cost_version). RLS (FORCE).
+  '''
+}
+
+Table commerce.sku_cost_changes {
+  id uuid [pk]
+  shop_id uuid [not null]
+  sku_id uuid [not null]
+  reason commerce.cost_change_reason [not null]
+  ref_id uuid [note: 'RECEIPT/LATE_ENTRY — stock_receipt_costs.id; IMPORT — catalog import id; MANUAL_SET — NULL']
+  avg_before_uzs_minor bigint [note: 'NULL — birinchi tannarx']
+  avg_after_uzs_minor bigint [not null]
+  basis_qty int [not null]
+  incoming_qty int [note: 'Kirim soni (MANUAL_SET da NULL)']
+  incoming_unit_cost_uzs_minor bigint
+  note text [note: 'MANUAL_SET da majburiy: "tizimgacha qoldiq, yetkazib beruvchi hisob-fakturasi bo\'yicha"']
+  actor_membership_id uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, sku_id, created_at)
+  }
+  Note: '"Nega tannarx o\'zgardi?" tarixi. Faqat qo\'shiladi. RLS (FORCE).'
+}
+
+// ---------------------------------------------------------------------
+// commerce.dbml ga ta'sir (tasdiqlangan faylga migratsiyada qo'shiladi)
+// ---------------------------------------------------------------------
+// 1. commerce.order_lines.unit_cost_uzs_minor bigint NULL — COMPLETE paytida sku_costs dan nusxa (foyda shu bilan muzlaydi).
+// 2. commerce.quick_sale_lines.unit_cost_uzs_minor bigint NULL — tez sotuv paytida nusxa.
+// 3. commerce.stock_adjustments.unit_cost_uzs_minor bigint NULL — WRITE_OFF / ADJUSTMENT(−) tasdiqlanganda nusxa (yo'qotish qiymati).
+// 4. Event payload'lari (05 §8.2, egasi yangilaydi): order.completed lines[] + unit_cost_uzs_minor?;
+//    quick_sale.recorded lines[] + line_total_minor, unit_cost_uzs_minor?, sold_by; yangi commerce.sku_cost.changed.
+// 5. Katalog importi: ixtiyoriy "tannarx" ustuni → IMPORT (catalog_import.md ga keyin).
+
+Ref: commerce.stock_receipt_costs.(shop_id, receipt_id) > commerce.stock_receipts.(shop_id, id) [delete: restrict]
+
+TableGroup tannarx {
+  commerce.stock_receipt_costs
+  commerce.sku_costs
+  commerce.sku_cost_changes
+}

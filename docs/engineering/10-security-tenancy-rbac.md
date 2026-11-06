@@ -199,8 +199,9 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `commerce.stock.adjust_approve` | ✓ | ✓ br | — | — | — | — | — | — | — | Stok tuzatish (Tasdiqlaydi) |
 | `commerce.quick_sale.create` | ✓ | ✓ br | ✓ | ✓ br | — | — | — | — | — | "Tez sotuv" (DEC-123) |
 | `commerce.lead.view` | ✓ | ✓ | own | — | — | — | agg | — | — | Lead (M12) |
-| `commerce.lead.edit` | ✓ | ✓ | own | — | — | — | — | — | qoralama (event) | Lead |
-| `commerce.quote.draft` | ✓ | ✓ | ✓ | — | — | — | — | — | qoralama (event) | PC taklif qoralamasi |
+| `commerce.lead.edit` | ✓ | ✓ | own | — | — | — | — | — | qoralama (event) | Lead: yaratish, tahrirlash, yo'qotildi deb yopish, biriktirilmaganini o'ziga olish (`take`) |
+| `commerce.lead.assign` | ✓ | ✓ | — | — | — | — | — | — | — | Leadni boshqa xodimga biriktirish (6a) |
+| `commerce.quote.draft` | ✓ | ✓ | ✓ | — | — | — | — | — | qoralama (event) | PC taklif qoralamasi, qatorlar, tekshiruvga yuborish, "PC yig'ish" sahifasi (`/shop/pc-builds/*`); operator — o'zi tuzgani yoki o'z leadi |
 | `commerce.quote.view` | ✓ | ✓ | own | — | ✓ | — | — | — | — | PC taklif qoralamasi (Moliya ko'radi) |
 | `commerce.quote.approve` | ✓ | limit | — | — | — | — | — | — | — | PC taklifini tasdiqlash (DEC-109); o'zi tuzganini tasdiqlay olmaydi |
 | `commerce.quote.send` | ✓ | ✓ | own | — | — | — | — | — | — | Tasdiqlangan taklifni xaridorga yuborish |
@@ -243,6 +244,8 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `sales_ai.knowledge.test` | ✓ | — | — | — | — | — | — | ✓ | — | Sinov oynasi |
 | `sales_ai.knowledge.publish` | ✓ | — | — | — | — | — | — | — | — | "Ega tasdiqlaydi" |
 
+**6b holati (2026-10-26, [progress/M06b](progress/M06b-ai-runtime.md)):** kodda to'rtta ruxsat. `sales_ai.settings.view` — ega, menejer. `sales_ai.settings.edit` — faqat ega; bilim bazasini yaratish, tahrirlash, e'lon qilish ham shu (alohida `knowledge.edit` / `knowledge.publish` hozircha yo'q). `sales_ai.knowledge.test` (sinov oynasi) — ega, menejer. Yangi: `sales_ai.suggestion.review` — AI takliflarini yuborish / rad etish va navbat izini ko'rish; ega, menejer, operator (operator — faqat o'z va biriktirilmagan suhbatlarida). `sales_ai.*` jadvallari va `platform.llm_pii_refs` — RLS FORCE.
+
 ### 6.6 `storefront`, `support`, `reporting`
 
 | Kod | OWN | MGR | SAL | WH | FIN | CAT | ANL | AIE | AI | `business/04` qatori |
@@ -254,9 +257,10 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `support.case.decide` | ✓ | ✓ | — | — | — | — | — | — | — | Qabul / rad (UAT-M16) |
 | `support.case.service` | ✓ | ✓ | — | ✓ br | — | — | — | — | — | Xizmatda → hal qilindi |
 | `reporting.report.read` | ✓ | ✓ | own | br | ✓ | — | agg | — | — | Hisobotlar |
+| `reporting.view` | ✓ | ✓ | — | — | — | — | — | — | — | Kodda hisobotlarni ko'rish ruxsati (= `reporting.report.read`); tannarxsiz maydonlar. Tannarx va foyda uchun `reporting.margin.read` |
 | `reporting.staff_breakdown.read` | ✓ | ✓ | — | — | ✓ | — | — | — | — | Xodimlar kesimida ("Operator boshqa operator summasini ko'rmaydi", UAT-M18) |
 | `reporting.ai_cost.read` | ✓ | — | — | — | ✓ | — | — | — | — | AI xarajati (M19) |
-| `reporting.margin.read` | ✓ | grant | — | — | grant | — | grant | — | — | Tannarx va foyda |
+| `reporting.margin.read` | ✓ | — | — | — | grant | — | grant | — | — | Tannarx, foyda va AI xarajati (pul). DEC-146: menejer ko'rmaydi — `/profit` unga 403, qolgan hisobotlarda tannarx maydonlari `null`/ustunsiz (M07, QA7 F1) |
 | `reporting.export.run` | ✓ (step-up) | ✓ | — | — | ✓ | — | agg | — | — | Hisobot eksporti |
 | `reporting.assistant.ask` | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | — | — | Hisobot yordamchisi — so'rovchi ruxsatlari bilan |
 
@@ -326,6 +330,8 @@ Har tasdiq yozuvida: kim so'radi, kim tasdiqladi, qachon, qaysi siyosat versiyas
 | 8 | LLM'ga chiqish | Minimal kontekst, PII redaction (DEC-016), provayder zero-retention/no-training sharti (ADR-027) |
 
 Batafsil: [14-ai-sales-agent-and-tools.md](14-ai-sales-agent-and-tools.md).
+
+**6b amalda:** tool argumentlarida `shop_id`, `conversation_id`, `locale` yo'q — yuborilsa sxema xatosi (TC-AI-01). Navbat `shop_id` ni outbox event'idan oladi va har tranzaksiyada RLS konteksti bilan ishlaydi; suhbat `AiConversationPort.context` orqali shu shopda qayta topiladi. Xaridor matni, FAQ va ega izohi promptda `<untrusted_…>` bloklarida. Production'da bepul Gemini kaliti bilan ilova ishga tushmaydi (A14).
 
 ---
 

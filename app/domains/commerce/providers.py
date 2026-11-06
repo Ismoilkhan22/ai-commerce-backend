@@ -18,6 +18,10 @@ from app.domains.commerce.orders.services.privacy import OrderPrivacyService
 from app.domains.commerce.orders.services.storefront_service import StorefrontOrderService
 from app.domains.commerce.orders.services.views import OrderViews
 from app.domains.commerce.quick_sales.services.quick_sale_service import QuickSaleService
+from app.domains.commerce.quotes.services.build_service import BuildService
+from app.domains.commerce.quotes.services.lead_service import LeadService
+from app.domains.commerce.quotes.services.public_service import PublicQuoteService
+from app.domains.commerce.quotes.services.quote_service import QuoteService
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.staff.permissions import PermissionRegistry
 from app.platform.storage.services.file_service import FileService
@@ -25,6 +29,7 @@ from app.platform.use.services.use_service import UseService
 from app.shared.contracts.catalog import CatalogQueryPort
 from app.shared.contracts.commerce import StockQueryPort
 from app.shared.contracts.imports import ImportStockSource
+from app.shared.contracts.messaging import ConversationLookupPort
 from app.shared.contracts.storefront import SitePort
 
 
@@ -38,6 +43,10 @@ class CommerceServices:
     storefront: StorefrontOrderService
     site: SitePort
     import_stock: ImportStockService
+    leads: LeadService
+    quotes: QuoteService
+    public_quotes: PublicQuoteService
+    builds: BuildService
 
 
 def build_commerce_services(
@@ -49,10 +58,15 @@ def build_commerce_services(
     site: SitePort,
     import_source: ImportStockSource,
     permissions: PermissionRegistry,
+    *,
+    storefront_public_url: str | None = None,
+    conversations: ConversationLookupPort | None = None,
 ) -> CommerceServices:
     stock = StockService(audit, files, catalog)
     views = OrderViews()
     orders = OrderService(audit, catalog, views)
+    leads = LeadService(use, audit, conversations)
+    quotes = QuoteService(use, audit, catalog, leads, orders, storefront_public_url, stock_query)
     return CommerceServices(
         stock=stock,
         quick_sales=QuickSaleService(audit, stock, catalog),
@@ -62,6 +76,10 @@ def build_commerce_services(
         storefront=StorefrontOrderService(use, audit, orders, catalog, stock_query),
         site=site,
         import_stock=ImportStockService(stock, catalog, import_source, permissions),
+        leads=leads,
+        quotes=quotes,
+        public_quotes=PublicQuoteService(quotes),
+        builds=BuildService(catalog, stock_query),
     )
 
 

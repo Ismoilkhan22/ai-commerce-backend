@@ -4,6 +4,10 @@ foydalanadi (`sales_ai.reply.ready` tinglovchisi); hozir AI o'chiq, testlar soxt
 AI javobi qaysi `speaker_version` uchun tayyorlangan bo'lsa, shu bilan keladi. Navbatga faqat suhbat hamon
 AI'niki (`speaker_mode = AI`, holat `AI_ACTIVE`) va versiya o'zgarmagan bo'lsa tushadi; aks holda xabar
 `DISCARDED` bo'lib yoziladi — xaridorga ketmaydi. Yuborish paytida (`channel_send`) versiya yana tekshiriladi.
+
+AI oxirgi xabari bilan birga operatorga uzatsa (`handoff_reason`: "operator tez orada javob beradi", buyurtma
+qoralamasi tayyor) — xabar va `REQUEST_HUMAN` bitta tranzaksiyada; xabar pauzadan keyingi versiya bilan
+yoziladi, shuning uchun u yuboriladi, operator olsa (versiya yana +1) — yo'q.
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ class AiReplyService:
         speaker_version: int,
         body: str,
         ai_reply_id: UUID,
+        handoff_reason: str | None = None,
     ) -> Message:
         conversation = await self.core.lock(db, shop_id, conversation_id)
         if conversation is None:
@@ -67,7 +72,12 @@ class AiReplyService:
             body=body,
             intent_key=intent,
             ai_reply_id=ai_reply_id,
-            speaker_version=speaker_version,
+            speaker_version=speaker_version + 1 if handoff_reason else speaker_version,
         )
+        if handoff_reason:
+            await self.core.request_human(
+                db, actor, conversation, reason=handoff_reason, requested_by_type="AI"
+            )  # pauza: versiya +1 = xabar versiyasi
+            return message
         await self.core.transition(db, actor, conversation, "AWAIT_CUSTOMER", "WAITING_CUSTOMER")
         return message

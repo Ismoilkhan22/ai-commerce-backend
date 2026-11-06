@@ -8,7 +8,7 @@ from __future__ import annotations
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.shared.i18n.locale import FALLBACK_LOCALE, Locale, negotiate_locale, set_locale
+from app.shared.i18n.locale import FALLBACK_LOCALE, Locale, negotiate_locale, set_display_locale, set_locale
 
 
 class I18nMiddleware:
@@ -19,5 +19,7 @@ class I18nMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] in ("http", "websocket"):
             accept_language = Headers(scope=scope).get("accept-language")
-            set_locale(negotiate_locale(accept_language, self.default_locale))
+            negotiated = negotiate_locale(accept_language, self.default_locale)
+            set_locale(negotiated)
+            set_display_locale(negotiated if accept_language else None)
         await self.app(scope, receive, send)

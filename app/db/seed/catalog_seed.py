@@ -11,7 +11,6 @@ import struct
 import zlib
 from dataclasses import dataclass, field
 from datetime import timedelta
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -35,7 +34,7 @@ from app.platform.shops.models.orm import Shop
 from app.platform.staff.manifest import MODULE_MANIFEST as STAFF_MANIFEST
 from app.platform.staff.models.orm import Membership, PlatformStaff, Principal
 from app.platform.staff.permissions import PLATFORM_ROLE_PERMISSIONS, PermissionRegistry
-from app.platform.storage.local import LocalDiskStorage
+from app.platform.storage.config import build_file_storage
 from app.platform.storage.services.file_service import FileService
 from app.platform.storage.signing import UrlSigner
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
@@ -475,7 +474,7 @@ def _services(settings: Settings) -> tuple[CatalogServices, PermissionRegistry]:
     manifests = [SHOPS_MANIFEST, STAFF_MANIFEST, CATALOG_MANIFEST]
     audit = AuditService()
     files = FileService(
-        storage=LocalDiskStorage(Path(settings.storage_local_dir)),
+        storage=build_file_storage(settings.storage_config()),
         signer=UrlSigner(settings.jwt_secret.get_secret_value()),
         audit=audit,
         public_base_url=settings.public_files_url,

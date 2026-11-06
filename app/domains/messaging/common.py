@@ -37,6 +37,7 @@ class MessagingConfig:
     instagram_enabled: bool = False  # DEC-116a: channel.instagram_dm flag
     instagram_app_secret: str | None = None
     instagram_verify_token: str | None = None
+    storefront_public_url: str = ""  # "https://{slug}.platforma.uz" — izohga javobdagi mahsulot havolasi
     # Faqat local/test: `TEST_TELEGRAM_TOKEN` ko'rinishidagi token — soxta bot (tarmoqsiz), e2e va demo uchun
     telegram_test_tokens: bool = False
 

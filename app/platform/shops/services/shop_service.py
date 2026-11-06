@@ -88,6 +88,7 @@ RESERVED_SLUGS = frozenset(
         "login",
         "logout",
         "mail",
+        "panel",
         "platform",
         "reset-password",
         "shop",

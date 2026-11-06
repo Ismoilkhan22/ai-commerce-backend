@@ -415,3 +415,10 @@ Mustaqil QA 5a backendini tekshirdi: jiddiy muammo yo'q, 4 ta o'rtacha (F1–F4)
 - `tests/unit/test_jobs_qa_fixes.py` — 12 ta: log filtri, cron oralig'i, bot parseri, sozlama sxemasi, vazifa rollari, qoldiq agregati, ulanish chegarasi, `RATE_LIMIT_SCALE`.
 - `make check`: **513 passed**, ruff, mypy, import-linter toza.
 
+
+### 10.6 Startda `QueuePool limit ... reached` (TimeoutError) — sabab va tuzatish
+
+- **Sabab:** dev worker bitta jarayonda ishlaydi (outbox + arq + scheduler + polling) va hammasi API'dagi bir xil kichik pool'dan (10 + 5) foydalanadi. Startda scheduler 24 ta ishning hammasini bir soniyada boshlaydi; har ish qulf uchun 1 ta ulanishni butun davomida ushlaydi va `job_runs` yozuvi uchun yana 1 ta so'raydi — pool to'lib, outbox, scheduler va polling 10 s kutib `TimeoutError` oladi.
+- **Tuzatish 1:** scheduler bir vaqtda ko'pi bilan 4 ta ishni bajaradi (`MAX_CONCURRENT_JOBS`, semaphore) va birinchi ishga tushishlar 0–15 s tasodifiy kechikadi (`first_run_offset`).
+- **Tuzatish 2:** fon jarayonlarining o'z pool'i: `WORKER_DB_POOL_SIZE` (20) va `WORKER_DB_MAX_OVERFLOW` (10); API pool'i (`DB_POOL_SIZE`) o'zgarmadi.
+- **Eslatma:** o'zgarish kuchga kirishi uchun worker'ni qayta ishga tushirish kerak; testlar: `tests/unit/test_worker_pool.py`.

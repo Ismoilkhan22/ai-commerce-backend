@@ -155,6 +155,7 @@ class ProviderEvent(IdMixin, ShopScopedMixin, Base):
     kind: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
     message_id: Mapped[UUID | None]
+    ig_comment_id: Mapped[UUID | None]  # COMMENT turi: qaysi izohni yaratdi (instagram_comments.md §7)
     error_code: Mapped[str | None] = mapped_column(Text)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

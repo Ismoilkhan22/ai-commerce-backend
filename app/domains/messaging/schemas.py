@@ -19,7 +19,9 @@ ConversationStatus = Literal[
 SpeakerMode = Literal["AI", "HUMAN", "PAUSED"]
 DeliveryStatus = Literal["RECEIVED", "QUEUED", "SENDING", "SENT", "FAILED", "UNKNOWN", "DISCARDED"]
 MessageKind = Literal["TEXT", "IMAGE", "VOICE", "FILE", "CONTACT", "LOCATION", "STICKER", "UNSUPPORTED"]
-ConversationAction = Literal["TAKE", "REPLY", "ASSIGN", "RESOLVE", "REOPEN", "CREATE_ORDER", "NOTE"]
+ConversationAction = Literal[
+    "TAKE", "REPLY", "ASSIGN", "RESOLVE", "REOPEN", "CREATE_ORDER", "NOTE", "RESUME_AI"
+]
 Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
 TELEGRAM_TOKEN = r"^[0-9]{5,15}:[A-Za-z0-9_-]{30,64}$"  # noqa: S105 — format (regex), sir emas
 

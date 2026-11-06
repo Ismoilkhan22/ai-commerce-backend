@@ -15,6 +15,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.shared.contracts.compatibility import BuildLine, CompatibilityResult
 from app.shared.money import Currency
 
 
@@ -38,6 +39,29 @@ class SkuSnapshot:
     uzs_amount_minor: int | None  # xaridor ko'radigan narx (tiyinda), yaxlitlanmaydi (DEC-133)
     product_title: str = ""  # tanlash ro'yxati uchun nom va variant alohida
     variant_name: str | None = None
+
+
+@dataclass(frozen=True)
+class SkuReportDim:
+    """Hisobot o'lchami (7c): SKU nomi, toifasi va joriy narxi so'mda. Shaxsiy ma'lumot yo'q."""
+
+    sku_id: UUID
+    product_id: UUID
+    title: str
+    sku_code: str
+    category_code: str
+    category_name: str
+    price_uzs_minor: int | None  # narxi yo'q yoki dollar kursi yo'q bo'lsa — None
+
+
+@dataclass(frozen=True)
+class RateSnapshot:
+    """Shopning joriy dollar kursi (kuchga kirgan eng oxirgisi)."""
+
+    rate_id: UUID
+    rate: Decimal  # 1 dollar = necha so'm
+    effective_at: datetime
+    stale: bool  # 3 kundan eski (BL-018)
 
 
 # ------------------------------------------------------------------ sayt (4-modul): faqat ommaviy maydonlar
@@ -107,13 +131,61 @@ class CatalogQueryPort(Protocol):
         """Shu shopning SKU'lari joriy narx bilan. Boshqa shopniki yoki yo'q SKU natijada bo'lmaydi."""
         ...
 
-    async def search_sku_ids(self, db: AsyncSession, shop_id: UUID, q: str, limit: int) -> list[UUID]:
-        """Matn bo'yicha SKU'lar (nom, brend, SKU kodi, MPN) — boshqa domen ro'yxatini filtrlash uchun."""
+    async def sku_report_dims(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, SkuReportDim]:
+        """Hisobot uchun SKU nomi, toifasi (kod + nomi) va joriy narxi. Boshqa shop SKU'si natijada yo'q."""
+        ...
+
+    async def current_rate(self, db: AsyncSession, shop_id: UUID) -> RateSnapshot | None:
+        """Shopning joriy dollar kursi; kurs hali kiritilmagan bo'lsa — None."""
+        ...
+
+    async def search_sku_ids(
+        self, db: AsyncSession, shop_id: UUID, q: str, limit: int, *, sellable_only: bool = False
+    ) -> list[UUID]:
+        """Matn bo'yicha SKU'lar (nom, brend, SKU kodi, MPN). `sellable_only` — faqat chiqarilgan va faol
+        (limit filtrdan keyin, F-34)."""
         ...
 
     async def pick_sku_ids(self, db: AsyncSession, shop_id: UUID, q: str | None, limit: int) -> list[UUID]:
         """Tanlash ro'yxati (buyurtma qatori, tez sotuv): arxivda bo'lmagan SKU'lar, matn bo'lsa — mos
         kelganlari, bo'lmasa — eng yangilari."""
+        ...
+
+    async def sku_spec_categories(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, str | None]:
+        """SKU → toifasining PC roli (`categories.spec_category`: CPU, GPU, …); PC qismi emas — None.
+        Boshqa shop SKU'si natijada bo'lmaydi."""
+        ...
+
+    async def candidate_sku_ids(
+        self, db: AsyncSession, shop_id: UUID, spec_category: str, q: str | None, limit: int
+    ) -> list[UUID]:
+        """PC yig'ish sahifasi: shu roldagi sotiladigan SKU'lar (chiqarilgan mahsulot, faol SKU) — matn bo'lsa
+        mos kelganlari, arzonidan boshlab emas, nomi bo'yicha (narx va moslik — chaqiruvchida)."""
+        ...
+
+    async def spec_attributes(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, dict[str, Any]]:
+        """Bog'langan (tasdiqlangan yoki eski) spec atributlari SKU bo'yicha; bog'lanmagani — yo'q.
+        PC yig'ish nomzodlarini engine'dan oldin arzon saralash uchun (QA 6a F6)."""
+        ...
+
+    async def check_compatibility(
+        self,
+        db: AsyncSession,
+        shop_id: UUID,
+        lines: Sequence[BuildLine],
+        locale: Literal["uz", "ru", "en"] = "uz",
+        *,
+        full_build: bool = True,
+    ) -> CompatibilityResult:
+        """PC moslik tekshiruvi (engineering/17 §7): deterministik qoidalar, natijani chaqiruvchi saqlaydi.
+        Shop SKU'si bo'lmagan qator — ValidationError (`lines[i].sku_id`).
+        PC qismi bo'lmaganlar — `ignored_sku_ids`."""
         ...
 
     # ------------------------------------------------------------------ sayt (ommaviy)

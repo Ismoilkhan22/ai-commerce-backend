@@ -18,6 +18,9 @@ FAST_TEST_SETTINGS = {
     "argon2_time_cost": 1,
     "argon2_memory_kib": 1024,
     "cookie_secure": False,
+    "llm_provider": "fake",  # tarmoqsiz: FakeProvider (6b)
+    "ai_debounce_seconds": 0,
+    "llm_retry_backoff_seconds": 0,
     # Yuklangan fayllar repo ichidagi var/storage'ga emas, vaqtinchalik papkaga tushadi
     "storage_local_dir": tempfile.mkdtemp(prefix="cos-test-storage-"),
 }

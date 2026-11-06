@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,3 +111,58 @@ class ConversationOrdersPort(Protocol):
     async def for_conversation(
         self, db: AsyncSession, actor: ActorContext, conversation_id: UUID
     ) -> list[OrderRef]: ...
+
+
+# ------------------------------------------------------------------ AI sotuvchi qoralamalari (6b)
+@dataclass(frozen=True)
+class DraftRef:
+    kind: Literal["LEAD", "QUOTE", "ORDER"]
+    id: UUID
+    number: int
+    status: str
+    label: str  # "L-57" | "T-1042" | "#1042" — model va operator uchun
+
+
+@dataclass(frozen=True)
+class DraftLine:
+    sku_id: UUID
+    qty: int
+
+
+class SalesDraftsPort(Protocol):
+    """sales_ai (6b) AI tool'lari faqat QORALAMA yaratadi — tasdiqlash, yuborish, chegirma, band qilish yo'q
+    (BL-110, DEC-142 Q4). Qoida va narx commerce'ning o'zida (narx katalogdan, mijoz yuborganidan emas).
+    Aktor — `AI_AGENT` (ruxsat va ko'rinish commerce'da tekshiriladi)."""
+
+    async def capture_lead(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        *,
+        conversation_id: UUID,
+        requirements: dict[str, Any],
+        idempotency_key: str,
+    ) -> DraftRef: ...
+
+    async def prepare_quote_draft(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        *,
+        conversation_id: UUID,
+        lines: Sequence[DraftLine],
+    ) -> DraftRef: ...
+
+    async def create_order_draft(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        *,
+        conversation_id: UUID,
+        customer_ref: UUID,
+        customer_phone: str | None,
+        customer_locale: str,
+        lines: Sequence[DraftLine],
+        fulfillment_method: str,
+        branch_id: UUID | None,
+    ) -> DraftRef: ...
