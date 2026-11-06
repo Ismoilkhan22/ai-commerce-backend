@@ -32,6 +32,7 @@ class ContextMessage:
     kind: str
     body: str | None  # xom matn — sales_ai LLM'ga yuborishdan oldin redact qiladi
     delivery_status: str
+    pending_media: bool = False  # ovozli xabar hali matnga o'girilmoqda (DEC-149)
 
 
 @dataclass(frozen=True)

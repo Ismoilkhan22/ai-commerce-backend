@@ -49,6 +49,8 @@ def _link(aggregate_type: str, aggregate_id: UUID, template_key: str) -> TaskLin
         return TaskLink(route="stock")
     if template_key == "staff.exchange_rate_stale":
         return TaskLink(route="exchange_rates")
+    if template_key == "staff.demand_gaps_weekly":
+        return TaskLink(route="demand_gaps")
     return None
 
 

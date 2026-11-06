@@ -94,6 +94,8 @@ class AgentSettings(VersionMixin, Base):
     daily_cost_cap_minor: Mapped[int | None] = mapped_column(BigInteger)  # USD sent
     monthly_cost_cap_minor: Mapped[int | None] = mapped_column(BigInteger)
     greeting_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # Omborda yo'q tovar (DEC-149): {"enabled": bool, "lead_time": "2–5 kun"} — muddat faqat shundan
+    special_order: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     kill_switch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     kill_switch_reason: Mapped[str | None] = mapped_column(Text)
     model_alias: Mapped[str | None] = mapped_column(Text)

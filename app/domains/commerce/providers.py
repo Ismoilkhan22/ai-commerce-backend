@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from fastapi import Request
 
 from app.domains.commerce.inventory.services.import_stock import ImportStockService
+from app.domains.commerce.inventory.services.pos_stock import PosStockService
 from app.domains.commerce.inventory.services.stock_service import StockService
+from app.domains.commerce.inventory.services.transfer_service import TransferService
 from app.domains.commerce.orders.services.lifecycle_service import OrderLifecycleService
 from app.domains.commerce.orders.services.order_service import OrderService
 from app.domains.commerce.orders.services.privacy import OrderPrivacyService
@@ -47,6 +49,8 @@ class CommerceServices:
     quotes: QuoteService
     public_quotes: PublicQuoteService
     builds: BuildService
+    transfers: TransferService
+    pos_stock: PosStockService
 
 
 def build_commerce_services(
@@ -80,6 +84,8 @@ def build_commerce_services(
         quotes=quotes,
         public_quotes=PublicQuoteService(quotes),
         builds=BuildService(catalog, stock_query),
+        transfers=TransferService(audit, stock, catalog),  # M25
+        pos_stock=PosStockService(stock),  # M22: tashqi tizim qoldig'i
     )
 
 

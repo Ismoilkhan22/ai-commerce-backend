@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.messaging.common import SENDABLE_CHANNEL_STATUSES, ensure_scope, not_found
-from app.domains.messaging.models.orm import ChannelAccount, Conversation, Message
+from app.domains.messaging.models.orm import Attachment, ChannelAccount, Conversation, Message
 from app.domains.messaging.services.ai_replies import AiReplyService, ai_actor
 from app.domains.messaging.services.core import ConversationCore
 from app.domains.messaging.services.outbound import MessageWriter
@@ -93,6 +93,22 @@ class AiConversationPortImpl:
                 Message.direction == "IN",
             )
         )
+        voice_ids = [m.id for m in rows if m.kind == "VOICE" and m.direction == "IN"]
+        pending = (
+            set(
+                (
+                    await db.execute(
+                        select(Attachment.message_id).where(
+                            Attachment.shop_id == shop_id,
+                            Attachment.message_id.in_(voice_ids),
+                            Attachment.status == "PENDING",
+                        )
+                    )
+                ).scalars()
+            )
+            if voice_ids
+            else set()
+        )
         return AiConversationContext(
             conversation_id=conversation.id,
             channel=conversation.channel,
@@ -103,7 +119,9 @@ class AiConversationPortImpl:
             customer_identity_id=conversation.customer_identity_id,
             latest_inbound_seq=int(latest_in or 0),
             messages=tuple(
-                ContextMessage(m.seq, m.direction, m.author_type, m.kind, m.body, m.delivery_status)
+                ContextMessage(
+                    m.seq, m.direction, m.author_type, m.kind, m.body, m.delivery_status, m.id in pending
+                )
                 for m in reversed(rows)
             ),
         )

@@ -33,6 +33,7 @@ from app.domains.sales_ai.schemas import (
     SuggestionSentOut,
     TurnList,
 )
+from app.domains.sales_ai.services.demand import DemandGapList, demand_gaps
 from app.domains.sales_ai.services.review import AiReviewService
 from app.platform.staff.infrastructure.guard import RequestContext, require_permission
 from app.shared.http import etag, require_if_match
@@ -77,6 +78,14 @@ async def get_quality(
     sabablari, javob tekshiruvi (validator) urilishlari, xarajat (suhbatga), kunma-kun; AUTO tayyorligi."""
     assert ctx.actor.shop_id is not None
     return await svc.quality.quality(ctx.db, ctx.actor.shop_id, days)
+
+
+@router.get("/demand-gaps", response_model=DemandGapList)
+async def get_demand_gaps(ctx: CanView, days: Annotated[int, Query(ge=1, le=90)] = 7) -> DemandGapList:
+    """ "So'rashdi, lekin bizda yo'q" (DEC-149): AI qidiruvi topmagan (`NOT_FOUND`) yoki faqat tugagan
+    mahsulot topgan (`OUT_OF_STOCK`) so'rovlar — eng ko'p so'ralgani birinchi."""
+    assert ctx.actor.shop_id is not None
+    return await demand_gaps(ctx.db, ctx.actor.shop_id, days)
 
 
 @router.patch("/settings", response_model=AiSettingsOut)

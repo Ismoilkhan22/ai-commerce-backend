@@ -43,8 +43,11 @@ LEDGER_REASONS = (
     "RESTOCK",
     "WRITE_OFF",
     "WARRANTY_REPLACEMENT",  # 7b (DEC-145): kafolatda yangi dona berildi; qoldiq -qty, ref SUPPORT_CASE
+    "TRANSFER_OUT",  # M25: filialdan jo'natildi (yo'lda — hech qaysi filialda mavjud emas, BL-082)
+    "TRANSFER_IN",  # M25: qabul qilindi (yoki bekor qilinib qaytdi)
 )
-LEDGER_REF_TYPES = ("RECEIPT", "ADJUSTMENT", "QUICK_SALE", "RESERVATION", "SUPPORT_CASE")
+LEDGER_REF_TYPES = ("RECEIPT", "ADJUSTMENT", "QUICK_SALE", "RESERVATION", "SUPPORT_CASE", "TRANSFER")
+TRANSFER_STATUSES = ("IN_TRANSIT", "RECEIVED", "CANCELLED")
 ADJUSTMENT_KINDS = ("ADJUSTMENT", "QUARANTINE_IN", "RESTOCK", "WRITE_OFF")
 ADJUSTMENT_STATUSES = ("PENDING", "APPROVED", "REJECTED")
 
@@ -328,3 +331,51 @@ class SkuCostChange(IdMixin, ShopScopedMixin, Base):
     note: Mapped[str | None] = mapped_column(Text)
     actor_membership_id: Mapped[UUID]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StockTransfer(IdMixin, ShopScopedMixin, VersionMixin, Base):
+    """M25: filiallar orasida ko'chirish. Jo'natilganda manbadan chiqadi, qabul qilinganda qo'shiladi —
+    yo'ldagi mahsulot hech qaysi filialda sotuvga mavjud emas, ikki marta hisoblanmaydi (BL-082)."""
+
+    __tablename__ = "stock_transfers"
+    __table_args__ = (
+        UniqueConstraint("shop_id", "id"),
+        Index("ix_stock_transfers_shop_id_status_sent_at", "shop_id", "status", "sent_at"),
+        CheckConstraint(f"status IN {TRANSFER_STATUSES}", name="status"),
+        CheckConstraint("from_branch_id <> to_branch_id", name="different_branches"),
+        {"schema": "commerce"},
+    )
+
+    from_branch_id: Mapped[UUID]
+    to_branch_id: Mapped[UUID]
+    status: Mapped[str] = mapped_column(Text, server_default="IN_TRANSIT")
+    note: Mapped[str | None] = mapped_column(Text)
+    sent_by: Mapped[UUID | None]
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    received_by: Mapped[UUID | None]
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_by: Mapped[UUID | None]
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    shortage_units: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class StockTransferLine(ShopScopedMixin, Base):
+    __tablename__ = "stock_transfer_lines"
+    __table_args__ = (
+        PrimaryKeyConstraint("shop_id", "transfer_id", "sku_id"),
+        ForeignKeyConstraint(
+            ["shop_id", "transfer_id"],
+            ["commerce.stock_transfers.shop_id", "commerce.stock_transfers.id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("qty > 0", name="qty_positive"),
+        CheckConstraint(
+            "received_qty IS NULL OR (received_qty >= 0 AND received_qty <= qty)", name="received"
+        ),
+        {"schema": "commerce"},
+    )
+
+    transfer_id: Mapped[UUID]
+    sku_id: Mapped[UUID]
+    qty: Mapped[int] = mapped_column(Integer)
+    received_qty: Mapped[int | None] = mapped_column(Integer)

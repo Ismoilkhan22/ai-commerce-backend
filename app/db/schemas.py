@@ -15,6 +15,7 @@ SCHEMAS: tuple[str, ...] = (
     "storefront",
     "support",
     "reporting",
+    "network",  # Stage 2: umumiy katalog va ommaviy takliflar (db/network.md)
 )
 
 RUNTIME_ROLE = "app_runtime"

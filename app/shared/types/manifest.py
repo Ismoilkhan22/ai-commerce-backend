@@ -15,7 +15,7 @@ from fastapi import APIRouter
 from app.shared.events.registry import ScheduledJob, Subscriber
 from app.shared.types.state import StateMachineRule
 
-Surface = Literal["auth", "shop", "storefront", "webhooks", "platform", "public", "realtime"]
+Surface = Literal["auth", "shop", "storefront", "webhooks", "platform", "public", "realtime", "partner"]
 
 # 11 §2, ADR-024. URL'da domen nomi yo'q.
 SURFACE_PREFIXES: dict[Surface, str] = {
@@ -25,6 +25,7 @@ SURFACE_PREFIXES: dict[Surface, str] = {
     "webhooks": "/api/v1/webhooks",
     "platform": "/api/v1/platform",
     "public": "/api/v1/public",
+    "partner": "/api/v1/partner",  # M30: hamkor API kaliti bilan (BL-089)
     "realtime": "/api/v1",  # WebSocket: /api/v1/ws (08 §6)
 }
 

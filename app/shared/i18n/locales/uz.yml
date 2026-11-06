@@ -36,6 +36,7 @@ errors:
   DISCOUNT_LIMIT_EXCEEDED: "Chegirma ruxsat etilgan chegaradan katta"
   WARRANTY_EXPIRED: "Kafolat muddati tugagan. Menejer sabab ko‘rsatib murojaat ochishi mumkin"
   IMPORT_FILE_INVALID: "Faylni o‘qib bo‘lmadi"
+  SHOP_NOT_VERIFIED: "Do‘kon hali tekshiruvdan o‘tmagan"
   RATE_LIMITED: "Juda ko‘p so‘rov. Birozdan keyin urinib ko‘ring"
   AI_QUOTA_EXCEEDED: "AI limiti tugadi"
   INTERNAL_ERROR: "Kutilmagan xato yuz berdi"

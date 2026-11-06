@@ -21,12 +21,14 @@ MANAGE = VIEW | frozenset(
 # Import (5c, 18 §13): ega va menejer — to'liq; omborchi — faqat qoldiq importi (STOCK_ONLY, DEC-140,
 # 2-qaror) — service `catalog.product.edit` va `commerce.stock.receive` bo'yicha cheklaydi
 IMPORT = "catalog.import.run"
+# Yetkazib beruvchi narx ro'yxati (DEC-149): AI o'qiydi va moslaydi, narxni ega yoki menejer tasdiqlaydi
+PRICE_LIST = "catalog.price_list.run"
 
-CATALOG_PERMISSIONS = sorted(MANAGE | {"catalog.product.archive", IMPORT})
+CATALOG_PERMISSIONS = sorted(MANAGE | {"catalog.product.archive", IMPORT, PRICE_LIST})
 
 CATALOG_ROLE_GRANTS: Mapping[str, frozenset[str]] = {
-    "OWNER": MANAGE | {"catalog.product.archive", IMPORT},  # arxivlash — faqat ega (DEC-133)
-    "MANAGER": MANAGE | {IMPORT},
+    "OWNER": MANAGE | {"catalog.product.archive", IMPORT, PRICE_LIST},  # arxivlash — faqat ega (DEC-133)
+    "MANAGER": MANAGE | {IMPORT, PRICE_LIST},
     "SALES": VIEW,
     "WAREHOUSE": VIEW | {IMPORT},
 }

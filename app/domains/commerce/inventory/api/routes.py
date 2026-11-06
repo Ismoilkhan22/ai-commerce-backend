@@ -28,6 +28,13 @@ from app.domains.commerce.inventory.schemas import (
     SkuPickList,
     StockList,
 )
+from app.domains.commerce.inventory.services.transfer_service import (
+    ReceiveIn,
+    TransferIn,
+    TransferList,
+    TransferOut,
+    TransferSuggestionList,
+)
 from app.domains.commerce.providers import CommerceServices, commerce_services
 from app.platform.staff.infrastructure.guard import RequestContext, require_permission
 from app.shared.http import etag, require_if_match, result_field, set_location, split_commas
@@ -305,3 +312,59 @@ async def set_cost(sku_id: UUID, body: SkuCostSetIn, ctx: CanEditCost, svc: Comm
         body,
         lambda: svc.stock.costs.set_manual(ctx.db, ctx.actor, sku_id, body),
     )
+
+
+# ------------------------------------------------------------------ M25: filiallar orasida ko'chirish
+CanTransfer = Annotated[RequestContext, Depends(require_permission(perm.TRANSFER))]
+
+
+@router.post("/stock/transfers", response_model=TransferOut, status_code=status.HTTP_201_CREATED)
+async def create_transfer(body: TransferIn, ctx: CanTransfer, svc: Commerce, key: IdemKey) -> Any:
+    """Jo'natish: manbadan darhol chiqadi (band qilingani ketmaydi), qabul qilinguncha yo'lda (BL-082)."""
+    return await run_idempotent(
+        ctx.db,
+        ctx.actor.shop_id,
+        "commerce.stock.transfer",
+        key,
+        body,
+        lambda: svc.transfers.create(ctx.db, ctx.actor, body),
+        status=201,
+    )
+
+
+@router.get("/stock/transfers", response_model=TransferList)
+async def list_transfers(
+    ctx: CanView,
+    svc: Commerce,
+    status_filter: Annotated[
+        str | None, Query(alias="status", pattern="^(IN_TRANSIT|RECEIVED|CANCELLED)$")
+    ] = None,
+) -> TransferList:
+    return await svc.transfers.list_transfers(ctx.db, ctx.actor, status_filter)
+
+
+@router.get("/stock/transfers/suggestions", response_model=TransferSuggestionList)
+async def transfer_suggestions(ctx: CanTransfer, svc: Commerce) -> TransferSuggestionList:
+    """To'ldirish tavsiyasi: bir filialda tugagan, boshqasida ≥ 2 ta bor."""
+    return await svc.transfers.suggestions(ctx.db, ctx.actor)
+
+
+@router.get("/stock/transfers/{transfer_id}", response_model=TransferOut)
+async def get_transfer(transfer_id: UUID, response: Response, ctx: CanView, svc: Commerce) -> Any:
+    return _with_etag(response, await svc.transfers.get(ctx.db, ctx.actor, transfer_id))
+
+
+@router.post("/stock/transfers/{transfer_id}/receive", response_model=TransferOut)
+async def receive_transfer(
+    transfer_id: UUID, body: ReceiveIn, response: Response, ctx: CanTransfer, svc: Commerce, version: IfMatch
+) -> Any:
+    """Qabul: kelgan son (bo'sh — hammasi). Kam kelsa — kamomad va ega/menejerga vazifa."""
+    return _with_etag(response, await svc.transfers.receive(ctx.db, ctx.actor, transfer_id, version, body))
+
+
+@router.post("/stock/transfers/{transfer_id}/cancel", response_model=TransferOut)
+async def cancel_transfer(
+    transfer_id: UUID, response: Response, ctx: CanTransfer, svc: Commerce, version: IfMatch
+) -> Any:
+    """Yo'lda bo'lsa — mahsulot manba filialga qaytadi."""
+    return _with_etag(response, await svc.transfers.cancel(ctx.db, ctx.actor, transfer_id, version))

@@ -15,7 +15,7 @@ from app.shared.types.actor import ActorContext
 
 SCHEMA = "sales_ai"
 TURN = "sales_ai.turn"
-PROMPT_VERSION = "seller-2026-10-v1"
+PROMPT_VERSION = "seller-2026-11-v2"  # v2: omborda yo'q tovar va buyurtma asosida olib kelish (DEC-149)
 
 # API nomi (snake_case, Claude tool nomida nuqta yo'q) → ichki nom (K-10 "domain.verb") — M06 §4.1
 TOOLS: dict[str, str] = {

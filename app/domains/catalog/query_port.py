@@ -36,9 +36,11 @@ from app.domains.catalog.pc_specs.models.orm import ReferenceHardwareSpec, SkuSp
 from app.domains.catalog.pricing.models.orm import CurrentPrice, PriceVersion
 from app.domains.catalog.pricing.services.pricing_service import RATE_MAX_AGE, PricingService, uzs_amount
 from app.domains.catalog.products.models.orm import Category, Product, ProductMedia, Sku
+from app.domains.catalog.products.schemas import PriceIn
 from app.platform.audit.services.audit_service import AuditService
 from app.shared.clock import utcnow
 from app.shared.contracts.catalog import (
+    NetworkSkuFacts,
     PublicCategory,
     PublicProductCard,
     PublicProductDetail,
@@ -51,10 +53,12 @@ from app.shared.contracts.catalog import (
 )
 from app.shared.contracts.compatibility import BuildLine, CompatibilityResult
 from app.shared.contracts.imports import ImportStockRow
-from app.shared.errors.base import ValidationError
+from app.shared.errors.base import NotFoundError, ValidationError
 from app.shared.i18n.locale import Locale
+from app.shared.money import Currency
 from app.shared.pagination import decode_cursor, encode_cursor
 from app.shared.text import NUL
+from app.shared.types.actor import ActorContext
 
 PUBLIC_CURSOR_KIND = "sf-products"
 
@@ -121,6 +125,47 @@ class CatalogQueryPortImpl:
                 uzs_amount_minor=uzs_amount(version, rate) if version else None,
                 product_title=product.title,
                 variant_name=sku.variant_name,
+            )
+        return result
+
+    async def count_active_skus(self, db: AsyncSession, shop_id: UUID) -> int:
+        total = await db.scalar(
+            select(func.count())
+            .select_from(Sku)
+            .join(Product, (Product.shop_id == Sku.shop_id) & (Product.id == Sku.product_id))
+            .where(Sku.shop_id == shop_id, Sku.status == "ACTIVE", Product.status != "ARCHIVED")
+        )
+        return int(total or 0)
+
+    async def network_facts(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, NetworkSkuFacts]:
+        if not sku_ids:
+            return {}
+        snapshots = await self.get_skus(db, shop_id, sku_ids)
+        rows = await db.execute(
+            select(Sku.id, Product.brand, Product.category_code, Sku.mpn_normalized, Sku.condition)
+            .join(Product, (Product.shop_id == Sku.shop_id) & (Product.id == Sku.product_id))
+            .where(Sku.shop_id == shop_id, Sku.id.in_(list(sku_ids)))
+        )
+        result: dict[UUID, NetworkSkuFacts] = {}
+        for sku_id, brand, category_code, mpn, condition in rows:
+            snap = snapshots.get(sku_id)
+            if snap is None:
+                continue
+            result[sku_id] = NetworkSkuFacts(
+                sku_id=sku_id,
+                product_id=snap.product_id,
+                title=snap.title,
+                brand=brand,
+                category_code=category_code,
+                mpn_norm=mpn,
+                condition=condition,
+                warranty_months=snap.warranty_months,
+                sellable=snap.sellable,
+                amount_minor=snap.amount_minor,
+                currency=snap.currency,
+                uzs_amount_minor=snap.uzs_amount_minor,
             )
         return result
 
@@ -535,3 +580,42 @@ class ImportStockSourceImpl:
             query = query.where(sql_tuple(StagedRow.branch_id, StagedRow.sku_id) > sql_tuple(*after))
         rows = await db.execute(query.order_by(StagedRow.branch_id, StagedRow.sku_id).limit(limit))
         return [ImportStockRow(r.sku_id, r.branch_id, r.quantity, r.row_number) for r in rows.scalars()]
+
+
+class CatalogPricePortImpl:
+    """M30: hamkor API narxi — `PricingService.apply_price` (joriy versiya bilan, CAS)."""
+
+    def __init__(self, pricing: PricingService) -> None:
+        self.pricing = pricing
+
+    async def set_price(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        sku_id: UUID,
+        amount_minor: int,
+        currency: Currency,
+        reason: str,
+    ) -> bool:
+        sku = (
+            await db.execute(
+                select(Sku).where(Sku.shop_id == actor.shop_id, Sku.id == sku_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        product = await db.get(Product, sku.product_id) if sku else None
+        if sku is None or sku.status != "ACTIVE" or product is None or product.status == "ARCHIVED":
+            raise NotFoundError("SKU not found")
+        current = (
+            await db.execute(
+                select(CurrentPrice).where(CurrentPrice.shop_id == sku.shop_id, CurrentPrice.sku_id == sku.id)
+            )
+        ).scalar_one_or_none()
+        before = current.price_version_id if current else None
+        active = await self.pricing.apply_price(
+            db,
+            actor,
+            sku,
+            PriceIn(currency=currency, amount_minor=amount_minor, reason=reason),
+            current.version if current else 0,
+        )
+        return active.version.id != before

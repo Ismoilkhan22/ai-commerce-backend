@@ -9,7 +9,9 @@ from fastapi import Request
 from app.domains.catalog.imports.services.import_service import ImportService
 from app.domains.catalog.pc_specs.services.link_service import LinkService
 from app.domains.catalog.pc_specs.services.spec_service import SpecLibraryService
+from app.domains.catalog.price_lists.services.price_list_service import PriceListService
 from app.domains.catalog.pricing.services.pricing_service import PricingService
+from app.domains.catalog.products.services.card_draft import CardDraftService
 from app.domains.catalog.products.services.category_service import CategoryService
 from app.domains.catalog.products.services.product_service import ProductService
 from app.platform.audit.services.audit_service import AuditService
@@ -27,6 +29,8 @@ class CatalogServices:
     products: ProductService
     specs: SpecLibraryService
     imports: ImportService
+    price_lists: PriceListService
+    card_drafts: CardDraftService
 
 
 def build_catalog_services(
@@ -47,6 +51,8 @@ def build_catalog_services(
         products=products,
         specs=SpecLibraryService(audit),
         imports=ImportService(use, audit, files, products, pricing, links, permissions, stock_results),
+        price_lists=PriceListService(audit, files, pricing),
+        card_drafts=CardDraftService(files),
     )
 
 

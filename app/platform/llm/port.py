@@ -23,6 +23,15 @@ class TextPart:
 
 
 @dataclass(frozen=True)
+class MediaPart:
+    """Foydalanuvchi bergan fayl (rasm, PDF, ovoz) — xom baytlar (DEC-149). Bazaga va logga yozilmaydi;
+    PII yashirish matnga tegishli — faylni faqat shop o'zi yuklagan ichki vazifalar yuboradi."""
+
+    mime: str
+    data: bytes = field(repr=False)
+
+
+@dataclass(frozen=True)
 class ToolCall:
     id: str
     name: str  # API nomi (snake_case): "catalog_search"
@@ -37,7 +46,7 @@ class ToolResult:
     is_error: bool = False
 
 
-Part = TextPart | ToolCall | ToolResult
+Part = TextPart | MediaPart | ToolCall | ToolResult
 
 
 @dataclass(frozen=True)

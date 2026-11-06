@@ -7,6 +7,8 @@
   eskirgan.
 - `sales_ai_eval_stalled` (har 5 daq, 6c): 10 daqiqadan beri qadam qo'ymagan baholash yugurishi (event
   yo'qolgan yoki worker o'lgan) → `ERROR` (`STALLED`), shu paytgacha yozilgan natijalar bilan metrikalar.
+- `sales_ai_demand_gaps_weekly` (dushanba 09:00, DEC-149): o'tgan haftada "so'rashdi, lekin yo'q" bo'lsa —
+  ega va menejerga xabarnoma (faqat soni; hafta bo'yicha dedup).
 """
 
 from __future__ import annotations
@@ -18,14 +20,19 @@ from sqlalchemy import delete, func, select, update
 from app.domains.sales_ai.common import emit
 from app.domains.sales_ai.models.orm import AiToolExecution, AiTurn, EvalRun
 from app.domains.sales_ai.providers import from_state
+from app.domains.sales_ai.services.demand import demand_gaps
 from app.platform.jobs.services.shops import open_shop_ids
+from app.platform.notifications.services.notifications import NotificationService
+from app.shared.clock import utcnow
 from app.shared.events.registry import JobContext, JobResult, ScheduledJob
+from app.shared.types.actor import ActorContext
 
 STUCK_RUNNING = timedelta(minutes=2)
 STUCK_QUEUED = timedelta(minutes=10)
 TOOL_RETENTION = timedelta(days=90)
 SUGGESTION_TTL = timedelta(days=30)
 EVAL_STALLED = timedelta(minutes=10)
+_notifications = NotificationService()
 
 
 async def stuck_turns(ctx: JobContext) -> JobResult:
@@ -125,8 +132,34 @@ async def eval_stalled(ctx: JobContext) -> JobResult:
     return JobResult(affected=len(runs))
 
 
+async def demand_gaps_weekly(ctx: JobContext) -> JobResult:
+    notified = 0
+    shops = await open_shop_ids(ctx.database)
+    week = utcnow().strftime("%G-W%V")
+    for shop_id in shops:
+        async with ctx.database.transaction(shop_id) as db:
+            gaps = await demand_gaps(db, shop_id, 7)
+            if not gaps.items:
+                continue
+            await _notifications.notify_staff(
+                db,
+                shop_id=shop_id,
+                actor=ActorContext.system(shop_id),
+                template_key="staff.demand_gaps_weekly",
+                aggregate_type="sales_ai.demand_gaps",
+                aggregate_id=shop_id,
+                aggregate_version=1,
+                variables={"count": len(gaps.items)},
+                roles=("OWNER", "MANAGER"),
+                dedup_scope=f"demand-gaps:{week}",
+            )
+            notified += 1
+    return JobResult(processed=len(shops), affected=notified)
+
+
 SALES_AI_JOBS = [
     ScheduledJob("sales_ai_stuck_turns", stuck_turns, every_seconds=120),
     ScheduledJob("sales_ai_retention", retention, cron="50 3 * * *"),
     ScheduledJob("sales_ai_eval_stalled", eval_stalled, every_seconds=300),
+    ScheduledJob("sales_ai_demand_gaps_weekly", demand_gaps_weekly, cron="0 9 * * 1"),
 ]

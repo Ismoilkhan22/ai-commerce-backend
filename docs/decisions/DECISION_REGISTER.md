@@ -780,6 +780,64 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Shart | Avval Telegram va Instagram haqiqiy akkaunt bilan sinaladi; har yangi qismga o'zbekcha sinov to'plami (`engineering/16`) va AI limiti |
 | Nega | Oddiy 24/7 chat — hamma beradigan narsa; shop pulni vaqt tejaydigan avtomatlashtirish uchun to'laydi |
 
+### DEC-150 — Instagram'ni ulash: "Instagram bilan ulash" tugmasi, Instagram ilovasidan yozilgan javob, ma'lumot o'chirish — `PROPOSED (2026-11-02, Claude — founder ko'rib chiqadi)`
+**Nima:** do'kon egasi token nusxalamaydi; Meta Live talablari.
+**Qayerda:** `app/domains/messaging/services/ig_oauth.py`, `channels/instagram.py`, `services/inbound.py` (`_echo`), `messaging_0005`, [progress/M06q-instagram-connect.md](../engineering/progress/M06q-instagram-connect.md).
+
+| Savol | Tanlov |
+|---|---|
+| Ulash yo'li | Facebook Login (Page orqali, `graph.facebook.com/v23.0`); kod → token → 60 kunlik token → Page tokeni → obuna. "Instagram Login" va system-user token kodda qoldi, lekin asosiy yo'l emas |
+| Qo'lda token | "Ilg'or" bo'limida qoladi (Meta OAuth ishlamay qolsa) |
+| Qaytish xavfsizligi | `state` HMAC bilan imzolangan, 10 daqiqa; shop, xodim va qaytish yo'li imzodan; faqat panel ichidagi nisbiy yo'l |
+| Instagram ilovasidan yozilgan javob (echo) | Suhbatga xodim xabari (`STAFF`, yuborilgan) bo'lib yoziladi; bizdan ketgan xabarning echo'si (`mid` yoki 2 daqiqa ichida bir xil matn) tashlanadi |
+| Ma'lumot o'chirish / app'ni o'chirish | Meta `signed_request` app siri bilan tekshiriladi; shu Facebook foydalanuvchisi ulagan Instagram akkauntlari uziladi (`AUTH_REVOKED`), token o'chiriladi; javob — holat sahifasi va tasdiq kodi. Facebook ID OAuth paytida `channel_accounts.settings.meta_user_id` ga yoziladi |
+| Shop noma'lum (callback) | RLS'ga uchinchi identity varianti `app.meta_user_ref` (faqat INSTAGRAM) |
+| Nega | Har do'kon uchun qo'lda token olish — kunlab ish; Meta Live uchun data deletion callback majburiy |
+
+### DEC-151 — DEC-149 ni amalga oshirish tafsilotlari — `PROPOSED (2026-11-02, Claude — founder ko'rib chiqadi)`
+**Qayerda:** [progress/M10-ai-automation.md](../engineering/progress/M10-ai-automation.md), `catalog_0007`, `sales_ai_0004`, `platform_0017`.
+
+| Savol | Tanlov |
+|---|---|
+| Narx ro'yxati natijasi | Sotuv narxi taklifi: yetkazib beruvchi narxi (kerak bo'lsa shop kursi bilan) × (1 + ustama %), so'm — 1 000 so'mga yaxlitlanadi (1 / 100 / 1 000 / 10 000 tanlanadi), dollar — sentgacha. Tannarxga (o'rtacha) tegilmaydi — u faqat kirimdan |
+| Narx ro'yxati moslash | Avval kod (SKU kodi yoki MPN) bo'yicha aniq; qolganiga so'z bo'yicha 5 nomzod va AI tanlaydi; shubhada — moslanmaydi. Ega qo'lda moslashi yoki narxni o'zi yozishi mumkin |
+| Kim | Ega va menejer (`catalog.price_list.run`); qo'llash — oddiy narx versiyasi, audit, sabab "Narx ro'yxati: <yetkazib beruvchi>" |
+| Ovoz | ≤ 120 soniya, ≤ 3 MB; `light` model (Gemini); matn xabar ichiga yoziladi, audio umuman saqlanmaydi; AI javobi matn tayyor bo'lishini 90 soniyagacha kutadi; bo'lmasa — avvalgidek operatorga |
+| Kartochka qoralamasi | Hech narsa saqlanmaydi — forma to'ldiriladi, ega saqlaydi (QORALAMA). Narx, kafolat, qoldiq AI'dan olinmaydi (xususiyat sifatida kelsa ham tashlanadi). Toifa faqat ro'yxatdan |
+| Omborda yo'q tovar | AI avval omborda bor o'xshash variantni taklif qiladi. Sozlama "Buyurtma asosida olib kelamiz" (standart — o'chiq) + "odatiy muddat" matni: yoqilsa AI shuni aytadi, lead yozadi va menejerga ulaydi; muddatni o'zi to'qimaydi. Prompt versiyasi `seller-2026-11-v2` |
+| "So'rashdi, lekin yo'q" | AI qidiruvi bo'sh (`NOT_FOUND`) yoki faqat tugagan mahsulot (`OUT_OF_STOCK`); panel sahifasi (7/30/90 kun) va har dushanba 09:00 da ega va menejerga xabarnoma (faqat soni) |
+| Xarajat | Har biri alohida maqsad (`PRICE_LIST_READ`, `VOICE_TRANSCRIBE`, `CARD_DRAFT`), shop AI limitiga kiradi; limit tugasa yoki AI sozlanmagan bo'lsa — 422 `ai_unavailable` |
+
+### DEC-152 — Stage 2 birinchi bo'lak: shopning o'zi ro'yxatdan o'tishi va `network` (umumiy mahsulot, ommaviy taklif) — `PROPOSED (2026-11-02, Claude — founder ko'rib chiqadi)`
+**Nima:** founder "pilotni kutmaymiz, Stage 2 va 3 ni ham quramiz" dedi (2026-11-02). `engineering/27` dagi "Stage 2/3 ni oldindan qurmaymiz" qoidasi shu bilan bekor.
+**Qayerda:** [db/network.md](../engineering/db/network.md), [progress/S2-network.md](../engineering/progress/S2-network.md), `platform_0018`, `network_0001…0002`.
+
+| Savol | Tanlov |
+|---|---|
+| O'zi ro'yxatdan o'tish | SMS kod (Eskiz) → shop DRAFT + ega; ACTIVE — faqat platforma tekshiruvidan keyin. Flag `FEATURE_SELF_SIGNUP` standart o'chiq (yopiq beta) |
+| STIR | Ro'yxatdan o'tishda majburiy va noyob |
+| Kim ommaviy qila oladi | Faqat ACTIVE shop, ega yoki menejer; standartda hammasi yopiq |
+| Ommaviy maydonlar | Nom, brend, toifa, narx, holat, kafolat, mavjudlik (bor / kam / yo'q). Filial va koordinata — keyin (rozilik bilan) |
+| Avtomatik bog'lash | Faqat brend + MPN aniq mos; boshqa hamma holat — platforma navbati |
+| Umumiy mahsulot | Birinchi aniq (brend, MPN) taklifdan avtomatik yaratiladi (`AUTO_MPN`); admin ham yaratadi |
+| Tizim sababi bilan yashirish | Narx yo'q, saytda chiqarilmagan, shop to'xtatilgan — tuzalsa o'zi qaytadi; ega yopgani qaytmaydi |
+| Qidiruv indeksi | Hozircha alohida indeks yo'q: Stage 3 `public_offers` ni ommaviy RLS varianti bilan to'g'ridan-to'g'ri o'qiydi (qaytarib olingan taklif kechikmaydi) |
+
+### DEC-153 — Stage 2 ikkinchi bo'lak (M22, M25, M26, M29, M30) va Stage 3 birinchi bo'lak (M31, M32, M35) — `PROPOSED (2026-11-03, Claude — founder ko'rib chiqadi)`
+**Qayerda:** [progress/S2-network.md](../engineering/progress/S2-network.md), [db/marketplace.md](../engineering/db/marketplace.md).
+
+| Savol | Tanlov |
+|---|---|
+| Ko'chirish (M25) | Jo'natishda manbadan chiqadi, qabulda qo'shiladi; yo'lda hech qayerda mavjud emas; kamomad avtomatik hisobdan chiqarilmaydi — vazifa |
+| Tariflar (M26) | PILOT (30 kun bepul) + Start / PC Pro / Business; narxni founder kiritadi; hisob davrdan 5 kun oldin; to'lov tizimdan tashqarida, admin belgilaydi; 7 kun kechiksa PAST_DUE, savdo to'xtamaydi |
+| AI limiti birligi | "AI javoblari" (navbatlar) — suhbat sonini platforma darajasida aniq sanab bo'lmaydi |
+| Tasdiqlangan do'kon (M29) | Admin, dalil matni bilan, 1…24 oy; muddati o'tsa o'zi yo'qoladi |
+| Shikoyat (M29) | Shaxsiz; admin yashirsa ega qaytara olmaydi |
+| Hamkor API (M30) | Kalit — ega; 4 ruxsat; 120/daq; sir bir marta; bekor — darhol |
+| Kassa qoldig'i (M22) | Eski ma'lumot va band qilinganidan kam — nizo; standartda tasdiqqa, kalit sozlamasi bilan avtomatik |
+| Global qidiruv (M31/M32) | Alohida xaridor sayti (`apps/marketplace`, :3003); natija umumiy mahsulot bo'yicha; "eng arzon" yorlig'i yo'q; oxirgi tekshiruv vaqti ko'rinadi |
+| Yo'naltirish (M35) | "Do'konga o'tish" — taklif qayta tekshiriladi, yozuv shaxsiz (IP xeshi) |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

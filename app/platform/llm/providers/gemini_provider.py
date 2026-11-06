@@ -25,6 +25,7 @@ from app.platform.llm.port import (
     LlmMessage,
     LlmRequest,
     LlmResponse,
+    MediaPart,
     ProviderName,
     StopReason,
     TextPart,
@@ -106,6 +107,8 @@ def _content(message: LlmMessage) -> types.Content:
             out.append(types.Part.from_function_response(name=part.name, response=response))
         elif isinstance(part, TextPart):
             out.append(types.Part(text=part.text))
+        elif isinstance(part, MediaPart):
+            out.append(types.Part.from_bytes(data=part.data, mime_type=part.mime))
     return types.Content(role="user", parts=out)
 
 

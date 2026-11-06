@@ -457,6 +457,8 @@ class ToolBroker:
         items = (await self._offers(db, ctx.shop_id, ids))[: args.max_results]
         outcome = self._offer_outcome("catalog_search", items, stock=True)
         outcome.queries = {args.query}
+        # "So'rashdi, lekin bizda yo'q" hisoboti (DEC-149): nechtasi hozir sotuvda bor
+        outcome.summary["available"] = sum(1 for i in items if i.get("availability") != "OUT_OF_STOCK")
         return outcome
 
     async def _details(self, db: AsyncSession, ctx: ToolContext, args: SkuIdsArgs) -> ToolOutcome:

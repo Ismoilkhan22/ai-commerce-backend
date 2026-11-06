@@ -168,6 +168,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `RULE_BLOCK` | 422 | PC moslik `BLOCK` yoki biznes qoida buzildi | yo'q |
 | `DISCOUNT_LIMIT_EXCEEDED` | 422 | Rol limitidan katta chegirma (DEC-110) | yo'q (tasdiq so'raladi) |
 | `IMPORT_FILE_INVALID` | 422 | Import fayli o'qilmadi (format, kodlash, ustunlar) — [18](18-catalog-import.md); `details.reason`: `EMPTY`, `NO_HEADER`, `NOT_TABLE`, `MACRO`, `ZIP_BOMB`, `TOO_MANY_ROWS`, `TOO_LARGE`, `UNSUPPORTED_ENCODING` (yuklashdagi arzon tekshiruv). Fonda o'qishda chiqqan sabab (`TIMEOUT` va shu ro'yxat) — 422 emas, import `FAILED`, `error_code` da (5c QA F1) | yo'q |
+| `SHOP_NOT_VERIFIED` | 422 | Stage 2: ommaviy taklif (global qidiruv) faqat platforma tekshirgan, `ACTIVE` shopdan — [db/network.md](db/network.md) | yo'q |
 | `IMPORT_ALREADY_RUNNING` | 409 | Shopda boshqa faol import bor (sinov, yozish yoki qoldiq bosqichida) — tugashini kuting (18 §3) | yo'q |
 | `IMPORT_BUSY` | 409 | Import fon bosqichi aynan shu daqiqada yozuvni yangilayapti — qulf kutilmaydi (`NOWAIT`), bir zumdan keyin qayta urinish (5c QA F5) | ha |
 | `RATE_LIMITED` | 429 | Limit oshdi; `Retry-After` bilan | ha, `Retry-After` dan keyin |

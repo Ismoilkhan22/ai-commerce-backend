@@ -40,6 +40,7 @@ from app.domains.sales_ai.schemas import (
     KnowledgeOut,
     KnowledgePatch,
     ReadinessCheck,
+    SpecialOrder,
 )
 from app.domains.sales_ai.services.gate import AiGateService
 from app.domains.sales_ai.services.sandbox import sandbox_cap_micros
@@ -112,6 +113,11 @@ class AiPanelService:
             if name in fields and getattr(body, name) is not None:
                 setattr(settings, name, getattr(body, name))
                 diff[name] = {"changed": True}
+        if "special_order" in fields and body.special_order is not None:
+            order = body.special_order.model_dump()
+            order["lead_time"] = (order.get("lead_time") or "").strip() or None
+            settings.special_order = order
+            diff["special_order"] = {"changed": True}
         if "handoff_rules" in fields and body.handoff_rules is not None:
             settings.handoff_rules = body.handoff_rules.model_dump()
             diff["handoff_rules"] = {"changed": True}
@@ -201,6 +207,7 @@ class AiPanelService:
             daily_cost_cap_minor=settings.daily_cost_cap_minor,
             monthly_cost_cap_minor=settings.monthly_cost_cap_minor,
             greeting_enabled=settings.greeting_enabled,
+            special_order=SpecialOrder.model_validate(settings.special_order or {}),
             kill_switch_active=settings.kill_switch_at is not None,
             kill_switch_reason=settings.kill_switch_reason,
             paused_until=settings.paused_until

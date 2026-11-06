@@ -22,6 +22,7 @@ from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
 from app.dependencies import (
     get_ai_conversations,
+    get_catalog_price,
     get_catalog_query,
     get_chat_availability,
     get_conversation_lookup,
@@ -38,6 +39,7 @@ from app.domains.catalog.providers import build_catalog_services
 from app.domains.commerce.providers import build_commerce_services
 from app.domains.messaging.common import MessagingConfig
 from app.domains.messaging.providers import build_messaging_services
+from app.domains.network.providers import build_network_services
 from app.domains.reporting.providers import build_reporting_services
 from app.domains.sales_ai.providers import build_sales_ai_services
 from app.domains.storefront.providers import build_storefront_services
@@ -46,6 +48,7 @@ from app.platform.audit.services.audit_service import AuditService
 from app.platform.audit.services.denied import DeniedAttemptRecorder
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
+from app.platform.billing.services.billing_service import BillingService
 from app.platform.llm.factory import build_router
 from app.platform.llm.providers.fake import FakeProvider
 from app.platform.llm.router import LlmRouter
@@ -53,6 +56,8 @@ from app.platform.notifications.providers import build_notification_services
 from app.platform.notifications.telegram import build_sender
 from app.platform.shops.services.platform_queries import PlatformQueryService
 from app.platform.shops.services.shop_service import ShopService
+from app.platform.shops.services.signup_service import SignupConfig, SignupService
+from app.platform.sms.sender import EskizSmsSender, FakeSmsSender, SmsSender
 from app.platform.staff.permissions import PermissionRegistry
 from app.platform.staff.services.platform_team_service import PlatformTeamService
 from app.platform.staff.services.staff_service import StaffService
@@ -275,6 +280,14 @@ def wire_services(
     state.permissions = PermissionRegistry.from_manifests(manifests)
     state.use = use
     state.auth_service = AuthService(auth_config, hasher, audit, use)
+    # M21: shopning o'zi ro'yxatdan o'tishi (flag ostida) — SMS kodi bilan
+    state.sms = sms_sender(settings)
+    state.signup = SignupService(
+        SignupConfig(enabled=settings.feature_self_signup, secret=auth_config.jwt_secret),
+        state.sms,
+        state.auth_service,
+        audit,
+    )
     state.staff_service = staff
     state.shop_service = ShopService(use, audit, auth_config, staff, get_order_query())
     state.platform_queries = PlatformQueryService()
@@ -321,6 +334,13 @@ def wire_services(
         get_conversation_lookup(),
         get_support_commerce(state.commerce),
     )
+    # Stage 2: umumiy katalog va ommaviy takliflar — katalog va qoldiq faqat port'lar orqali (TC-NET-04)
+    state.network = build_network_services(
+        audit, get_catalog_query(), get_stock_query(), secret=auth_config.jwt_secret
+    )
+    state.catalog_price = get_catalog_price()  # M30: hamkor API narx yozishi
+    state.billing = BillingService(audit, get_catalog_query())  # M26: tariflar va hisoblar
+    state.storefront_public_url = settings.storefront_public_url  # global qidiruv → shop sayti havolasi
     # 7c: hisobot read model'lari — katalog o'lchami va qayta qurish manbasi port'lar orqali
     state.reporting = build_reporting_services(get_catalog_query(), get_reporting_sources())
     # 6b: AI sotuvchi — LLM provayderi sozlamadan (LLM_PROVIDER), suhbat va qoralamalar port'lar orqali
@@ -352,6 +372,18 @@ def wire_services(
         ai_budget=state.sales_ai.gate,
     )
     state.sales_ai.connect(get_ai_conversations(state.messaging), get_sales_drafts(state.commerce))
+    # DEC-149: narx ro'yxati va kartochka qoralamasi — shop AI limiti sotuvchi bilan umumiy
+    state.catalog.price_lists.connect(main_router, state.sales_ai.gate)
+    state.catalog.card_drafts.connect(main_router, state.sales_ai.gate)
+
+
+def sms_sender(settings: Settings) -> SmsSender:
+    if settings.sms_provider == "eskiz":
+        assert settings.eskiz_email and settings.eskiz_password is not None
+        return EskizSmsSender(
+            settings.eskiz_email, settings.eskiz_password.get_secret_value(), settings.eskiz_from
+        )
+    return FakeSmsSender()
 
 
 def llm_router(settings: Settings) -> LlmRouter:

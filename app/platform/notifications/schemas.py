@@ -30,6 +30,7 @@ LinkRoute = Literal[
     "lead",
     "quote",
     "support_case",  # 7b: kafolat murojaati
+    "demand_gaps",  # DEC-149: "So'rashdi, lekin bizda yo'q" hisoboti
 ]
 
 

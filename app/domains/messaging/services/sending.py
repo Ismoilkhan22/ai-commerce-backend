@@ -40,7 +40,9 @@ from app.domains.messaging.models.orm import (
     CustomerIdentity,
     Message,
 )
+from app.domains.messaging.services.voice import VoiceTranscriber
 from app.domains.messaging.state_machine import CHANNEL as CHANNEL_ENTITY
+from app.platform.llm.port import LlmError
 from app.platform.notifications.services.notifications import NotificationService
 from app.platform.notifications.services.tasks import CHANNEL_DEGRADED, MESSAGE_FAILED, TaskService
 from app.platform.storage.models.orm import StoredFile
@@ -90,10 +92,17 @@ def _backoff(attempt: int) -> int:
 
 
 class SendingService:
-    def __init__(self, adapters: ChannelAdapters, files: FileService, use: UseService) -> None:
+    def __init__(
+        self,
+        adapters: ChannelAdapters,
+        files: FileService,
+        use: UseService,
+        voice: VoiceTranscriber | None = None,
+    ) -> None:
         self.adapters = adapters
         self.files = files
         self.use = use
+        self.voice = voice or VoiceTranscriber(None, None)
         self.tasks = TaskService()
         self.notifications = NotificationService()
 
@@ -383,9 +392,24 @@ class SendingService:
             account = await db.get(ChannelAccount, conversation.channel_account_id) if conversation else None
             token = account.token_enc if account is not None and account.channel == "TELEGRAM" else None
             fake = bool((account.settings or {}).get("fake")) if account is not None else False
-            jobs = [(r.id, r.kind, r.provider_file_ref) for r in rows]
+            jobs = [
+                (r.id, r.kind, r.provider_file_ref, r.mime, r.duration_seconds, r.size_bytes) for r in rows
+            ]
+            voice_ok = await self.voice.allowed(db, shop_id) if any(j[1] == "VOICE" for j in jobs) else False
         stored = 0
-        for attachment_id, kind, ref in jobs:
+        for attachment_id, kind, ref, mime, duration, size in jobs:
+            if (
+                kind == "VOICE"
+                and ref
+                and token
+                and not fake
+                and voice_ok
+                and self.voice.eligible(duration, size)
+            ):
+                stored += await self._transcribe(
+                    database, shop_id, message_id, attachment_id, token, ref, mime
+                )
+                continue
             if kind not in DOWNLOADABLE or not ref or not token or fake:
                 await self._attachment_result(database, shop_id, attachment_id, None, "UNSUPPORTED_TYPE")
                 continue
@@ -399,6 +423,51 @@ class SendingService:
             if await self._attachment_result(database, shop_id, attachment_id, data, None):
                 stored += 1
         return stored
+
+    async def _transcribe(
+        self,
+        database: Database,
+        shop_id: UUID,
+        message_id: UUID,
+        attachment_id: UUID,
+        token: str,
+        ref: str,
+        mime: str | None,
+    ) -> int:
+        """Ovoz → matn (DEC-149): audio faqat xotirada, saqlanmaydi (DEC-117)."""
+        try:
+            data, _ = await self.adapters.telegram.download_file(token, ref)
+            result, response = await self.voice.transcribe(data, mime)
+        except ChannelSendError as exc:
+            if exc.retryable:
+                raise RetryLater(_backoff(1)) from exc
+            await self._attachment_result(database, shop_id, attachment_id, None, exc.code)
+            return 0
+        except LlmError as exc:  # vaqtinchalik (429/5xx) — qayta urinish
+            raise RetryLater(_backoff(1)) from exc
+        async with database.transaction(shop_id) as db:
+            row = (
+                await db.execute(
+                    select(Attachment)
+                    .where(Attachment.shop_id == shop_id, Attachment.id == attachment_id)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if row is None or row.status != "PENDING":
+                return 0
+            if response is not None:
+                await self.voice.record(db, shop_id, response, message_id)
+            row.provider_file_ref = None
+            if result.text is None:
+                row.status, row.error_code = "FAILED", result.error
+                return 0
+            row.status, row.error_code = "PURGED", "TRANSCRIBED"
+            message = await db.get(Message, message_id)
+            if message is not None and message.shop_id == shop_id:
+                caption = (message.body or "").strip()
+                message.body = f"{caption}\n{result.text}" if caption else result.text
+        logger.info("messaging.voice.transcribed", chars=len(result.text))
+        return 1
 
     async def _attachment_result(
         self, database: Database, shop_id: UUID, attachment_id: UUID, data: bytes | None, error: str | None

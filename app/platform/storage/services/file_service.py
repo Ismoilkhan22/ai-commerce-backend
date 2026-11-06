@@ -40,7 +40,9 @@ MAX_LOGO_BYTES = 2 * 1024 * 1024  # storefront.md §8
 MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 18 §4
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 DOCUMENT_TYPES = frozenset({XLSX_MIME, "text/csv"})
-_DOCUMENT_EXTENSIONS = {XLSX_MIME: ".xlsx", "text/csv": ".csv"}
+PDF_MIME = "application/pdf"
+PRICE_LIST_TYPES = DOCUMENT_TYPES | {PDF_MIME} | IMAGE_TYPES  # DEC-149: jadval, PDF yoki surat
+_DOCUMENT_EXTENSIONS = {XLSX_MIME: ".xlsx", "text/csv": ".csv", PDF_MIME: ".pdf"}
 
 
 def _document_mime(data: bytes) -> str | None:
@@ -63,6 +65,21 @@ def _document_mime(data: bytes) -> str | None:
         except UnicodeDecodeError:
             continue
     return None
+
+
+def _price_list_mime(data: bytes) -> str | None:
+    """Narx ro'yxati: PDF (imzo `%PDF-` va oxirida `%%EOF`), rasm (tuzilma tekshiruvi) yoki jadval."""
+    if data.startswith(b"%PDF-"):
+        return PDF_MIME if b"%%EOF" in data[-2048:] else None
+    return sniff_mime(data) or _document_mime(data)
+
+
+def _detect_mime(rule_types: frozenset[str], data: bytes) -> str | None:
+    if rule_types == DOCUMENT_TYPES:
+        return _document_mime(data)
+    if rule_types == PRICE_LIST_TYPES:
+        return _price_list_mime(data)
+    return sniff_mime(data)
 
 
 # Boshqaruv belgilari; ko'rinmas va yo'nalish almashtiruvchi belgilar — `strip_invisible` (shared/text.py):
@@ -90,6 +107,8 @@ PURPOSES: dict[str, PurposeRule] = {
     "SUPPORT_EVIDENCE": PurposeRule("support.case.service", False, MAX_IMAGE_BYTES, IMAGE_TYPES),
     # Katalog importi (5c): XLSX yoki CSV, 10 MB (18 §4). Jadval ekanini import moduli to'liq tekshiradi
     "IMPORT_FILE": PurposeRule("catalog.import.run", False, MAX_IMPORT_BYTES, DOCUMENT_TYPES),
+    # Yetkazib beruvchi narx ro'yxati (DEC-149): AI o'qiydi, narxni ega tasdiqlaydi
+    "PRICE_LIST": PurposeRule("catalog.price_list.run", False, MAX_IMPORT_BYTES, PRICE_LIST_TYPES),
 }
 
 
@@ -213,7 +232,7 @@ class FileService:
             raise ValidationError("Empty file", fields=[{"field": "file", "code": "required", "params": {}}])
         if len(data) > rule.max_bytes:
             raise PayloadTooLargeError("File too large", max_bytes=rule.max_bytes)
-        mime = _document_mime(data) if rule.mime_types == DOCUMENT_TYPES else sniff_mime(data)
+        mime = _detect_mime(rule.mime_types, data)
         if mime is None or mime not in rule.mime_types:
             raise UnsupportedMediaTypeError("File type not allowed", allowed=sorted(rule.mime_types))
         file_id = uuid7()

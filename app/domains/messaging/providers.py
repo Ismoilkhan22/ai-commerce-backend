@@ -26,6 +26,7 @@ from app.domains.messaging.services.inbox import InboxService
 from app.domains.messaging.services.notify import CustomerNotifier
 from app.domains.messaging.services.outbound import MessageWriter
 from app.domains.messaging.services.sending import SendingService
+from app.domains.messaging.services.voice import VoiceTranscriber
 from app.domains.messaging.services.webchat import WebchatService
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.llm.router import LlmRouter
@@ -95,7 +96,7 @@ def build_messaging_services(
         writer=writer,
         inbound=inbound,
         inbox=InboxService(core, writer, files, orders),
-        sending=SendingService(adapters, files, use),
+        sending=SendingService(adapters, files, use, VoiceTranscriber(llm, ai_budget)),
         webchat=WebchatService(inbound),
         notifier=CustomerNotifier(writer, templates),
         ai=AiReplyService(core, writer),

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.contracts.compatibility import BuildLine, CompatibilityResult
 from app.shared.money import Currency
+from app.shared.types.actor import ActorContext
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,25 @@ class SkuSnapshot:
     uzs_amount_minor: int | None  # xaridor ko'radigan narx (tiyinda), yaxlitlanmaydi (DEC-133)
     product_title: str = ""  # tanlash ro'yxati uchun nom va variant alohida
     variant_name: str | None = None
+
+
+@dataclass(frozen=True)
+class NetworkSkuFacts:
+    """Stage 2 `network`: ommaviy taklif proyeksiyasi uchun ruxsat etilgan maydonlar. Tannarx, ichki izoh,
+    xodim yo'q (BL-081)."""
+
+    sku_id: UUID
+    product_id: UUID
+    title: str
+    brand: str | None
+    category_code: str
+    mpn_norm: str | None
+    condition: str  # NEW | USED | REFURBISHED
+    warranty_months: int | None
+    sellable: bool  # mahsulot chiqarilgan va SKU faol
+    amount_minor: int | None
+    currency: Currency | None
+    uzs_amount_minor: int | None  # kursi yo'q dollar narxi — None (ko'rsatilmaydi)
 
 
 @dataclass(frozen=True)
@@ -137,6 +157,16 @@ class CatalogQueryPort(Protocol):
         """Hisobot uchun SKU nomi, toifasi (kod + nomi) va joriy narxi. Boshqa shop SKU'si natijada yo'q."""
         ...
 
+    async def network_facts(
+        self, db: AsyncSession, shop_id: UUID, sku_ids: Sequence[UUID]
+    ) -> dict[UUID, NetworkSkuFacts]:
+        """Stage 2: ommaviy taklif uchun SKU faktlari (shu shopniki, boshqasi natijada yo'q)."""
+        ...
+
+    async def count_active_skus(self, db: AsyncSession, shop_id: UUID) -> int:
+        """M26 tarif limiti: arxivda bo'lmagan SKU'lar soni."""
+        ...
+
     async def current_rate(self, db: AsyncSession, shop_id: UUID) -> RateSnapshot | None:
         """Shopning joriy dollar kursi; kurs hali kiritilmagan bo'lsa — None."""
         ...
@@ -219,4 +249,20 @@ class CatalogQueryPort(Protocol):
         """Arzon qayta tekshiruv har so'rovda: hozir ko'rinadigan variantlar → joriy so'm narxi (tiyinda).
         Bo'sh — mahsulot ko'rinmaydi. Kesh bor bo'lsa ham yashirilgan mahsulot, arxivlangan variant va
         o'zgargan narx darhol ko'rinadi (UAT-M07, QA M04 F4)."""
+        ...
+
+
+class CatalogPricePort(Protocol):
+    """M30 hamkor API: tashqi tizim (kassa, ERP) narx yozadi — odatdagi narx versiyasi va audit bilan."""
+
+    async def set_price(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        sku_id: UUID,
+        amount_minor: int,
+        currency: Currency,
+        reason: str,
+    ) -> bool:
+        """`True` — yangi versiya yozildi, `False` — narx o'zgarmagan. SKU yo'q/arxivda — NotFoundError."""
         ...

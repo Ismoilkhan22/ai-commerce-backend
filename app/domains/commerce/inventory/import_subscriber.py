@@ -37,3 +37,11 @@ async def apply_import_stock(ctx: EventContext) -> None:
         _uuid(payload.get("committed_by")),
         (after_branch, after_sku) if after_branch and after_sku else None,
     )
+
+
+@subscriber("commerce.pos_stock", "network.pos_stock.received", schema="commerce")
+async def apply_pos_stock(ctx: EventContext) -> None:
+    """M22: kassa/ERP qoldig'i (BR-X12) — eski yoki band qilinganidan kam bo'lsa ustidan yozilmaydi."""
+    commerce: CommerceServices = ctx.services.commerce
+    assert ctx.envelope.shop_id is not None
+    await commerce.pos_stock.apply(ctx.session, ctx.envelope.shop_id, dict(ctx.envelope.payload))

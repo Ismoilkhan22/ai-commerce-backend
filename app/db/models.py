@@ -19,6 +19,7 @@ MODEL_MODULES: dict[str, tuple[str, ...]] = {
         "app.platform.staff.models.orm",
         "app.platform.auth.models.orm",
         "app.platform.storage.models.orm",
+        "app.platform.billing.models.orm",
         "app.platform.jobs.models.orm",
         "app.platform.notifications.models.orm",
         "app.platform.llm.models.orm",
@@ -30,6 +31,7 @@ MODEL_MODULES: dict[str, tuple[str, ...]] = {
         "app.domains.catalog.pricing.models.orm",
         "app.domains.catalog.pc_specs.models.orm",
         "app.domains.catalog.imports.models.orm",
+        "app.domains.catalog.price_lists.models.orm",
         "app.shared.events.models",
     ),
     "commerce": (
@@ -48,6 +50,7 @@ MODEL_MODULES: dict[str, tuple[str, ...]] = {
     "storefront": ("app.domains.storefront.models.orm", "app.shared.events.models"),
     "support": ("app.domains.support.models.orm", "app.shared.events.models"),
     "reporting": ("app.domains.reporting.models.orm", "app.shared.events.models"),
+    "network": ("app.domains.network.models.orm", "app.shared.events.models"),
 }
 
 

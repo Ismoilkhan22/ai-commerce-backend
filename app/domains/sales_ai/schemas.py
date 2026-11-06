@@ -51,6 +51,14 @@ class HandoffRules(_In):
         return sorted({*value, "DISCOUNT_REQUEST"})
 
 
+class SpecialOrder(_In):
+    """Omborda yo'q tovarni buyurtma asosida olib kelish (DEC-149). O'chiq — AI faqat bor variantlarni
+    taklif qiladi va operatorga uzatadi."""
+
+    enabled: bool = False
+    lead_time: str | None = Field(default=None, max_length=40, description="Masalan: 2–5 kun")
+
+
 class ActiveHours(_In):
     days: list[StrictInt] = Field(min_length=1, max_length=7, description="1 = dushanba … 7 = yakshanba")
     start: str = Field(pattern=HHMM)
@@ -112,6 +120,7 @@ class AiSettingsOut(BaseModel):
     monthly_cost_cap_minor: int | None
     cost_currency: Literal["USD"] = "USD"
     greeting_enabled: bool
+    special_order: SpecialOrder = SpecialOrder()
     kill_switch_active: bool
     kill_switch_reason: str | None
     paused_until: datetime | None
@@ -143,6 +152,7 @@ class AiSettingsPatch(_In):
         return sorted(set(value), key=value.index) if value is not None else None
 
     greeting_enabled: bool | None = None
+    special_order: SpecialOrder | None = None
     kill_switch: bool | None = Field(default=None, description="true — AI darhol to'xtaydi")
     kill_switch_reason: str | None = Field(default=None, max_length=200)
     profile: AgentProfileIn | None = None

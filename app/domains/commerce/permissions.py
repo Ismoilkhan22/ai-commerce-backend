@@ -16,6 +16,7 @@ STOCK_VIEW = "commerce.stock.view"
 STOCK_RECEIVE = "commerce.stock.receive"
 ADJUST_REQUEST = "commerce.stock.adjust_request"
 ADJUST_APPROVE = "commerce.stock.adjust_approve"
+TRANSFER = "commerce.stock.transfer"  # M25: filiallar orasida ko'chirish (jo'natish, qabul, bekor)
 QUICK_SALE = "commerce.quick_sale.create"
 ORDER_VIEW = "commerce.order.view"
 ORDER_CREATE = "commerce.order.create_draft"
@@ -48,6 +49,7 @@ _MANAGER = frozenset(
         STOCK_RECEIVE,
         ADJUST_REQUEST,
         ADJUST_APPROVE,
+        TRANSFER,
         QUICK_SALE,
         ORDER_VIEW,
         ORDER_CREATE,
@@ -89,7 +91,7 @@ _SALES = frozenset(
     }
 )
 _WAREHOUSE = frozenset(
-    {STOCK_VIEW, STOCK_RECEIVE, ADJUST_REQUEST, QUICK_SALE, ORDER_VIEW, ORDER_PROCESS, ORDER_NOTE}
+    {STOCK_VIEW, STOCK_RECEIVE, ADJUST_REQUEST, TRANSFER, QUICK_SALE, ORDER_VIEW, ORDER_PROCESS, ORDER_NOTE}
 )
 
 _OWNER = _MANAGER | {COST_VIEW, COST_EDIT}

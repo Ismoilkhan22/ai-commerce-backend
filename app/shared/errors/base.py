@@ -207,6 +207,10 @@ class ImportFileInvalidError(BusinessRuleError):
     code = "IMPORT_FILE_INVALID"
 
 
+class ShopNotVerifiedError(BusinessRuleError):
+    code = "SHOP_NOT_VERIFIED"  # Stage 2: ommaviy taklif faqat tekshirilgan (ACTIVE) shopdan
+
+
 class RateLimitedError(DomainError):
     code = "RATE_LIMITED"
 

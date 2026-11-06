@@ -120,3 +120,9 @@ layers = [
     "app.shared",
 ]
 ignore_imports = []
+
+[[tool.importlinter.contracts]]
+name = "network ommaviy ma'lumotni faqat port va event'lardan oladi (TC-NET-04)"
+type = "forbidden"
+source_modules = ["app.domains.network"]
+forbidden_modules = ["app.domains.catalog", "app.domains.commerce"]

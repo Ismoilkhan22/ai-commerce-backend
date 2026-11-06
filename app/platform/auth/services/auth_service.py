@@ -388,6 +388,12 @@ class AuthService:
         )
 
     # ---------------------------------------------------------------- helpers
+    async def open_shop_session(
+        self, db: AsyncSession, principal_id: UUID, shop_id: UUID, user_agent: str | None
+    ) -> IssuedTokens:
+        """Yangi shop egasi uchun birinchi sessiya (M21: o'zi ro'yxatdan o'tgandan keyin)."""
+        return await self._open_session(db, principal_id, shop_id, "shop", uuid7(), user_agent, utcnow())
+
     async def _open_session(
         self,
         db: AsyncSession,

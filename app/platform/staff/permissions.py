@@ -31,12 +31,14 @@ PLATFORM_ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = {
             "platform.dead_letter.replay",
             "platform.ai_eval.view",  # 6c: AI baholash, bake-off, shoplar "AI sifati"
             "platform.ai_eval.manage",  # to'plamlar va yugurishlar (LLM xarajati bor)
+            "platform.network.review",  # Stage 2: umumiy mahsulotga bog'lashni ko'rib chiqish (BR-X08)
+            "platform.billing.manage",  # M26: tariflar, hisoblar, to'lovni belgilash
         }
     ),
     # Platforma jamoasi bo'limi faqat adminga (business/15 §5) — support jamoani ko'rmaydi
     "PLATFORM_SUPPORT": frozenset({"platform.shop.view_meta", "platform.shop.note", "platform.spec.view"}),
     # Kutubxona muharriri: kiritadi, boshqaning taklifini tasdiqlaydi, shop so'rovlarini hal qiladi
-    "SPEC_EDITOR": frozenset({"platform.spec.view", "platform.spec.edit"}),
+    "SPEC_EDITOR": frozenset({"platform.spec.view", "platform.spec.edit", "platform.network.review"}),
 }
 
 

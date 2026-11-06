@@ -66,6 +66,8 @@ LEAD_FOLLOWUP = "LEAD_FOLLOWUP"  # lead 30 kun jim — "yopilsinmi?" (avtomatik 
 SUPPORT_CASE_DECISION = (
     "SUPPORT_CASE_DECISION"  # yangi murojaat — menejer/ega qaror qiladi (DEC-130, DEC-145)
 )
+# M25: filiallar orasida ko'chirishda kam keldi — ega/menejer tekshiradi (avtomatik hisobdan chiqarilmaydi)
+TRANSFER_SHORTAGE = "TRANSFER_SHORTAGE"
 
 _LINKS: dict[str, str] = {
     ORDER_CONFIRM_REMINDER: "order",
@@ -73,6 +75,7 @@ _LINKS: dict[str, str] = {
     DISCOUNT_APPROVAL: "order",
     ADJUSTMENT_APPROVAL: "adjustment",
     STOCK_RECONCILE_MISMATCH: "stock",
+    TRANSFER_SHORTAGE: "stock",
     EXCHANGE_RATE_STALE: "exchange_rates",
     NOTIFICATION_FAILED: "notification_settings",
     HANDOFF: "conversation",
@@ -93,6 +96,7 @@ TASK_ROLES: dict[str, frozenset[str]] = {
     ADJUSTMENT_APPROVAL: APPROVERS,
     DISCOUNT_APPROVAL: APPROVERS,
     STOCK_RECONCILE_MISMATCH: APPROVERS,
+    TRANSFER_SHORTAGE: APPROVERS,
     EXCHANGE_RATE_STALE: APPROVERS,  # kursni ega va menejer kiritadi
     HANDOFF: frozenset({"OWNER", "MANAGER", "SALES"}),  # suhbatni operator oladi
     MESSAGE_FAILED: frozenset({"OWNER", "MANAGER", "SALES"}),

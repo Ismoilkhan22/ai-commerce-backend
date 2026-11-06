@@ -9,7 +9,13 @@ from uuid import UUID
 from pydantic import BaseModel
 
 UploadPurpose = Literal[
-    "PRODUCT_IMAGE", "STOCK_EVIDENCE", "SITE_LOGO", "CHAT_ATTACHMENT", "IMPORT_FILE", "SUPPORT_EVIDENCE"
+    "PRODUCT_IMAGE",
+    "STOCK_EVIDENCE",
+    "SITE_LOGO",
+    "CHAT_ATTACHMENT",
+    "IMPORT_FILE",
+    "SUPPORT_EVIDENCE",
+    "PRICE_LIST",
 ]
 
 

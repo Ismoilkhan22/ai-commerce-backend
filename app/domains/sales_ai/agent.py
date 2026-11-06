@@ -65,6 +65,8 @@ from app.shared.contracts.messaging import AiConversationPort
 from app.shared.db.session import Database
 from app.shared.events.registry import RetryLater
 
+VOICE_WAIT_SECONDS = 90  # undan keyin ham matn bo'lmasa — avvalgidek operatorga
+
 logger = structlog.get_logger(__name__)
 
 HANDOFF_NOTICE = {
@@ -363,6 +365,8 @@ async def load_profile(
         extra_instructions=profile_row.extra_instructions if profile_row else None,
         knowledge=tuple((k.kind, k.title, k.body) for k in knowledge),
         greeting=settings.greeting_enabled if settings else True,
+        special_order=bool((settings.special_order or {}).get("enabled")) if settings else False,
+        special_order_lead=(settings.special_order or {}).get("lead_time") if settings else None,
     )
     return profile, (profile_row.version if profile_row else None)
 
@@ -468,8 +472,11 @@ class TurnRunner:
                 return "SUPERSEDED"
             db_now = await db.scalar(select(func.now()))  # debounce — bitta soat (DB), F-33
             age = ((db_now or utcnow()) - turn.created_at).total_seconds()
+            pending = any(m.pending_media and m.seq <= turn.trigger_seq for m in context.messages)
             if age < self.debounce_s:
                 retry = self.debounce_s - age
+            elif pending and age < VOICE_WAIT_SECONDS:  # ovoz matnga o'girilmoqda (DEC-149) — kutamiz
+                retry = 3
             else:
                 prepared = await self._build(
                     db, shop_id, conversation_id, context, turn, gate.mode, seq_kind[1]

@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.domains.commerce.inventory.api.routes import router as inventory_router
-from app.domains.commerce.inventory.import_subscriber import apply_import_stock
+from app.domains.commerce.inventory.import_subscriber import apply_import_stock, apply_pos_stock
 from app.domains.commerce.jobs import COMMERCE_JOBS
 from app.domains.commerce.orders.api.routes import router as orders_router
 from app.domains.commerce.orders.api.storefront_routes import router as storefront_orders_router
@@ -43,6 +43,11 @@ DOMAIN_MANIFEST = DomainManifest(
     role_grants=COMMERCE_ROLE_GRANTS,
     privacy_handlers=[erase_customer_handler],
     non_forceable_states=NON_FORCEABLE,
-    event_subscribers=[apply_import_stock, lead_won, lead_activity],  # import qoldig'i (5c); lead WON (6a)
+    event_subscribers=[
+        apply_import_stock,
+        apply_pos_stock,
+        lead_won,
+        lead_activity,
+    ],  # import qoldig'i (5c); lead WON (6a)
     scheduled_jobs=(*COMMERCE_JOBS, *QUOTE_JOBS),  # 24/72 soat eslatmalari, kechki ombor solishtiruvi (S0-06)
 )

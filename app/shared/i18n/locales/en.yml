@@ -35,6 +35,7 @@ errors:
   DISCOUNT_LIMIT_EXCEEDED: "The discount exceeds the allowed limit"
   WARRANTY_EXPIRED: "The warranty period has expired. A manager can open the case with a reason"
   IMPORT_FILE_INVALID: "The file couldn't be read"
+  SHOP_NOT_VERIFIED: "The shop is not verified yet"
   RATE_LIMITED: "Too many requests. Try again later"
   AI_QUOTA_EXCEEDED: "The AI limit has been reached"
   INTERNAL_ERROR: "An unexpected error occurred"

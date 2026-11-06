@@ -32,6 +32,7 @@ class ShopOut(BaseModel):
     activated_at: datetime | None
     created_at: datetime
     version: int
+    signup_source: Literal["PLATFORM", "SELF"] = "PLATFORM"  # M21: SELF — ega o'zi ro'yxatdan o'tgan
 
 
 class ShopOwnerOut(BaseModel):

@@ -1,5 +1,5 @@
 # 23-dev-setup-and-workflow §3–4
-SCHEMAS := platform audit catalog commerce messaging sales_ai storefront support reporting
+SCHEMAS := platform audit catalog commerce messaging sales_ai storefront support reporting network
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
 .PHONY: install up down bootstrap run worker outbox-worker task-worker scheduler lint format typecheck imports test check migrate seed reporting-backfill

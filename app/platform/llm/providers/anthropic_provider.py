@@ -14,6 +14,7 @@ Kalit va matn logga yozilmaydi.
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
 
@@ -25,6 +26,7 @@ from app.platform.llm.port import (
     LlmMessage,
     LlmRequest,
     LlmResponse,
+    MediaPart,
     ProviderName,
     StopReason,
     TextPart,
@@ -123,7 +125,19 @@ def _message(message: LlmMessage) -> dict[str, Any]:
             )
         elif isinstance(part, TextPart):
             blocks.append({"type": "text", "text": part.text})
+        elif isinstance(part, MediaPart):
+            blocks.append(_media_block(part))
     return {"role": "user", "content": blocks}
+
+
+def _media_block(part: MediaPart) -> dict[str, Any]:
+    """Claude: rasm va PDF; ovoz qabul qilinmaydi — chaqiruvchi transkripsiyani Gemini'ga beradi."""
+    source = {"type": "base64", "media_type": part.mime, "data": base64.b64encode(part.data).decode()}
+    if part.mime.startswith("image/"):
+        return {"type": "image", "source": source}
+    if part.mime == "application/pdf":
+        return {"type": "document", "source": source}
+    raise LlmError("unsupported_media", retryable=False)
 
 
 def _response(response: Any, model_id: str) -> LlmResponse:

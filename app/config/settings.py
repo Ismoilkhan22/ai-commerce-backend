@@ -152,6 +152,14 @@ class Settings(BaseSettings):
     instagram_app_secret: SecretStr | None = None
     instagram_verify_token: SecretStr | None = None
 
+    # M21 (Stage 2): shopning o'zi ro'yxatdan o'tishi — yopiq beta, standart o'chiq. SMS: fake (dev/test)
+    # yoki eskiz (notify.eskiz.uz; shablon Eskiz'da tasdiqlangan bo'lishi kerak)
+    feature_self_signup: bool = False
+    sms_provider: Literal["fake", "eskiz"] = "fake"
+    eskiz_email: str | None = None
+    eskiz_password: SecretStr | None = None
+    eskiz_from: str = "4546"
+
     # Mijoz IP'si (rate limit): X-Forwarded-For faqat shu manzillardan kelsa hisobga olinadi (IP yoki CIDR).
     # Lokalda — o'z kompyuteri (sayt serveri va brauzer shu yerda; XFF'ni soxtalash lokalda ataylab mumkin).
     # Prod'da — Nginx va shop sayti serverining ichki manzili (22 §8)
@@ -221,6 +229,10 @@ class Settings(BaseSettings):
             # tushadi, lekin AI "sozlanmagan" — rejimni yoqib bo'lmaydi (M06 §10)
             if self.llm_provider == "gemini" and self.gemini_tier != "paid":
                 raise ValueError("Gemini production'da faqat pullik tarif bilan (GEMINI_TIER=paid, A14)")
+            if self.feature_self_signup and self.sms_provider == "fake":
+                raise ValueError("FEATURE_SELF_SIGNUP production'da haqiqiy SMS bilan (SMS_PROVIDER=eskiz)")
+        if self.sms_provider == "eskiz" and (not self.eskiz_email or self.eskiz_password is None):
+            raise ValueError("SMS_PROVIDER=eskiz uchun ESKIZ_EMAIL va ESKIZ_PASSWORD kerak")
         self.pii_keyring()  # kalit formati noto'g'ri bo'lsa — ishga tushishda xato
         self.proxy_networks()  # noto'g'ri IP/CIDR — ishga tushishda xato
         if self.storage_backend == "s3":

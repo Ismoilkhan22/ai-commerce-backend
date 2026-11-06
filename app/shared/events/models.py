@@ -36,6 +36,7 @@ OUTBOX_SCHEMAS: tuple[str, ...] = (
     "messaging",
     "sales_ai",
     "support",
+    "network",  # Stage 2: ommaviy takliflar event'lari
 )
 # reporting (7c) event chiqarmaydi, faqat tinglaydi: unda faqat consumer_receipts bor
 RECEIPT_SCHEMAS: tuple[str, ...] = (*OUTBOX_SCHEMAS, "reporting")

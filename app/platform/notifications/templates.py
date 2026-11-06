@@ -153,6 +153,48 @@ TEMPLATES: dict[str, Template] = {
             ),
         },
     ),
+    # DEC-149: haftalik "So'rashdi, lekin bizda yo'q" — faqat raqamlar, so'rov matni xabarnomada yo'q
+    "staff.demand_gaps_weekly": Template(
+        "LOW",
+        {
+            "uz": "So'rashdi, lekin bizda yo'q",
+            "ru": "Спрашивали, но у нас нет",
+            "en": "Asked for, but not in stock",
+        },
+        {
+            "uz": "O'tgan hafta xaridorlar {count} xil mahsulotni so'radi, lekin topilmadi yoki tugagan edi.",
+            "ru": "На прошлой неделе спрашивали {count} товаров, которых не было или они закончились.",
+            "en": "Last week customers asked for {count} products that were missing or out of stock.",
+        },
+    ),
+    # M26: tarif va hisoblar — faqat ega; summa va sana panelda (xabarda raqam yo'q)
+    "staff.billing_invoice": Template(
+        "NORMAL",
+        {"uz": "Yangi hisob-faktura", "ru": "Новый счёт", "en": "New invoice"},
+        {
+            "uz": "Keyingi davr uchun hisob chiqdi. Tafsilotlar — Tarif bo'limida.",
+            "ru": "Выставлен счёт за следующий период. Подробности — в разделе «Тариф».",
+            "en": "An invoice for the next period was issued. Details are in Billing.",
+        },
+    ),
+    "staff.billing_trial_ended": Template(
+        "HIGH",
+        {"uz": "Sinov muddati tugadi", "ru": "Пробный период закончился", "en": "Trial has ended"},
+        {
+            "uz": "Tarifni tanlang. Savdo to'xtamaydi, platforma siz bilan bog'lanadi.",
+            "ru": "Выберите тариф. Продажи не останавливаются, платформа свяжется с вами.",
+            "en": "Choose a plan. Sales keep working; the platform will contact you.",
+        },
+    ),
+    "staff.billing_past_due": Template(
+        "HIGH",
+        {"uz": "To'lov kechikdi", "ru": "Оплата просрочена", "en": "Payment overdue"},
+        {
+            "uz": "Hisob muddatida to'lanmadi. Tarif bo'limini ko'ring yoki platforma bilan bog'laning.",
+            "ru": "Счёт не оплачен в срок. Откройте раздел «Тариф» или свяжитесь с платформой.",
+            "en": "The invoice is overdue. Open Billing or contact the platform.",
+        },
+    ),
     # 5b: suhbatlar (20 §8). O'zgaruvchilarda xaridor ismi yo'q — faqat kanal va daqiqa
     "staff.handoff": Template(
         "HIGH",

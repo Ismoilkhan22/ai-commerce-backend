@@ -51,6 +51,7 @@ ERROR_CATALOG: dict[str, ErrorSpec] = {
     "DISCOUNT_LIMIT_EXCEEDED": ErrorSpec(422),
     "WARRANTY_EXPIRED": ErrorSpec(422),
     "IMPORT_FILE_INVALID": ErrorSpec(422),
+    "SHOP_NOT_VERIFIED": ErrorSpec(422),
     "RATE_LIMITED": ErrorSpec(429, retryable=True),
     "AI_QUOTA_EXCEEDED": ErrorSpec(429),
     "INTERNAL_ERROR": ErrorSpec(500, retryable=True),

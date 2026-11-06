@@ -37,6 +37,7 @@ class Shop(IdMixin, TimestampMixin, VersionMixin, Base):
         UniqueConstraint("tin"),
         CheckConstraint(f"status IN {SHOP_STATUSES}", name="status"),
         CheckConstraint("deployment_mode IN ('SHARED', 'DEDICATED')", name="deployment_mode"),
+        CheckConstraint("signup_source IN ('PLATFORM', 'SELF')", name="signup_source"),
         CheckConstraint("slug ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'", name="slug_format"),
         CheckConstraint("tin ~ '^[0-9]{9}$'", name="tin_format"),
         {"schema": "platform"},
@@ -50,6 +51,8 @@ class Shop(IdMixin, TimestampMixin, VersionMixin, Base):
     default_locale: Mapped[str] = mapped_column(Text, server_default="uz")
     timezone: Mapped[str] = mapped_column(Text, server_default="Asia/Tashkent")
     deployment_mode: Mapped[str] = mapped_column(Text, server_default="SHARED")
+    # M21: PLATFORM — platforma admini ochgan; SELF — ega o'zi ro'yxatdan o'tgan (tekshiruvdan keyin ACTIVE)
+    signup_source: Mapped[str] = mapped_column(Text, server_default="PLATFORM")
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -125,4 +128,28 @@ class ShopNote(IdMixin, Base):
     shop_id: Mapped[UUID] = mapped_column(ForeignKey("platform.shops.id", ondelete="RESTRICT"))
     author_id: Mapped[UUID] = mapped_column(ForeignKey("platform.platform_staff.id", ondelete="RESTRICT"))
     body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SignupRequest(IdMixin, Base):
+    """M21: shopning o'zi ro'yxatdan o'tishi — telefon tasdig'i. Shop hali yo'q, shuning uchun RLS'siz
+    (principals kabi); kod faqat xesh bilan, 10 daqiqa, 5 urinish."""
+
+    __tablename__ = "signup_requests"
+    __table_args__ = (
+        Index("ix_signup_requests_phone_created_at", "phone", "created_at"),
+        CheckConstraint("attempts >= 0 AND attempts <= 10", name="attempts"),
+        {"schema": "platform"},
+    )
+
+    phone: Mapped[str] = mapped_column(Text)  # E.164
+    code_hash: Mapped[str] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    sends: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    shop_id: Mapped[UUID | None]  # yaratilgan shop (audit uchun)
+    ip_hash: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.config.settings import Settings, get_settings
-from app.shared.contracts.catalog import CatalogQueryPort
+from app.shared.contracts.catalog import CatalogPricePort, CatalogQueryPort
 from app.shared.contracts.commerce import (
     ConversationOrdersPort,
     OrderQueryPort,
@@ -24,6 +24,7 @@ from app.shared.contracts.support import SupportCommercePort
 __all__ = [
     "Settings",
     "get_ai_conversations",
+    "get_catalog_price",
     "get_catalog_query",
     "get_chat_availability",
     "get_conversation_lookup",
@@ -43,6 +44,15 @@ def get_catalog_query() -> CatalogQueryPort:
     from app.domains.catalog.query_port import CatalogQueryPortImpl
 
     return CatalogQueryPortImpl()
+
+
+def get_catalog_price() -> CatalogPricePort:
+    """M30: hamkor API narx yozishi — odatdagi narx versiyasi va audit."""
+    from app.domains.catalog.pricing.services.pricing_service import PricingService
+    from app.domains.catalog.query_port import CatalogPricePortImpl
+    from app.platform.audit.services.audit_service import AuditService
+
+    return CatalogPricePortImpl(PricingService(AuditService()))
 
 
 def get_stock_query() -> StockQueryPort:

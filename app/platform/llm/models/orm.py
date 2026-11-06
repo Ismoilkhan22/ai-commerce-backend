@@ -29,7 +29,18 @@ from app.shared.db.encryption import EncryptedString
 from app.shared.db.mixins import IdMixin, ShopScopedMixin
 
 PII_KINDS = ("PHONE", "ADDRESS", "NAME", "EMAIL", "CARD", "ID", "LOCATION")
-PURPOSES = ("SALES_TURN", "SUMMARY", "CLASSIFY", "EVAL_JUDGE", "SANDBOX", "EVAL", "COMMENT_CLASSIFY")
+PURPOSES = (
+    "SALES_TURN",
+    "SUMMARY",
+    "CLASSIFY",
+    "EVAL_JUDGE",
+    "SANDBOX",
+    "EVAL",
+    "COMMENT_CLASSIFY",
+    "PRICE_LIST_READ",  # DEC-149: yetkazib beruvchi narx ro'yxati
+    "VOICE_TRANSCRIBE",  # DEC-149: Telegram ovozli xabari
+    "CARD_DRAFT",  # DEC-149: mahsulot kartochkasi qoralamasi
+)
 PROVIDERS = ("anthropic", "gemini", "fake")
 
 

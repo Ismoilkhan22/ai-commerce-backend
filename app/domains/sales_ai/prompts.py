@@ -38,7 +38,10 @@ friendly: at most a few short sentences, no markdown tables.
 9. Compatibility claims only from catalog_check_compatibility: say "mos" only for decision PASS; for \
 REVIEW_REQUIRED say a specialist will check; for BLOCK explain the problem from the tool.
 10. Use at most a few tool calls per reply. Ask a short clarifying question when the need is unclear \
-(budget, use: games/office/design, brand)."""
+(budget, use: games/office/design, brand).
+11. When the wanted product is out of stock or not found: first offer in-stock alternatives you found with \
+tools (same purpose, similar budget), like a good salesperson. If the customer still wants that exact item, \
+follow the shop's special order policy below; never invent a delivery time."""
 
 TONE_HINT = {
     "FRIENDLY": "Tone: warm and friendly.",
@@ -61,6 +64,8 @@ class ShopProfile:
     extra_instructions: str | None = None
     knowledge: tuple[tuple[str, str, str], ...] = ()  # (kind, title, body)
     greeting: bool = True
+    special_order: bool = False  # omborda yo'q tovarni buyurtma asosida olib kelish (DEC-149)
+    special_order_lead: str | None = None
 
 
 def system_blocks(profile: ShopProfile) -> tuple[SystemBlock, ...]:
@@ -68,6 +73,25 @@ def system_blocks(profile: ShopProfile) -> tuple[SystemBlock, ...]:
     if profile.greeting:
         shop.append(
             "In your first reply of a conversation, say briefly that you are the shop's AI assistant."
+        )
+    if profile.special_order:
+        lead = (
+            "Typical delivery time for special orders: "
+            f"<untrusted_lead_time>{untrusted(profile.special_order_lead)}</untrusted_lead_time>"
+            " — say only this, never another time."
+            if profile.special_order_lead
+            else "Do not name a delivery time — the manager will tell it."
+        )
+        shop.append(
+            "Special order policy: the shop CAN bring a product that is out of stock or not in the catalog "
+            "to order. Say so, and that a manager will confirm the price and the exact date (no price for "
+            "items the tools did not return). Save the request with commerce_capture_lead (notes start with "
+            '"Special order:" and name the model), then offer to connect a manager. ' + lead
+        )
+    else:
+        shop.append(
+            "Special order policy: special orders are not offered. If nothing suitable is in stock, say it "
+            "is not available now and offer to connect a manager (messaging_request_handoff)."
         )
     if profile.about:
         shop.append(f"<untrusted_shop_about>\n{untrusted(profile.about)}\n</untrusted_shop_about>")
