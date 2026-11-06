@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.domains.network.api.buyer_routes import router as buyer_router
 from app.domains.network.api.global_bot_routes import router as global_bot_router
 from app.domains.network.api.marketplace_routes import router as marketplace_router
 from app.domains.network.api.partner_routes import router as partner_router
@@ -18,6 +19,7 @@ shop_router = APIRouter()
 shop_router.include_router(shop_network_router)
 public_router = APIRouter()  # Stage 3: xaridorning global qidiruvi (db/marketplace.md)
 public_router.include_router(marketplace_router)
+public_router.include_router(buyer_router)  # xaridor akkaunti: kirish, tarix, sevimlilar
 platform_router = APIRouter()
 platform_router.include_router(platform_network_router)
 

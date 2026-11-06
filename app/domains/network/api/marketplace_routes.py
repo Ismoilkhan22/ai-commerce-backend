@@ -17,10 +17,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.network.api.buyer_routes import OptionalBuyer
 from app.domains.network.models.orm import Referral
 from app.domains.network.query_port import NetworkQueryPortImpl
 from app.domains.network.services.ads import AdService
 from app.domains.network.services.advisor import AdvisorIn, AdvisorOut, AdvisorService
+from app.domains.network.services.buyers import BuyerService
 from app.domains.network.services.trust import ReportIn
 from app.shared.client_ip import client_ip
 from app.shared.contracts.network import MarketOffer, MarketProduct, MarketResult
@@ -84,6 +86,7 @@ class MarketProductOut(BaseModel):
     brand: str | None
     category_code: str
     offers: list[MarketOfferView]
+    is_favorite: bool | None = None  # null — xaridor kirmagan
 
 
 class MarketVisitOut(BaseModel):
@@ -172,6 +175,7 @@ ReadDb = Annotated[AsyncSession, Depends(read_db, scope="function")]
 async def marketplace_search(
     request: Request,
     db: ReadDb,
+    buyer: OptionalBuyer,
     q: Annotated[str | None, Query(max_length=100)] = None,
     category: Annotated[str | None, Query(max_length=64, pattern=r"^[A-Z0-9_]+$")] = None,
     max_price_uzs_minor: Annotated[int | None, Query(ge=1, le=10**15)] = None,
@@ -192,6 +196,9 @@ async def marketplace_search(
     )
     ads: AdService = request.app.state.network.ads
     sponsored = await ads.sponsored(db, q)
+    if buyer is not None and q and q.strip():  # kirgan xaridor tarixi: alohida qisqa yozuv tranzaksiyasi
+        buyers: BuyerService = request.app.state.network.buyers
+        await buyers.record_search(request.app.state.db, buyer.buyer_id, q.strip(), category)
     return MarketSearchOut(
         items=[_result(r) for r in results],
         sponsored=[SponsoredView(ad_id=ad_id, offer=_offer(offer)) for ad_id, offer in sponsored],
@@ -201,7 +208,9 @@ async def marketplace_search(
 @router.get("/products/{canonical_id}", response_model=MarketProductOut)
 async def marketplace_product(
     canonical_id: UUID,
+    request: Request,
     db: ReadDb,
+    buyer: OptionalBuyer,
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ) -> MarketProductOut:
@@ -211,7 +220,12 @@ async def marketplace_product(
     if product is None:
         raise NotFoundError("Product not found")
     here = (lat, lon) if lat is not None and lon is not None else None
-    return _product(product, here)
+    out = _product(product, here)
+    if buyer is not None:
+        buyers: BuyerService = request.app.state.network.buyers
+        out.is_favorite = await buyers.is_favorite(db, buyer.buyer_id, canonical_id)
+        await buyers.record_view(request.app.state.db, buyer.buyer_id, canonical_id)
+    return out
 
 
 @router.post("/offers/{offer_id}/visit", response_model=MarketVisitOut)
@@ -260,15 +274,26 @@ async def marketplace_report(offer_id: UUID, body: ReportIn, request: Request) -
 
 # ------------------------------------------------------------------ M34: global AI maslahatchi, M38: sitemap
 @router.post("/advisor", response_model=AdvisorOut)
-async def marketplace_advisor(body: AdvisorIn, request: Request) -> AdvisorOut:
+async def marketplace_advisor(body: AdvisorIn, request: Request, buyer: OptionalBuyer) -> AdvisorOut:
     """Faqat ommaviy takliflar asosida maslahat (BL-097, BL-098); javob bilan manbalar ro'yxati. Tarix
-    saqlanmaydi. Limit: IP bo'yicha 10/daq va 60/kun."""
+    saqlanmaydi (kirgan xaridorniki bundan mustasno: xabar va javob tarixiga yoziladi). Limit: IP bo'yicha
+    10/daq va 60/kun."""
     ip = client_ip(request)
     limiter: RateLimiter = request.app.state.rate_limiter
     await enforce(limiter, f"market-ai:{ip}", limit=10)
     await enforce(limiter, f"market-ai-day:{ip}", limit=60, window_seconds=86400)
     advisor: AdvisorService = request.app.state.network.advisor
-    return await advisor.ask(request.app.state.db, body)
+    out = await advisor.ask(request.app.state.db, body)
+    if buyer is not None:
+        buyers: BuyerService = request.app.state.network.buyers
+        await buyers.record_advisor(
+            request.app.state.db,
+            buyer.buyer_id,
+            body.message,
+            out.answer,
+            [src.model_dump(mode="json") for src in out.sources],
+        )
+    return out
 
 
 class SitemapItem(BaseModel):

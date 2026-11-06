@@ -863,6 +863,19 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Xaridor sayti | Concept tuzilishi; rang va yorug'/to'q rejim — avvalgidek shop tanlovi (to'q rejim concept ranglarida) |
 | Marketplace | Concept'i yo'q — faqat umumiy shrift va komponentlar |
 
+### DEC-156 — Global saytda xaridor hisobi (login) va tarix — `PROPOSED (2026-11-03, Claude — founder ko'rib chiqadi)`
+**Sabab:** founder: "global xaridor saytini login bilan kiradigan qil — tarixlarini saqlab qolish uchun". DEC-154 dagi "telefonli akkaunt keyin" shu bilan almashtiriladi. Global saytning dizayni ham yangilandi: to'q fon, indigo-binafsha urg'u, storefront concept uslubida.
+
+| Savol | Tanlov |
+|---|---|
+| Kirish | Telefon + SMS kod (6 raqam, 10 daqiqa), parolsiz; dev'da (soxta SMS) kod ekranda ko'rsatiladi |
+| Sessiya | 60 kun, ishlatilsa uzayadi; cookie global sayt domenida (httpOnly), backend'ga sayt serveri orqali |
+| Saqlanadi | Ko'rilgan mahsulotlar (200), qidiruvlar (100), saqlanganlar (200, saqlangan paytdagi narx bilan), AI maslahatchi suhbati (200 xabar) |
+| Telefon | HMAC xesh (qidirish) + shifrlangan qiymat; logga yozilmaydi |
+| Xaridor nazorati | Tarixni tozalash, bitta yozuvni o'chirish, hisobni butunlay o'chirish |
+| Login'siz | Avvalgidek ishlaydi, hech narsa saqlanmaydi |
+| Narx ogohlantirishi | Telegram bot orqali (DEC-154) o'zgarmadi; saytda — "saqlanganlar"da narx o'zgarishi ko'rinadi |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

@@ -166,6 +166,54 @@ class NetworkQueryPortImpl:
             offers=tuple(sorted((offer_view(o, s, verified) for o, s in rows), key=_price_key)),
         )
 
+    async def summaries(self, db: AsyncSession, ids: Sequence[UUID]) -> dict[UUID, MarketResult]:
+        """Xaridor tarixi va sevimlilari uchun: umumiy mahsulotning hozirgi qisqa ko'rinishi. Hozir ommaviy
+        taklifi yo'q (yoki mahsulot ACTIVE emas) bo'lsa — natijada yo'q."""
+        if not ids:
+            return {}
+        await _public(db)
+        rows = await db.execute(
+            select(PublicOffer, Shop)
+            .join(Shop, Shop.id == PublicOffer.shop_id)
+            .where(
+                PublicOffer.status == "ACTIVE",
+                Shop.status == "ACTIVE",
+                PublicOffer.canonical_id.in_(list(ids)),
+            )
+        )
+        by_id: dict[UUID, list[PublicOffer]] = {}
+        for offer, _shop in rows:
+            if offer.canonical_id is not None:
+                by_id.setdefault(offer.canonical_id, []).append(offer)
+        canonicals = await self._canonicals(db, list(by_id))
+        out: dict[UUID, MarketResult] = {}
+        for cid, offers in by_id.items():
+            canonical = canonicals.get(cid)
+            if canonical is None or canonical.status != "ACTIVE":
+                continue
+            prices = [
+                o.price_uzs_minor
+                for o in offers
+                if o.price_uzs_minor is not None and "price" in (o.permitted_fields or ())
+            ]
+            out[cid] = MarketResult(
+                canonical_id=cid,
+                title=canonical.title,
+                brand=canonical.brand,
+                category_code=canonical.category_code,
+                offers_count=len(offers),
+                in_stock_count=sum(
+                    1
+                    for o in offers
+                    if o.availability in ("IN_STOCK", "LOW_STOCK")
+                    and "availability" in (o.permitted_fields or ())
+                ),
+                min_price_uzs_minor=min(prices) if prices else None,
+                max_price_uzs_minor=max(prices) if prices else None,
+                offer=None,
+            )
+        return out
+
     async def visit_target(self, db: AsyncSession, offer_id: UUID) -> VisitTarget | None:
         rows = await self._rows(db, PublicOffer.id == offer_id)
         if not rows:

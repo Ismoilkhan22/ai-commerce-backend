@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     PrimaryKeyConstraint,
@@ -301,4 +302,116 @@ class AdCampaign(IdMixin, ShopScopedMixin, Base):
     reviewed_by: Mapped[UUID | None]
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reject_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+BUYER_LOCALES = ("uz", "ru", "en")
+ADVISOR_ROLES = ("user", "assistant")
+
+
+class Buyer(IdMixin, Base):
+    """Xaridor akkaunti (SMS kod bilan kirish) — platforma darajasi, RLS yo'q. Telefon: HMAC (qidirish) +
+    shifrlangan qiymat. Akkauntni o'chirish hamma bolalarni ham o'chiradi (cascade)."""
+
+    __tablename__ = "buyers"
+    __table_args__ = (
+        UniqueConstraint("phone_hash"),
+        CheckConstraint(f"locale IN {BUYER_LOCALES}", name="locale"),
+        {"schema": SCHEMA},
+    )
+
+    phone_hash: Mapped[str] = mapped_column(Text)
+    phone_enc: Mapped[str] = mapped_column(EncryptedString)
+    name: Mapped[str | None] = mapped_column(Text)
+    locale: Mapped[str] = mapped_column(Text, server_default="uz")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuyerLoginCode(IdMixin, Base):
+    """Bir martalik SMS kod so'rovi (signup_requests kabi). `phone_enc` — kod tasdiqlanganda akkaunt ochish
+    uchun; tasdiqdan keyin tozalanadi."""
+
+    __tablename__ = "buyer_login_codes"
+    __table_args__ = (
+        Index("ix_buyer_login_codes_phone_created", "phone_hash", "created_at"),
+        {"schema": SCHEMA},
+    )
+
+    phone_hash: Mapped[str] = mapped_column(Text)
+    phone_enc: Mapped[str | None] = mapped_column(EncryptedString)
+    code_hash: Mapped[str] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    sends: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip_hash: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuyerSession(IdMixin, Base):
+    """Token `<session_id>.<sir>`; bazada faqat sirning sha256 xeshi. Muddat 60 kun, sirpanuvchi."""
+
+    __tablename__ = "buyer_sessions"
+    __table_args__ = (Index("ix_buyer_sessions_buyer", "buyer_id"), {"schema": SCHEMA})
+
+    buyer_id: Mapped[UUID] = mapped_column(ForeignKey("network.buyers.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_agent: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuyerView(Base):
+    """Ko'rilgan mahsulot: (xaridor, mahsulot) bo'yicha bitta qator, eng yangi 200 ta."""
+
+    __tablename__ = "buyer_views"
+    __table_args__ = (PrimaryKeyConstraint("buyer_id", "canonical_id"), {"schema": SCHEMA})
+
+    buyer_id: Mapped[UUID] = mapped_column(ForeignKey("network.buyers.id", ondelete="CASCADE"))
+    canonical_id: Mapped[UUID]
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuyerSearch(IdMixin, Base):
+    """Qidiruv tarixi: eng yangi 100 ta; oxirgisi bilan bir xil bo'lsa yozilmaydi."""
+
+    __tablename__ = "buyer_searches"
+    __table_args__ = (Index("ix_buyer_searches_buyer_at", "buyer_id", "searched_at"), {"schema": SCHEMA})
+
+    buyer_id: Mapped[UUID] = mapped_column(ForeignKey("network.buyers.id", ondelete="CASCADE"))
+    query: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text)
+    searched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuyerFavorite(Base):
+    """Saqlangan mahsulot; `saved_price_uzs_minor` — saqlagan paytdagi eng past narx. Ko'pi bilan 200 ta."""
+
+    __tablename__ = "buyer_favorites"
+    __table_args__ = (PrimaryKeyConstraint("buyer_id", "canonical_id"), {"schema": SCHEMA})
+
+    buyer_id: Mapped[UUID] = mapped_column(ForeignKey("network.buyers.id", ondelete="CASCADE"))
+    canonical_id: Mapped[UUID]
+    saved_price_uzs_minor: Mapped[int | None] = mapped_column(BigInteger)
+    saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuyerAdvisorMessage(IdMixin, Base):
+    """Maslahatchi suhbati tarixi (xaridor xabari va javob, manbalar bilan): eng yangi 200 ta."""
+
+    __tablename__ = "buyer_advisor_messages"
+    __table_args__ = (
+        Index("ix_buyer_advisor_messages_buyer_at", "buyer_id", "created_at"),
+        CheckConstraint(f"role IN {ADVISOR_ROLES}", name="role"),
+        {"schema": SCHEMA},
+    )
+
+    buyer_id: Mapped[UUID] = mapped_column(ForeignKey("network.buyers.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(Text)
+    sources: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    text: Mapped[str] = mapped_column(Text)  # `text()` funksiyasini soyalaydi — shuning uchun oxirida
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

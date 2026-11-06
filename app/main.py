@@ -341,6 +341,7 @@ def wire_services(
         get_catalog_query(),
         get_stock_query(),
         secret=auth_config.jwt_secret,
+        sms=state.sms,
         marketplace_url=settings.marketplace_public_url,
         bot_username=settings.global_bot_username,
     )
