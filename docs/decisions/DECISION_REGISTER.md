@@ -851,6 +851,18 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Global bot | Shop botlaridan alohida token; webhook siri; chat raqami shifrlangan |
 | Ommaga ochish | Kod tayyor; ochish — founder qarori (`engineering/28` §13 mezonlari) |
 
+### DEC-155 — UI concept fayllar bo'yicha to'liq qayta chizildi — `PROPOSED (2026-11-03, Claude — founder ko'rib chiqadi)`
+**Qayerda:** [progress/M12-ui-redesign.md](../engineering/progress/M12-ui-redesign.md). Manba: loyiha ildizidagi `design-system-concept.html`, `platform-admin-concept.html`, `shop-dashboard-concept.html`, `shop-storefront-concept.html`.
+
+| Savol | Tanlov |
+|---|---|
+| Uslub | To'q "boshqaruv markazi"; shrift Plus Jakarta Sans (ruscha harflar Inter'da), raqamlar JetBrains Mono |
+| Urg'u rangi | Shop paneli — binafsha; platforma paneli — ko'k (`<html data-app="admin">`) |
+| Qobiq | Tepada sarlavha qatori, chapda bo'limlarga guruhlangan menyu |
+| Concept'dagi soxta raqamlar | Ko'chirilmadi (GMV, DB latency, LLM reytingi, "Bugungi tushum +18%"); faqat API bergan ma'lumot |
+| Xaridor sayti | Concept tuzilishi; rang va yorug'/to'q rejim — avvalgidek shop tanlovi (to'q rejim concept ranglarida) |
+| Marketplace | Concept'i yo'q — faqat umumiy shrift va komponentlar |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

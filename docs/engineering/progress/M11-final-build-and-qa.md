@@ -27,7 +27,10 @@
 
 ## 2. Sinov natijalari
 
-- **Backend integratsiya va unit testlari:** 1125 ta o'tdi (QA tuzatishlaridan oldin). QA tuzatishlaridan keyingi oxirgi yugurish natijasi hisobotda.
+- **Backend integratsiya va unit testlari:**
+  - QA tuzatishlaridan oldin: 1125 ta o'tdi.
+  - Oxirgi yugurish: 1129 ta. Shundan 1128 tasi birinchi urinishda o'tdi.
+  - Bitta test tasodifan yiqildi: PII tekshiruvi event vaqt belgisidagi "765" mikrosekundini telefon raqami deb ushladi. Test faqat event mazmunini tekshiradigan qilindi va 3 marta ketma-ket o'tdi.
 - **E2E (Playwright, alohida muhit):** 49 ta test.
   - Birinchi yugurishda 47 tasi o'tdi, 2 tasi yiqildi. Sabab: e2e backend'i dev `.env` dagi Instagram bayrog'ini o'qigan. E2E muhiti endi bayroqni aniq o'chiradi; qayta yugurishda o'tdi.
   - Yangi 14 ta e2e test:
