@@ -18,6 +18,7 @@ from app.domains.messaging.services.core import ConversationCore
 from app.domains.messaging.services.ig_classify import IgClassifyService
 from app.domains.messaging.services.ig_ingest import IgIngestService
 from app.domains.messaging.services.ig_media import IgMediaService
+from app.domains.messaging.services.ig_oauth import InstagramOAuth
 from app.domains.messaging.services.ig_panel import IgPanelService
 from app.domains.messaging.services.ig_reply import IgReplyService
 from app.domains.messaging.services.inbound import InboundService
@@ -46,6 +47,7 @@ class InstagramServices:
     classify: IgClassifyService
     media: IgMediaService
     panel: IgPanelService
+    oauth: InstagramOAuth
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,7 @@ def build_messaging_services(
             classify=IgClassifyService(config, llm, ai_budget),
             media=IgMediaService(adapters),
             panel=IgPanelService(config, channels, audit, templates, catalog),
+            oauth=InstagramOAuth(config, adapters, channels),
         ),
     )
 

@@ -100,6 +100,11 @@ class ChannelService:
             items=[account_out(r) for r in rows],
             telegram_mode="polling" if self.config.telegram_mode == "polling" else "webhook",
             instagram_available=self.config.instagram_enabled,
+            instagram_oauth_available=bool(
+                self.config.instagram_enabled
+                and self.config.instagram_app_id
+                and self.config.instagram_app_secret
+            ),
         )
 
     async def active(self, db: AsyncSession, shop_id: UUID, channel: str) -> ChannelAccount | None:
@@ -171,19 +176,44 @@ class ChannelService:
         await self._connected(db, actor, account)
         return account_out(account)
 
+    def _app_token(self) -> str | None:
+        if self.config.instagram_app_id and self.config.instagram_app_secret:
+            return f"{self.config.instagram_app_id}|{self.config.instagram_app_secret}"
+        return None
+
     async def connect_instagram(
-        self, db: AsyncSession, actor: ActorContext, access_token: str
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        access_token: str,
+        account_id: str | None = None,
+        *,
+        meta_user_id: str | None = None,
     ) -> ChannelAccountOut:
         if not self.config.instagram_enabled:
             raise NotFoundError("Not found")  # DEC-116a: flag o'chiq — kanal yo'qdek
         assert actor.shop_id is not None
         try:
-            ig = await self.adapters.instagram.get_account(access_token)
+            ig = await self.adapters.instagram.get_account(
+                access_token, app_token=self._app_token(), account_id=account_id
+            )
         except ChannelConnectError as exc:
             raise ValidationError(
                 "Channel connection failed",
                 fields=[{"field": "access_token", "code": "invalid", "params": {}}],
             ) from exc
+        stored_token = ig.token or access_token
+        if self.config.instagram_app_id and self.config.instagram_app_secret:  # qisqa token -> ~60 kunlik
+            stored_token = (
+                await self.adapters.instagram.extend_token(
+                    stored_token,
+                    app_id=self.config.instagram_app_id,
+                    app_secret=self.config.instagram_app_secret,
+                )
+                or stored_token
+            )
+        # obuna muvaffaqiyatsiz bo'lsa ulanish to'xtamaydi — xato logga tushadi
+        await self.adapters.instagram.subscribe(stored_token, ig)
         current = await self.active(db, actor.shop_id, "INSTAGRAM")
         if current is not None:
             await self._disconnect(db, actor, current, "REPLACED")
@@ -194,9 +224,11 @@ class ChannelService:
             account_ref=secrets.token_urlsafe(32),
             external_account_id=ig.id,
             display_name=f"@{ig.username}" if ig.username else None,
-            token_enc=access_token,
+            token_enc=stored_token,
             scopes=list(ig.scopes) or None,
-            settings={},
+            settings={"meta_user_id": meta_user_id}
+            if meta_user_id
+            else {},  # Meta ma'lumot o'chirish so'rovi uchun
             version=1,
         )
         db.add(account)
@@ -270,6 +302,36 @@ class ChannelService:
             except ChannelConnectError:
                 logger.warning("messaging.channel.webhook_delete_failed", channel_account_id=str(account.id))
         return account_out(account)
+
+    async def revoke_meta_user(self, db: AsyncSession, meta_user_id: str) -> int:
+        """Meta "Deauthorize" / "Data deletion" callback'i: shu Facebook foydalanuvchisi OAuth bilan ulagan
+        Instagram akkauntlari uziladi va token o'chiriladi. Shop noma'lum — RLS identity varianti
+        (`app.meta_user_ref`, messaging_0005); har akkaunt o'z shop kontekstida yopiladi."""
+        if not meta_user_id or len(meta_user_id) > 64:
+            return 0
+        await db.execute(text("SELECT set_config('app.meta_user_ref', :ref, true)"), {"ref": meta_user_id})
+        accounts = (
+            (
+                await db.execute(
+                    select(ChannelAccount)
+                    .where(
+                        ChannelAccount.channel == "INSTAGRAM",
+                        ChannelAccount.settings["meta_user_id"].astext == meta_user_id,
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for account in accounts:
+            await set_shop_context(db, account.shop_id)
+            if account.status in ("CONNECTED", "DEGRADED", "PENDING"):
+                await self._disconnect(db, ActorContext.system(account.shop_id), account, "AUTH_REVOKED")
+            account.token_enc = None
+            account.settings = {k: v for k, v in (account.settings or {}).items() if k != "meta_user_id"}
+            await db.flush()
+        return len(accounts)
 
     # ------------------------------------------------------------------ webhook va polling
     async def resolve_by_ref(self, db: AsyncSession, channel: str, account_ref: str) -> ChannelAccount | None:

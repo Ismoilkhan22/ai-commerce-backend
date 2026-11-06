@@ -84,15 +84,18 @@ def test_instagram_signature_and_parsing() -> None:
                         "message": {"mid": "m1", "text": "Narxi?"},
                     },
                     {
-                        "sender": {"id": "IGSID1"},
+                        "sender": {"id": "17841400000"},
+                        "recipient": {"id": "IGSID1"},
                         "message": {"mid": "m2", "is_echo": True, "text": "o'zimiz"},
                     },
                 ],
             }
         ]
     }
-    [(account, inbound)] = parse_webhook(payload)
+    [(account, inbound), (_, echo)] = parse_webhook(payload)
     assert account == "17841400000" and inbound.body == "Narxi?" and inbound.provider_event_id == "m1"
+    assert inbound.event_kind == "MESSAGE"
+    assert echo.event_kind == "ECHO" and echo.external_user_id == "IGSID1"  # suhbatdosh — recipient
 
 
 def test_inbox_hours_day_window_and_night_shift() -> None:

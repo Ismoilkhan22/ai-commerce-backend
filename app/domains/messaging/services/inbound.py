@@ -9,6 +9,7 @@ xabar → FSM-04 → outbox (`messaging.message.received`). Rasm webhook ichida 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -73,6 +74,8 @@ class InboundService:
         if inbound.ignore_reason is not None:
             event.status, event.error_code = "IGNORED", inbound.ignore_reason
             return IngestResult(duplicate=False, ignored=True)
+        if inbound.event_kind == "ECHO":
+            return await self._echo(db, account, inbound, event)
         identity = await self._identity(db, account, inbound)
         conversation = await self._conversation(db, account, identity)
         if inbound.event_kind == "EDITED":
@@ -128,6 +131,84 @@ class InboundService:
             payload=conversation_payload(
                 conversation, seq=message.seq, kind=message.kind, attachments=len(inbound.attachments)
             ),
+        )
+        return IngestResult(
+            duplicate=False, message_id=message.id, conversation_id=conversation.id, seq=message.seq
+        )
+
+    async def _echo(
+        self, db: AsyncSession, account: ChannelAccount, inbound: InboundMessage, event: ProviderEvent
+    ) -> IngestResult:
+        """Akkauntning o'zi yuborgan xabar. Bizdan ketgani (AI/xodim) allaqachon bor — tashlanadi; Instagram
+        ilovasidan qo'lda yozilgani suhbatga xodim xabari (`STAFF`, yuborilgan) bo'lib yoziladi."""
+        ours = await db.scalar(
+            select(Message.id).where(
+                Message.shop_id == account.shop_id,
+                Message.provider_message_id == inbound.provider_message_id,
+            )
+        )
+        identity = await db.scalar(
+            select(CustomerIdentity).where(
+                CustomerIdentity.shop_id == account.shop_id,
+                CustomerIdentity.channel == account.channel,
+                CustomerIdentity.external_user_id == inbound.external_user_id,
+            )
+        )
+        conversation = (
+            await db.scalar(
+                select(Conversation)
+                .where(
+                    Conversation.shop_id == account.shop_id, Conversation.customer_identity_id == identity.id
+                )
+                .with_for_update()
+            )
+            if identity is not None
+            else None
+        )
+        if ours is not None or conversation is None:
+            event.status = "IGNORED"  # o'zimizniki yoki suhbat yo'q (xaridor hali yozmagan)
+            return IngestResult(duplicate=False, ignored=True)
+        recent_send = await db.scalar(  # yuborish javobi (mid) hali yozilmagan bo'lishi mumkin: matn bo'yicha
+            select(Message.id).where(
+                Message.shop_id == account.shop_id,
+                Message.conversation_id == conversation.id,
+                Message.direction == "OUT",
+                Message.body == inbound.body,
+                Message.created_at > utcnow() - timedelta(minutes=2),
+            )
+        )
+        if recent_send is not None:
+            event.status = "IGNORED"
+            return IngestResult(duplicate=False, ignored=True)
+        now = utcnow()
+        conversation.message_seq += 1
+        message = Message(
+            shop_id=account.shop_id,
+            conversation_id=conversation.id,
+            seq=conversation.message_seq,
+            direction="OUT",
+            author_type="STAFF",
+            origin="STAFF",
+            kind=inbound.kind,
+            body=inbound.body,
+            provider_message_id=inbound.provider_message_id,
+            occurred_at=inbound.occurred_at,
+            delivery_status="SENT",
+            sent_at=now,
+        )
+        db.add(message)
+        conversation.last_message_at = now
+        await db.flush()
+        event.message_id = message.id
+        await emit(
+            db,
+            ActorContext.system(account.shop_id),
+            event_type="messaging.message.sent",
+            shop_id=account.shop_id,
+            aggregate_type=MESSAGE,
+            aggregate_id=message.id,
+            aggregate_version=1,
+            payload=conversation_payload(conversation, seq=message.seq, delivery_status="SENT"),
         )
         return IngestResult(
             duplicate=False, message_id=message.id, conversation_id=conversation.id, seq=message.seq

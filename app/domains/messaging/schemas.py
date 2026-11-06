@@ -49,6 +49,7 @@ class ChannelList(BaseModel):
     items: list[ChannelAccountOut]
     telegram_mode: Literal["webhook", "polling"]
     instagram_available: bool  # DEC-116a flag
+    instagram_oauth_available: bool = False  # "Instagram bilan ulash" tugmasi (App ID + secret sozlangan)
 
 
 class TelegramConnectIn(BaseModel):
@@ -57,10 +58,22 @@ class TelegramConnectIn(BaseModel):
     token: str = Field(pattern=TELEGRAM_TOKEN, max_length=100, description="@BotFather bergan token")
 
 
+class InstagramOAuthStartIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    return_path: str = Field(default="/", max_length=300)  # panel ichidagi yo'l (qaytish uchun)
+
+
+class InstagramOAuthStartOut(BaseModel):
+    url: str
+
+
 class InstagramConnectIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     access_token: str = Field(min_length=20, max_length=500)
+    # System-user tokeni (Unified Login) akkaunt id sini o'zida saqlamaydi — id shu yerda beriladi
+    account_id: str | None = Field(default=None, pattern=r"^[0-9]{8,25}$")
 
 
 # ------------------------------------------------------------------ suhbatlar

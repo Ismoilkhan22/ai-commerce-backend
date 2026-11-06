@@ -146,6 +146,9 @@ class Settings(BaseSettings):
     telegram_mode: Literal["webhook", "polling"] | None = None
     # Instagram Direct — Meta ruxsati kelguncha o'chiq (DEC-116a, flag channel.instagram_dm)
     feature_channel_instagram_dm: bool = False
+    instagram_app_id: str | None = None  # Meta App ID (sir emas): debug_token uchun app access token
+    # "Instagram bilan ulash" (OAuth): Facebook Login for Business konfiguratsiyasi; bo'lmasa `scope` bilan
+    instagram_oauth_config_id: str | None = None
     instagram_app_secret: SecretStr | None = None
     instagram_verify_token: SecretStr | None = None
 

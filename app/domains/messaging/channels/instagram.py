@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import httpx
+import structlog
 
 from app.domains.messaging.channels.base import (
     ChannelConnectError,
@@ -24,7 +25,34 @@ from app.domains.messaging.channels.base import (
     SendResult,
 )
 
-GRAPH_BASE = "https://graph.facebook.com/v19.0"
+logger = structlog.get_logger(__name__)
+
+GRAPH_BASE = "https://graph.facebook.com/v23.0"  # Facebook / Unified Login
+IG_GRAPH_BASE = "https://graph.instagram.com/v23.0"  # Instagram Login (Page kerak emas)
+SUBSCRIBED_FIELDS = "messages,comments"
+
+
+def _log_rejected(response: httpx.Response) -> None:
+    err = (
+        response.json().get("error", {})
+        if response.headers.get("content-type", "").startswith("application/json")
+        else {}
+    )
+    logger.warning(
+        "instagram.connect.meta_rejected",
+        status=response.status_code,
+        code=err.get("code"),
+        subcode=err.get("error_subcode"),
+        message=err.get("message"),
+    )
+
+
+def _base(token: str) -> str:
+    """Instagram Login tokenlari `IG…` bilan boshlanadi (`IGAA…`) va graph.instagram.com'ga boradi;
+    Facebook Login (Page) tokenlari `EAA…` — graph.facebook.com."""
+    return IG_GRAPH_BASE if token.startswith("IG") else GRAPH_BASE
+
+
 WINDOW_HOURS = 24  # BL-033: xaridorning oxirgi xabaridan 24 soat ichida javob
 
 
@@ -38,6 +66,8 @@ class InstagramAccount:
     id: str
     username: str | None
     scopes: tuple[str, ...] = ()  # Meta ruxsatlari; izohlar uchun `instagram_manage_comments`
+    token: str | None = None  # user tokenidan olingan Page tokeni: saqlanadigan token shu
+    page_id: str | None = None  # akkaunt bog'langan Facebook Page: webhook obunasi shunga qilinadi
 
 
 @dataclass(frozen=True)
@@ -66,7 +96,19 @@ class InboundComment:
 
 
 class InstagramClient(Protocol):
-    async def get_account(self, token: str) -> InstagramAccount: ...
+    async def get_account(
+        self, token: str, *, app_token: str | None = None, account_id: str | None = None
+    ) -> InstagramAccount: ...
+
+    async def subscribe(self, token: str, account: InstagramAccount) -> bool: ...
+
+    async def extend_token(self, token: str, *, app_id: str, app_secret: str) -> str | None: ...
+
+    async def exchange_code(
+        self, code: str, *, redirect_uri: str, app_id: str, app_secret: str
+    ) -> str | None: ...
+
+    async def get_user_id(self, token: str) -> str | None: ...
 
     async def send_message(self, token: str, account_id: str, recipient_id: str, text: str) -> SendResult: ...
 
@@ -81,24 +123,245 @@ class HttpInstagramClient:
     def __init__(self, *, timeout_s: float = 10.0) -> None:
         self._timeout = timeout_s
 
-    async def get_account(self, token: str) -> InstagramAccount:
+    async def get_account(
+        self, token: str, *, app_token: str | None = None, account_id: str | None = None
+    ) -> InstagramAccount:
+        """Page tokeni: `/me` — Page; Instagram akkaunti `instagram_business_account` ichida.
+        Instagram-login tokeni: `/me` — o'zi professional akkaunt (`id`, `username`)."""
+        if token.startswith("IG"):
+            return await self._get_instagram_login_account(token)
+        if (
+            account_id
+        ):  # system-user tokeni: akkaunt id berilgan, token shu akkauntga kira oladimi — tekshiramiz
+            return await self._get_account_by_id(token, account_id)
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
+                page = await client.get(
+                    f"{GRAPH_BASE}/me",
+                    params={"fields": "id,instagram_business_account{id,username}", "access_token": token},
+                )
+                if page.status_code == 200:
+                    ig = page.json().get("instagram_business_account")
+                    if isinstance(ig, dict) and ig.get("id"):
+                        return InstagramAccount(
+                            id=str(ig["id"]),
+                            username=ig.get("username"),
+                            page_id=str(page.json().get("id") or "") or None,
+                        )
+                    logger.warning("instagram.connect.no_linked_account", page_id=page.json().get("id"))
+                    raise ChannelConnectError("NO_INSTAGRAM_ACCOUNT")  # Page Instagram'ga bog'lanmagan
+                pages = await client.get(
+                    f"{GRAPH_BASE}/me/accounts",
+                    params={
+                        "fields": "id,access_token,instagram_business_account{id,username}",
+                        "access_token": token,
+                    },
+                )
+                if pages.status_code == 200:
+                    for item in pages.json().get("data", []):
+                        ig = item.get("instagram_business_account")
+                        if isinstance(ig, dict) and ig.get("id") and item.get("access_token"):
+                            return InstagramAccount(
+                                id=str(ig["id"]),
+                                username=ig.get("username"),
+                                token=str(item["access_token"]),
+                                page_id=str(item["id"]),
+                            )
+                    # Page yo'q: Unified Login system-user tokeni Instagram akkauntga to'g'ridan-to'g'ri
+                    # beriladi — id si tokenning granular_scopes (target_ids) ida
+                    account = await self._account_from_token_scopes(client, token, app_token)
+                    if account is not None:
+                        return account
+                    logger.warning(
+                        "instagram.connect.no_linked_account", pages=len(pages.json().get("data", []))
+                    )
+                    raise ChannelConnectError("NO_INSTAGRAM_ACCOUNT")
                 response = await client.get(
                     f"{GRAPH_BASE}/me", params={"fields": "id,username", "access_token": token}
                 )
         except httpx.HTTPError as exc:
             raise ChannelConnectError("NETWORK") from exc
         if response.status_code != 200:
+            _log_rejected(response)
             raise ChannelConnectError("INVALID_TOKEN")
         body = response.json()
         return InstagramAccount(id=str(body["id"]), username=body.get("username"))
+
+    async def _get_account_by_id(self, token: str, account_id: str) -> InstagramAccount:
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(
+                    f"{GRAPH_BASE}/{account_id}", params={"fields": "id,username", "access_token": token}
+                )
+        except httpx.HTTPError as exc:
+            raise ChannelConnectError("NETWORK") from exc
+        if response.status_code != 200:
+            _log_rejected(response)
+            await self._probe_instagram_host(token)
+            raise ChannelConnectError("INVALID_TOKEN")
+        body = response.json()
+        return InstagramAccount(id=str(body.get("id") or account_id), username=body.get("username"))
+
+    async def _probe_instagram_host(self, token: str) -> None:
+        """Diagnostika: shu token graph.instagram.com'da ishlaydimi (faqat logga, tokensiz)."""
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                probe = await client.get(
+                    f"{IG_GRAPH_BASE}/me",
+                    params={"fields": "user_id,username,account_type", "access_token": token},
+                )
+        except httpx.HTTPError:
+            return
+        err = probe.json().get("error", {}) if probe.status_code != 200 else {}
+        logger.info(
+            "instagram.connect.probe_instagram_host",
+            status=probe.status_code,
+            code=err.get("code"),
+            message=err.get("message"),
+            user_id=probe.json().get("user_id") if probe.status_code == 200 else None,
+            username=probe.json().get("username") if probe.status_code == 200 else None,
+        )
+
+    async def _account_from_token_scopes(
+        self, client: httpx.AsyncClient, token: str, app_token: str | None
+    ) -> InstagramAccount | None:
+        if not app_token:  # debug_token ilova (app_id|secret) tokenini talab qiladi
+            logger.warning("instagram.connect.app_credentials_missing")
+            return None
+        debug = await client.get(
+            f"{GRAPH_BASE}/debug_token", params={"input_token": token, "access_token": app_token}
+        )
+        if debug.status_code != 200:
+            _log_rejected(debug)
+            return None
+        data = debug.json().get("data", {})
+        logger.info(
+            "instagram.connect.token_scopes",
+            type=data.get("type"),
+            scopes=data.get("scopes"),
+            granular=[
+                {"scope": g.get("scope"), "targets": len(g.get("target_ids", []))}
+                for g in data.get("granular_scopes", [])
+            ],
+        )
+        for scope in data.get("granular_scopes", []):
+            if not str(scope.get("scope", "")).startswith("instagram_"):
+                continue
+            for target in scope.get("target_ids", []):
+                info = await client.get(
+                    f"{GRAPH_BASE}/{target}", params={"fields": "id,username", "access_token": token}
+                )
+                if info.status_code == 200:
+                    body = info.json()
+                    return InstagramAccount(id=str(body.get("id") or target), username=body.get("username"))
+                _log_rejected(info)
+        return None
+
+    async def _get_instagram_login_account(self, token: str) -> InstagramAccount:
+        """Instagram Login: `/me` — professional akkaunt; webhook `entry.id` shu `user_id`."""
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(
+                    f"{IG_GRAPH_BASE}/me",
+                    params={"fields": "user_id,username,account_type", "access_token": token},
+                )
+        except httpx.HTTPError as exc:
+            raise ChannelConnectError("NETWORK") from exc
+        if response.status_code != 200:
+            _log_rejected(response)
+            raise ChannelConnectError("INVALID_TOKEN")
+        body = response.json()
+        account_id = str(body.get("user_id") or body.get("id") or "")
+        if not account_id:
+            raise ChannelConnectError("NO_INSTAGRAM_ACCOUNT")
+        return InstagramAccount(id=account_id, username=body.get("username"))
+
+    async def exchange_code(
+        self, code: str, *, redirect_uri: str, app_id: str, app_secret: str
+    ) -> str | None:
+        """OAuth: `code` → foydalanuvchi tokeni (qisqa). Xato — `None`."""
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(
+                    f"{GRAPH_BASE}/oauth/access_token",
+                    params={
+                        "client_id": app_id,
+                        "client_secret": app_secret,
+                        "redirect_uri": redirect_uri,
+                        "code": code,
+                    },
+                )
+        except httpx.HTTPError:
+            return None
+        if response.status_code != 200:
+            _log_rejected(response)
+            return None
+        token = response.json().get("access_token")
+        return str(token) if token else None
+
+    async def get_user_id(self, token: str) -> str | None:
+        """Foydalanuvchi tokeni egasining app-scoped Facebook ID'si (ma'lumot o'chirish so'rovlari shu ID
+        bilan keladi). Xato — `None`."""
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(
+                    f"{GRAPH_BASE}/me", params={"fields": "id", "access_token": token}
+                )
+        except httpx.HTTPError:
+            return None
+        if response.status_code != 200:
+            _log_rejected(response)
+            return None
+        user_id = response.json().get("id")
+        return str(user_id) if user_id else None
+
+    async def extend_token(self, token: str, *, app_id: str, app_secret: str) -> str | None:
+        """Qisqa (1 soat) tokenni uzun (~60 kun) tokenga almashtiradi; bo'lmasa `None` (token o'zgarmaydi)."""
+        if token.startswith("IG"):
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(
+                    f"{GRAPH_BASE}/oauth/access_token",
+                    params={
+                        "grant_type": "fb_exchange_token",
+                        "client_id": app_id,
+                        "client_secret": app_secret,
+                        "fb_exchange_token": token,
+                    },
+                )
+        except httpx.HTTPError:
+            return None
+        if response.status_code != 200:
+            _log_rejected(response)
+            return None
+        longer = response.json().get("access_token")
+        return str(longer) if longer else None
+
+    async def subscribe(self, token: str, account: InstagramAccount) -> bool:
+        """Meta haqiqiy hodisalarni (Direct, izoh) webhook'ka yuborishi uchun obuna.
+        Instagram Login: akkauntning o'ziga; Facebook Login: Page'ga."""
+        target = account.id if token.startswith("IG") else account.page_id
+        if not target:
+            return False
+        fields = SUBSCRIBED_FIELDS if token.startswith("IG") else "messages,messaging_postbacks"
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    f"{_base(token)}/{target}/subscribed_apps",
+                    params={"subscribed_fields": fields, "access_token": token},
+                )
+        except httpx.HTTPError:
+            return False
+        if response.status_code != 200:
+            logger.warning("instagram.connect.subscribe_failed", status=response.status_code)
+        return response.status_code == 200
 
     async def send_message(self, token: str, account_id: str, recipient_id: str, text: str) -> SendResult:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
-                    f"{GRAPH_BASE}/{account_id}/messages",
+                    f"{_base(token)}/{account_id}/messages",
                     params={"access_token": token},
                     json={"recipient": {"id": recipient_id}, "message": {"text": text[:1000]}},
                 )
@@ -123,7 +386,7 @@ class HttpInstagramClient:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
-                    f"{GRAPH_BASE}/{account_id}/messages",
+                    f"{_base(token)}/{account_id}/messages",
                     params={"access_token": token},
                     json={"recipient": {"comment_id": comment_id}, "message": {"text": text[:1000]}},
                 )
@@ -145,7 +408,7 @@ class HttpInstagramClient:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.get(
-                    f"{GRAPH_BASE}/{media_id}",
+                    f"{_base(token)}/{media_id}",
                     params={
                         "fields": "media_type,media_product_type,permalink,caption,thumbnail_url,"
                         "media_url,timestamp",
@@ -217,8 +480,29 @@ class FakeInstagramClient:
     )  # navbat: har chaqiruvga bittadan
     media: dict[str, MediaInfo] = field(default_factory=dict)
     send_errors: list[ChannelSendError] = field(default_factory=list)  # navbat: DM yuborishga bittadan
+    subscribed: list[str] = field(default_factory=list)  # obuna qilingan akkaunt id lar
 
-    async def get_account(self, token: str) -> InstagramAccount:
+    async def extend_token(self, token: str, *, app_id: str, app_secret: str) -> str | None:
+        return None
+
+    codes: dict[str, str] = field(default_factory=dict)  # OAuth code -> token
+    user_ids: dict[str, str] = field(default_factory=dict)  # user token -> app-scoped Facebook ID
+
+    async def exchange_code(
+        self, code: str, *, redirect_uri: str, app_id: str, app_secret: str
+    ) -> str | None:
+        return self.codes.get(code)
+
+    async def get_user_id(self, token: str) -> str | None:
+        return self.user_ids.get(token)
+
+    async def subscribe(self, token: str, account: InstagramAccount) -> bool:
+        self.subscribed.append(account.id)
+        return True
+
+    async def get_account(
+        self, token: str, *, app_token: str | None = None, account_id: str | None = None
+    ) -> InstagramAccount:
         account = self.accounts.get(token)
         if account is None:
             raise ChannelConnectError("INVALID_TOKEN")
@@ -262,7 +546,9 @@ def _from_epoch(stamp: object, *, millis: bool = False) -> datetime | None:
 
 
 def parse_webhook(payload: dict[str, Any]) -> list[tuple[str, InboundMessage]]:
-    """Meta `entry[].messaging[]` → (professional akkaunt id, xabar). Faqat matnli Direct xabarlari."""
+    """Meta `entry[].messaging[]` → (professional akkaunt id, xabar). `is_echo` — akkauntning o'zi yozgani
+    (`ECHO`, suhbatdoshi `recipient`): Instagram ilovasidan qo'lda yozilgan javob suhbatga xodim xabari
+    bo'lib tushadi."""
     result: list[tuple[str, InboundMessage]] = []
     for entry in payload.get("entry") or []:
         if not isinstance(entry, dict):
@@ -274,7 +560,11 @@ def parse_webhook(payload: dict[str, Any]) -> list[tuple[str, InboundMessage]]:
             sender, message = item.get("sender"), item.get("message")
             if not isinstance(sender, dict) or not isinstance(message, dict):
                 continue
-            if not account_id or not sender.get("id") or message.get("is_echo"):
+            echo = bool(
+                message.get("is_echo")
+            )  # akkauntning o'zi yuborgan (Instagram ilovasidan yoki bizdan)
+            other = item.get("recipient") if echo else sender
+            if not account_id or not isinstance(other, dict) or not other.get("id"):
                 continue
             mid = message.get("mid")
             if not isinstance(mid, str):
@@ -289,8 +579,8 @@ def parse_webhook(payload: dict[str, Any]) -> list[tuple[str, InboundMessage]]:
                     account_id,
                     InboundMessage(
                         provider_event_id=mid,
-                        event_kind="MESSAGE",
-                        external_user_id=str(sender["id"]),
+                        event_kind="ECHO" if echo else "MESSAGE",
+                        external_user_id=str(other["id"]),
                         occurred_at=occurred,
                         kind="TEXT" if text is not None else "UNSUPPORTED",
                         body=text,

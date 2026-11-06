@@ -766,6 +766,20 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Takror | Bir postga bir muallif — bitta avtomatik javob |
 | Xarajat | `COMMENT_CLASSIFY` maqsadi; AI limiti tugasa kayfiyat to'xtaydi, «+» javoblari ishlayveradi |
 
+### DEC-149 — AI: chatdan avtomatlashtirishga (pilotgacha 4 ta yangi qism) — `APPROVED (2026-11-02, founder)`
+**Nima:** AI faqat gaplashmasin — shop xodimining qo'l ishini kamaytirsin. "22 ta AI yordamchi" ro'yxatidan pilotgacha 4 tasi olinadi; video, banner va marketing qilinmaydi. Hammasi bitta LLM qatlami (6b) ustida tool + ko'rsatma + ekran.
+**Qayerda:** `engineering/14`, `engineering/16`, `engineering/18-catalog-import.md`, `engineering/progress/README.md`.
+
+| Savol | Tanlov |
+|---|---|
+| Pilotgacha (tartib bilan) | 1) Yetkazib beruvchi narx ro'yxatini o'qish — Excel/PDF/rasm → "N ta narx yangilansinmi?" → ega tasdiqlaydi (5c importi ustiga). 2) Telegram ovozli xabari → matn → oddiy javob (DEC-010, audio o'chiriladi — DEC-117). 3) Rasm yoki nomdan mahsulot kartochkasi qoralamasi — ega tasdiqlaydi, narxni faqat odam qo'yadi (BL-038). 4) "So'rashdi, lekin bizda yo'q" haftalik hisoboti (chatdagi topilmagan qidiruvlardan) |
+| Pilot paytida, shop so'rasa | Javobsiz taklifga bitta eslatma (faqat xaridor boshlagan suhbatda, reklama emas — BL-061); Instagram Direct'da ovoz va rasm |
+| Pilotdan keyin | Rasm bo'yicha qidirish, post/tavsif matnlari, raqamlarga asoslangan tavsiyalar, katalogni tartibga solish (Stage 2) |
+| Qilinmaydi | Banner/video yaratish, avtomatik post joylash, avtomatik reklama, talab prognozi, xaridor xulq-atvori tahlili — qimmat, Meta ruxsati va marketing roziligi kerak (BL-036), savdo tarixi yo'q |
+| Allaqachon bor | AI sotuvchi (6b), buyurtma holati tool'i, Instagram izohlari (6+), hisobot yordamchisi (rejada), PC moslik (6a), baholash (6c), AI xarajati (7a) |
+| Shart | Avval Telegram va Instagram haqiqiy akkaunt bilan sinaladi; har yangi qismga o'zbekcha sinov to'plami (`engineering/16`) va AI limiti |
+| Nega | Oddiy 24/7 chat — hamma beradigan narsa; shop pulni vaqt tejaydigan avtomatlashtirish uchun to'laydi |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

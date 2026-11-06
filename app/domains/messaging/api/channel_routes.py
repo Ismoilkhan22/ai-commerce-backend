@@ -16,6 +16,8 @@ from app.domains.messaging.schemas import (
     ChannelAccountOut,
     ChannelList,
     InstagramConnectIn,
+    InstagramOAuthStartIn,
+    InstagramOAuthStartOut,
     TelegramConnectIn,
 )
 from app.domains.messaging.services.channels import account_out
@@ -100,12 +102,20 @@ async def enable_webchat(
     return out
 
 
+@router.post("/instagram/oauth", response_model=InstagramOAuthStartOut)
+async def start_instagram_oauth(
+    body: InstagramOAuthStartIn, ctx: CanConnect, svc: Messaging
+) -> InstagramOAuthStartOut:
+    """ "Instagram bilan ulash": Meta oynasi havolasi (imzolangan `state` bilan, 10 daqiqa)."""
+    return InstagramOAuthStartOut(url=svc.ig.oauth.start(ctx.actor, body.return_path))
+
+
 @router.post("/instagram", response_model=ChannelAccountOut, status_code=status.HTTP_201_CREATED)
 async def connect_instagram(
     body: InstagramConnectIn, request: Request, response: Response, ctx: CanConnect, svc: Messaging
 ) -> ChannelAccountOut:
     """Instagram Direct — Meta ruxsati kelguncha o'chiq (DEC-116a): flag o'chiq bo'lsa 404."""
-    out = await svc.channels.connect_instagram(ctx.db, ctx.actor, body.access_token)
+    out = await svc.channels.connect_instagram(ctx.db, ctx.actor, body.access_token, body.account_id)
     set_location(request, response, "get_channel", channel_account_id=out.id)
     return out
 

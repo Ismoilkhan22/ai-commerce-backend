@@ -11,10 +11,11 @@ from __future__ import annotations
 import hmac
 import json
 from typing import Annotated
+from urllib.parse import parse_qs
 
 import structlog
 from fastapi import APIRouter, Depends, Header, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from app.domains.messaging.channels.instagram import parse_comment_events, parse_webhook, verify_signature
 from app.domains.messaging.channels.telegram import parse_update
@@ -82,6 +83,55 @@ async def instagram_verify(
     return challenge
 
 
+@router.get("/instagram/oauth", include_in_schema=False)
+async def instagram_oauth_callback(
+    request: Request,
+    svc: Messaging,
+    code: Annotated[str | None, Query(max_length=2048)] = None,
+    state: Annotated[str | None, Query(max_length=2048)] = None,
+) -> RedirectResponse:
+    """Meta OAuth qaytishi: kod → token → ulash → panelga (`?instagram=connected|error`)."""
+    target = await svc.ig.oauth.complete(request.app.state.db, code, state)
+    return RedirectResponse(target, status_code=303)
+
+
+async def _signed_request(request: Request) -> str | None:
+    raw = await request.body()
+    if len(raw) > 16 * 1024:
+        return None
+    values = parse_qs(raw.decode("utf-8", "replace")).get("signed_request")
+    return values[0] if values else None
+
+
+@router.post("/instagram/deauthorize", include_in_schema=False)
+async def instagram_deauthorize(request: Request, svc: Messaging) -> dict[str, bool]:
+    """Meta: foydalanuvchi app'ni o'chirdi — uning ulagan Instagram akkauntlari uziladi."""
+    code = await svc.ig.oauth.revoke(request.app.state.db, await _signed_request(request))
+    if code is None:
+        raise NotFoundError("Not found")
+    return {"ok": True}
+
+
+@router.post("/instagram/data-deletion", include_in_schema=False)
+async def instagram_data_deletion(request: Request, svc: Messaging) -> dict[str, str]:
+    """Meta "Data deletion request" callback'i: `{url, confirmation_code}` — holat sahifasi va kod."""
+    code = await svc.ig.oauth.revoke(request.app.state.db, await _signed_request(request))
+    if code is None:
+        raise NotFoundError("Not found")
+    return {"url": svc.ig.oauth.deletion_status_url(code), "confirmation_code": code}
+
+
+@router.get("/instagram/data-deletion/{code}", response_class=PlainTextResponse, include_in_schema=False)
+async def instagram_data_deletion_status(code: str) -> str:
+    if not code.isalnum() or len(code) != 20:
+        raise NotFoundError("Not found")
+    return (
+        f"Data deletion request {code}: completed.\n"
+        "Instagram connections authorized by this Facebook account were disconnected and their access "
+        "tokens deleted.\n"
+    )
+
+
 @router.post("/instagram")
 async def instagram_webhook(
     request: Request,
@@ -99,6 +149,21 @@ async def instagram_webhook(
     except ValueError:
         return {"ok": True}
     database: Database = request.app.state.db
+    if isinstance(payload, dict):  # tuzilma (matnsiz): qaysi hodisa kelgani va nechtasi tanildi
+        entries = payload.get("entry") or []
+        logger.info(
+            "instagram.webhook.received",
+            object=payload.get("object"),
+            entry_ids=[str(e.get("id")) for e in entries if isinstance(e, dict)],
+            messaging_keys=sorted(
+                {k for e in entries if isinstance(e, dict) for m in e.get("messaging") or [] for k in m}
+            ),
+            change_fields=[
+                c.get("field") for e in entries if isinstance(e, dict) for c in e.get("changes") or []
+            ],
+            parsed_messages=len(parse_webhook(payload)),
+            parsed_comments=len(parse_comment_events(payload)),
+        )
     for account_id, inbound in parse_webhook(payload) if isinstance(payload, dict) else []:
         async with database.transaction() as db:
             account = await svc.channels.by_external(db, "INSTAGRAM", account_id)

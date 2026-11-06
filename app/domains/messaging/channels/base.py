@@ -24,7 +24,7 @@ class InboundMessage:
     """Normallashtirilgan kiruvchi hodisa. `provider_event_id` — dedup kaliti (TC-010)."""
 
     provider_event_id: str
-    event_kind: str  # MESSAGE | EDITED | CALLBACK | OTHER
+    event_kind: str  # MESSAGE | EDITED | CALLBACK | ECHO (Instagram: akkauntning o'zi yozgani) | OTHER
     external_user_id: str
     occurred_at: datetime
     kind: str = "TEXT"  # message_kind

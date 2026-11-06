@@ -35,6 +35,10 @@ class MessagingConfig:
     webhook_base_url: str  # https://api.platforma.uz — Telegram webhook manzili shundan
     telegram_mode: str  # "webhook" (prod) | "polling" (lokal, ochiq manzil yo'q)
     instagram_enabled: bool = False  # DEC-116a: channel.instagram_dm flag
+    instagram_app_id: str | None = None
+    instagram_oauth_config_id: str | None = None
+    oauth_state_key: str = ""  # OAuth `state` imzosi (jwt_secret'dan)
+    app_public_url: str = "http://localhost:3000"  # OAuth'dan keyin panelga qaytish
     instagram_app_secret: str | None = None
     instagram_verify_token: str | None = None
     storefront_public_url: str = ""  # "https://{slug}.platforma.uz" — izohga javobdagi mahsulot havolasi

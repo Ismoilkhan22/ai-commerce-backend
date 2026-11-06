@@ -861,3 +861,205 @@ def test_instagram_revoked_token_degrades_channel_and_blocks_further_sends(world
     tasks = _ok(world.client.get("/api/v1/shop/tasks?status=OPEN", headers=_bearer(ig.owner)))["items"]
     assert len([t for t in tasks if t["type"] == "CHANNEL_DEGRADED"]) == 1
     assert ig.fake.sent == []
+
+
+# ------------------------------------------------------------------ Direct echo: Instagram ilovasidan javob
+def _dm(ig: Ig, *items: dict[str, Any]) -> Any:
+    payload = {
+        "object": "instagram",
+        "entry": [{"id": ig.account_id, "time": int(time.time()), "messaging": list(items)}],
+    }
+    raw = json.dumps(payload).encode()
+    signature = "sha256=" + hmac.new(SECRET.encode(), raw, hashlib.sha256).hexdigest()
+    return ig.world.client.post(
+        "/api/v1/webhooks/instagram",
+        content=raw,
+        headers={"X-Hub-Signature-256": signature, "Content-Type": "application/json"},
+    )
+
+
+def test_echo_from_instagram_app_is_recorded_as_staff_and_own_echo_is_ignored(
+    world: World, flag: None
+) -> None:
+    ig = Ig(world)
+    stamp = int(time.time() * 1000)
+    customer = {"sender": {"id": "IGSID-7"}, "recipient": {"id": ig.account_id}, "timestamp": stamp}
+    assert _dm(ig, {**customer, "message": {"mid": "mid-in-1", "text": "Narxi qancha?"}}).status_code == 200
+    echo = {"sender": {"id": ig.account_id}, "recipient": {"id": "IGSID-7"}, "timestamp": stamp + 1000}
+    # xodim Instagram ilovasining o'zidan javob yozdi
+    assert (
+        _dm(
+            ig, {**echo, "message": {"mid": "mid-echo-1", "is_echo": True, "text": "4 800 000 so'm"}}
+        ).status_code
+        == 200
+    )
+    # Meta qayta yubordi — takrorlanmaydi
+    assert (
+        _dm(
+            ig, {**echo, "message": {"mid": "mid-echo-1", "is_echo": True, "text": "4 800 000 so'm"}}
+        ).status_code
+        == 200
+    )
+    rows = _admin_sql(
+        world,
+        "SELECT m.direction, m.author_type, m.origin, m.delivery_status, m.body FROM messaging.messages m "
+        "JOIN messaging.conversations c ON c.id = m.conversation_id WHERE c.shop_id = $1 ORDER BY m.seq",
+        ig.shop.id,
+    )
+    assert [(r["direction"], r["author_type"], r["delivery_status"], r["body"]) for r in rows] == [
+        ("IN", "CUSTOMER", "RECEIVED", "Narxi qancha?"),
+        ("OUT", "STAFF", "SENT", "4 800 000 so'm"),
+    ]
+    # bizdan ketgan xabarning echo'si (provider_message_id bir xil) qayta yozilmaydi
+    _admin_sql(
+        world,
+        "UPDATE messaging.messages SET provider_message_id = 'mid-ours-1' WHERE shop_id = $1 AND direction = 'OUT'",
+        ig.shop.id,
+    )
+    assert (
+        _dm(ig, {**echo, "message": {"mid": "mid-ours-1", "is_echo": True, "text": "boshqa"}}).status_code
+        == 200
+    )
+    # xaridor hali yozmagan suhbatdoshga echo — suhbat ochilmaydi
+    stranger = {"sender": {"id": ig.account_id}, "recipient": {"id": "IGSID-NEW"}, "timestamp": stamp}
+    assert (
+        _dm(ig, {**stranger, "message": {"mid": "mid-echo-2", "is_echo": True, "text": "salom"}}).status_code
+        == 200
+    )
+    count = _admin_sql(
+        world,
+        "SELECT count(*) AS n FROM messaging.messages m JOIN messaging.conversations c ON c.id = m.conversation_id "
+        "WHERE c.shop_id = $1",
+        ig.shop.id,
+    )
+    assert count[0]["n"] == 2
+
+
+# ------------------------------------------------------------------ "Instagram bilan ulash" (OAuth)
+@pytest.fixture
+def oauth(world: World, flag: None) -> Iterator[None]:
+    config = world.client.app.state.messaging.config
+    saved = config.instagram_app_id
+    object.__setattr__(config, "instagram_app_id", "1096504406590111")
+    yield
+    object.__setattr__(config, "instagram_app_id", saved)
+
+
+def test_oauth_start_and_callback_connect_account(world: World, oauth: None) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    shop = Shop(world)
+    account_id = str(int(uuid4().int % 10**12) + 10**12)
+    page_token = f"EAApage{uuid4().hex}{uuid4().hex}"
+    fake = FakeInstagramClient(accounts={page_token: InstagramAccount(account_id, "noutbuk_uz", SCOPE)})
+    fake.codes["good-code"] = page_token
+    world.client.app.state.messaging.adapters.instagram = fake
+
+    listed = _ok(world.client.get("/api/v1/shop/channels", headers=_bearer(shop.owner)))
+    assert listed["instagram_oauth_available"] is True
+    started = _ok(
+        _post(world, shop.owner, "/channels/instagram/oauth", {"return_path": "/noutbukuz/channels"})
+    )
+    url = urlsplit(started["url"])
+    query = parse_qs(url.query)
+    assert url.netloc == "www.facebook.com" and query["client_id"] == ["1096504406590111"]
+    assert query["redirect_uri"][0].endswith("/api/v1/webhooks/instagram/oauth")
+    state = query["state"][0]
+
+    # Foydalanuvchi rad etdi — code yo'q
+    denied = world.client.get(f"/api/v1/webhooks/instagram/oauth?state={state}", follow_redirects=False)
+    assert denied.status_code == 303 and "instagram=error" in denied.headers["location"]
+    # Soxta state
+    forged = world.client.get(
+        "/api/v1/webhooks/instagram/oauth?code=good-code&state=x.y", follow_redirects=False
+    )
+    assert "reason=state" in forged.headers["location"]
+    # Muvaffaqiyat
+    ok = world.client.get(
+        f"/api/v1/webhooks/instagram/oauth?code=good-code&state={state}", follow_redirects=False
+    )
+    assert ok.status_code == 303
+    assert ok.headers["location"].endswith("/noutbukuz/channels?instagram=connected")
+    channels = _ok(world.client.get("/api/v1/shop/channels", headers=_bearer(shop.owner)))["items"]
+    ig = [c for c in channels if c["channel"] == "INSTAGRAM"]
+    assert ig and ig[0]["status"] == "CONNECTED" and ig[0]["display_name"] == "@noutbuk_uz"
+    assert fake.subscribed == [account_id]
+
+
+def test_oauth_rejects_open_redirect_and_unknown_code(world: World, oauth: None) -> None:
+    shop = Shop(world)
+    world.client.app.state.messaging.adapters.instagram = FakeInstagramClient()
+    started = _ok(_post(world, shop.owner, "/channels/instagram/oauth", {"return_path": "//evil.example/x"}))
+    from urllib.parse import parse_qs, urlsplit
+
+    state = parse_qs(urlsplit(started["url"]).query)["state"][0]
+    bad = world.client.get(
+        f"/api/v1/webhooks/instagram/oauth?code=nope&state={state}", follow_redirects=False
+    )
+    location = bad.headers["location"]
+    assert location.startswith("http://localhost:3000/?") and "reason=code" in location  # yo'l "/" ga tushdi
+
+
+def test_oauth_hidden_without_app_id(world: World, flag: None) -> None:
+    shop = Shop(world)
+    listed = _ok(world.client.get("/api/v1/shop/channels", headers=_bearer(shop.owner)))
+    assert listed["instagram_oauth_available"] is False
+    assert _post(world, shop.owner, "/channels/instagram/oauth", {}).status_code == 422
+
+
+def _signed_request(user_id: str, secret: str = SECRET) -> str:
+    import base64
+    import hashlib
+    import hmac
+    import json
+
+    def b64(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+    payload = b64(json.dumps({"algorithm": "HMAC-SHA256", "user_id": user_id}).encode())
+    return f"{b64(hmac.new(secret.encode(), payload.encode(), hashlib.sha256).digest())}.{payload}"
+
+
+def test_meta_data_deletion_disconnects_accounts_of_that_facebook_user(world: World, oauth: None) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    shop = Shop(world)
+    account_id = str(int(uuid4().int % 10**12) + 10**12)
+    user_token, meta_user = f"EAAuser{uuid4().hex}", str(uuid4().int % 10**15)
+    fake = FakeInstagramClient(accounts={user_token: InstagramAccount(account_id, "noutbuk_uz", SCOPE)})
+    fake.codes["code-1"], fake.user_ids[user_token] = user_token, meta_user
+    world.client.app.state.messaging.adapters.instagram = fake
+    started = _ok(_post(world, shop.owner, "/channels/instagram/oauth", {"return_path": "/x/channels"}))
+    state = parse_qs(urlsplit(started["url"]).query)["state"][0]
+    world.client.get(f"/api/v1/webhooks/instagram/oauth?code=code-1&state={state}", follow_redirects=False)
+
+    form = {"content-type": "application/x-www-form-urlencoded"}
+    # Soxta imzo — 404, hech narsa o'zgarmaydi
+    forged = world.client.post(
+        "/api/v1/webhooks/instagram/data-deletion",
+        content=f"signed_request={_signed_request(meta_user, 'wrong')}",
+        headers=form,
+    )
+    assert forged.status_code == 404
+    # Boshqa Facebook foydalanuvchisi — kod qaytadi, lekin bu shop ulangan qoladi
+    other = world.client.post(
+        "/api/v1/webhooks/instagram/deauthorize",
+        content=f"signed_request={_signed_request('999')}",
+        headers=form,
+    )
+    assert other.status_code == 200
+    channels = _ok(world.client.get("/api/v1/shop/channels", headers=_bearer(shop.owner)))["items"]
+    assert [c["status"] for c in channels if c["channel"] == "INSTAGRAM"] == ["CONNECTED"]
+
+    deleted = world.client.post(
+        "/api/v1/webhooks/instagram/data-deletion",
+        content=f"signed_request={_signed_request(meta_user)}",
+        headers=form,
+    )
+    body = _ok(deleted)
+    code = body["confirmation_code"]
+    assert body["url"].endswith(f"/api/v1/webhooks/instagram/data-deletion/{code}")
+    channels = _ok(world.client.get("/api/v1/shop/channels", headers=_bearer(shop.owner)))["items"]
+    assert [c["status"] for c in channels if c["channel"] == "INSTAGRAM"] == ["DISCONNECTED"]
+    status = world.client.get(f"/api/v1/webhooks/instagram/data-deletion/{code}")
+    assert status.status_code == 200 and code in status.text
