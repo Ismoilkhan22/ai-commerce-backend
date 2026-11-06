@@ -838,6 +838,19 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Global qidiruv (M31/M32) | Alohida xaridor sayti (`apps/marketplace`, :3003); natija umumiy mahsulot bo'yicha; "eng arzon" yorlig'i yo'q; oxirgi tekshiruv vaqti ko'rinadi |
 | Yo'naltirish (M35) | "Do'konga o'tish" — taklif qayta tekshiriladi, yozuv shaxsiz (IP xeshi) |
 
+### DEC-154 — Stage 3 qolgan qismi: global AI, xarita, xaridor ogohlantirishi, reklama, global bot — `PROPOSED (2026-11-03, Claude — founder ko'rib chiqadi)`
+**Qayerda:** [progress/S3-marketplace.md](../engineering/progress/S3-marketplace.md).
+
+| Savol | Tanlov |
+|---|---|
+| Xaridor identifikatori | Stage 3 da — global Telegram bot chati (SMS, parol yo'q); telefonli akkaunt keyin |
+| Global AI | Faqat 2 ommaviy tool; xarajat platformaniki; IP limiti 10/daq, 60/kun; tarix saqlanmaydi |
+| Xarita | Filial — faqat shop `branch` ruxsatini yoqsa; xaridor joyi — faqat tugma bosilganda, saqlanmaydi; masofa to'g'ri chiziq |
+| Ogohlantirish | Narx tushsa, 24 soatda ko'pi 1 marta; bir bosishda bekor |
+| Reklama | Alohida blok, "Reklama" yorlig'i, ko'pi 2 ta; platforma tasdiqlaydi; AI va oddiy natijalarga ta'sir yo'q; to'lov — hisob orqali |
+| Global bot | Shop botlaridan alohida token; webhook siri; chat raqami shifrlangan |
+| Ommaga ochish | Kod tayyor; ochish — founder qarori (`engineering/28` §13 mezonlari) |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

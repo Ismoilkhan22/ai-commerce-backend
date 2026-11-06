@@ -40,6 +40,7 @@ from app.domains.commerce.providers import build_commerce_services
 from app.domains.messaging.common import MessagingConfig
 from app.domains.messaging.providers import build_messaging_services
 from app.domains.network.providers import build_network_services
+from app.domains.network.services.global_bot import HttpGlobalBotClient
 from app.domains.reporting.providers import build_reporting_services
 from app.domains.sales_ai.providers import build_sales_ai_services
 from app.domains.storefront.providers import build_storefront_services
@@ -336,7 +337,18 @@ def wire_services(
     )
     # Stage 2: umumiy katalog va ommaviy takliflar — katalog va qoldiq faqat port'lar orqali (TC-NET-04)
     state.network = build_network_services(
-        audit, get_catalog_query(), get_stock_query(), secret=auth_config.jwt_secret
+        audit,
+        get_catalog_query(),
+        get_stock_query(),
+        secret=auth_config.jwt_secret,
+        marketplace_url=settings.marketplace_public_url,
+        bot_username=settings.global_bot_username,
+    )
+    # M39: global Telegram bot — token bo'lsa yoqiladi (shop botlaridan alohida, BL-108)
+    if settings.global_bot_token is not None:
+        state.network.global_bot.connect(HttpGlobalBotClient(settings.global_bot_token.get_secret_value()))
+    state.global_bot_secret = (
+        settings.global_bot_webhook_secret.get_secret_value() if settings.global_bot_webhook_secret else None
     )
     state.catalog_price = get_catalog_price()  # M30: hamkor API narx yozishi
     state.billing = BillingService(audit, get_catalog_query())  # M26: tariflar va hisoblar
@@ -375,6 +387,7 @@ def wire_services(
     # DEC-149: narx ro'yxati va kartochka qoralamasi — shop AI limiti sotuvchi bilan umumiy
     state.catalog.price_lists.connect(main_router, state.sales_ai.gate)
     state.catalog.card_drafts.connect(main_router, state.sales_ai.gate)
+    state.network.advisor.connect(main_router if state.sales_ai.gate.provider_ready else None)  # M34
 
 
 def sms_sender(settings: Settings) -> SmsSender:

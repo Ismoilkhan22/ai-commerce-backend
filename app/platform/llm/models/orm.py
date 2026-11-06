@@ -40,6 +40,7 @@ PURPOSES = (
     "PRICE_LIST_READ",  # DEC-149: yetkazib beruvchi narx ro'yxati
     "VOICE_TRANSCRIBE",  # DEC-149: Telegram ovozli xabari
     "CARD_DRAFT",  # DEC-149: mahsulot kartochkasi qoralamasi
+    "MARKET_ADVISOR",  # Stage 3 (M34): xaridorning global AI maslahatchisi — platforma xarajati
 )
 PROVIDERS = ("anthropic", "gemini", "fake")
 

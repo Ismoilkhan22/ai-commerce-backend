@@ -32,6 +32,7 @@ class MarketOffer:
     warranty_months: int | None
     availability: str | None
     last_verified_at: datetime
+    branches: tuple[dict[str, object], ...] = ()  # M33: faqat ega ruxsat bergan bo'lsa
 
 
 @dataclass(frozen=True)

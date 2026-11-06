@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.domains.network.api.global_bot_routes import router as global_bot_router
 from app.domains.network.api.marketplace_routes import router as marketplace_router
 from app.domains.network.api.partner_routes import router as partner_router
 from app.domains.network.api.platform_routes import router as platform_network_router
 from app.domains.network.api.routes import router as shop_network_router
+from app.domains.network.jobs import NETWORK_JOBS
 from app.domains.network.permissions import NETWORK_PERMISSIONS, NETWORK_ROLE_GRANTS
 from app.domains.network.subscribers import pos_stock_applied, refresh_offers, shop_status_changed
 from app.shared.types.manifest import DomainManifest
@@ -27,7 +29,9 @@ DOMAIN_MANIFEST = DomainManifest(
         "platform": platform_router,
         "public": public_router,
         "partner": partner_router,
+        "webhooks": global_bot_router,  # M39: global Telegram bot
     },
+    scheduled_jobs=list(NETWORK_JOBS),  # M36: narx ogohlantirishlari
     permissions=NETWORK_PERMISSIONS,
     role_grants=NETWORK_ROLE_GRANTS,
     event_subscribers=[refresh_offers, shop_status_changed, pos_stock_applied],

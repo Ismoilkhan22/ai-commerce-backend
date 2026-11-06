@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.domains.network.providers import NetworkServices, network_services
 from app.domains.network.schemas import CanonicalList, LinkDecisionIn, ReviewList
+from app.domains.network.services.ads import AdList, AdOut, AdRejectIn
 from app.domains.network.services.trust import BadgeIn, BadgeOut, BadgeRevokeIn, ReportList, ReportResolveIn
 from app.platform.staff.infrastructure.guard import RequestContext, require_platform_permission
 
@@ -72,3 +73,19 @@ async def offer_reports(
 async def resolve_report(report_id: UUID, body: ReportResolveIn, ctx: CanReview, svc: Network) -> None:
     """Rad etish yoki taklifni yashirish (`SUSPENDED`, `PLATFORM_REPORT` — ega o'zi qaytara olmaydi)."""
     await svc.trust.resolve(ctx.db, ctx.actor, report_id, body)
+
+
+# ------------------------------------------------------------------ M37: reklamani tasdiqlash
+@router.get("/ads", response_model=AdList)
+async def pending_ads(ctx: CanReview, svc: Network) -> AdList:
+    return await svc.ads.pending(ctx.db)
+
+
+@router.post("/ads/{ad_id}/approve", response_model=AdOut)
+async def approve_ad(ad_id: UUID, ctx: CanReview, svc: Network) -> AdOut:
+    return await svc.ads.review(ctx.db, ctx.actor, ad_id, True, None)
+
+
+@router.post("/ads/{ad_id}/reject", response_model=AdOut)
+async def reject_ad(ad_id: UUID, body: AdRejectIn, ctx: CanReview, svc: Network) -> AdOut:
+    return await svc.ads.review(ctx.db, ctx.actor, ad_id, False, body.reason)

@@ -24,6 +24,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db.base import Base
+from app.shared.db.encryption import EncryptedString
 from app.shared.db.mixins import IdMixin, ShopScopedMixin, TimestampMixin, VersionMixin
 
 SCHEMA = "network"
@@ -32,7 +33,7 @@ CANONICAL_SOURCES = ("AUTO_MPN", "PLATFORM")
 LINK_STATUSES = ("LINKED", "PENDING_REVIEW", "UNLINKED")
 LINK_METHODS = ("EXACT_MPN", "PLATFORM_REVIEW", "NONE")
 OFFER_STATUSES = ("ACTIVE", "WITHDRAWN", "SUSPENDED")
-OFFER_FIELDS = ("price", "condition", "warranty", "availability")
+OFFER_FIELDS = ("price", "condition", "warranty", "availability", "branch")  # branch — M33, standartda yopiq
 AVAILABILITY = ("IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK")
 
 
@@ -114,6 +115,8 @@ class PublicOffer(IdMixin, ShopScopedMixin, Base):
     condition: Mapped[str | None] = mapped_column(Text)
     warranty_months: Mapped[int | None] = mapped_column(Integer)
     availability: Mapped[str | None] = mapped_column(Text)
+    # M33: olib ketish filiallari (faqat `branch` ruxsat etilgan bo'lsa): nom, manzil, koordinata, mavjudlik
+    branches: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     withdraw_reason: Mapped[str | None] = mapped_column(
         Text
     )  # OWNER | NO_PRICE | NOT_SELLABLE | SHOP_SUSPENDED
@@ -233,3 +236,69 @@ class StockReport(IdMixin, ShopScopedMixin, Base):
     results: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+ALERT_STATUSES = ("ACTIVE", "CANCELLED")
+
+
+class GlobalBotChat(IdMixin, Base):
+    """M39: global Telegram botning xaridor chati (BL-108 — shop botlaridan alohida, ma'lumot aralashmaydi).
+    Stage 3 da xaridor identifikatori shu (SMS va parolsiz); chat raqami shifrlangan."""
+
+    __tablename__ = "global_bot_chats"
+    __table_args__ = (UniqueConstraint("chat_hash"), {"schema": SCHEMA})
+
+    chat_hash: Mapped[str] = mapped_column(Text)  # HMAC — qidirish uchun
+    chat_id_enc: Mapped[str] = mapped_column(EncryptedString)
+    language: Mapped[str | None] = mapped_column(Text)
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PriceAlert(IdMixin, Base):
+    """M36: narx tushsa xabar (BL-102, BL-103) — xaridor yoqadi, bir bosishda bekor, kuniga ko'pi 1 marta."""
+
+    __tablename__ = "price_alerts"
+    __table_args__ = (
+        UniqueConstraint("chat_ref", "canonical_id"),
+        Index("ix_price_alerts_status_canonical", "status", "canonical_id"),
+        CheckConstraint(f"status IN {ALERT_STATUSES}", name="status"),
+        {"schema": SCHEMA},
+    )
+
+    chat_ref: Mapped[UUID]  # network.global_bot_chats.id
+    canonical_id: Mapped[UUID]
+    baseline_price_uzs_minor: Mapped[int | None] = mapped_column(
+        BigInteger
+    )  # oxirgi xabar qilingan eng past narx
+    status: Mapped[str] = mapped_column(Text, server_default="ACTIVE")
+    last_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+AD_STATUSES = ("PENDING_REVIEW", "ACTIVE", "PAUSED", "REJECTED", "ENDED")
+
+
+class AdCampaign(IdMixin, ShopScopedMixin, Base):
+    """M37: reklama o'rni (BL-099, BL-104) — oddiy natijalardan alohida, "Reklama" deb belgilanadi, oddiy
+    saralash va AI maslahatchiga ta'sir qilmaydi. Platforma tasdiqlaydi; to'lov — hisob orqali (DEC-100)."""
+
+    __tablename__ = "ad_campaigns"
+    __table_args__ = (
+        Index("ix_ad_campaigns_status_ends_at", "status", "ends_at"),
+        CheckConstraint(f"status IN {AD_STATUSES}", name="status"),
+        CheckConstraint("ends_at > starts_at", name="period"),
+        {"schema": SCHEMA},
+    )
+
+    sku_id: Mapped[UUID]  # ommaviy taklif SKU'si
+    keywords: Mapped[list[str]] = mapped_column(ARRAY(Text))  # bo'sh — taklif nomi bo'yicha
+    status: Mapped[str] = mapped_column(Text, server_default="PENDING_REVIEW")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    clicks: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_by: Mapped[UUID | None]
+    reviewed_by: Mapped[UUID | None]
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reject_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

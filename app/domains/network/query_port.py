@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, and_, any_, literal, or_, select, text
+from sqlalchemy import ColumnElement, and_, any_, func, literal, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.network.models.orm import CanonicalProduct, PublicOffer
@@ -32,7 +33,7 @@ def _escape(token: str) -> str:
     return token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _offer(offer: PublicOffer, shop: Shop, verified: set[UUID]) -> MarketOffer:
+def offer_view(offer: PublicOffer, shop: Shop, verified: set[UUID]) -> MarketOffer:
     fields = set(offer.permitted_fields or ())
     return MarketOffer(
         offer_id=offer.id,
@@ -49,6 +50,7 @@ def _offer(offer: PublicOffer, shop: Shop, verified: set[UUID]) -> MarketOffer:
         warranty_months=offer.warranty_months if "warranty" in fields else None,
         availability=offer.availability if "availability" in fields else None,
         last_verified_at=offer.last_verified_at,
+        branches=tuple(offer.branches or ()) if "branch" in fields else (),
     )
 
 
@@ -119,7 +121,7 @@ class NetworkQueryPortImpl:
             if key not in groups:
                 groups[key] = []
                 order.append(key)
-            groups[key].append(_offer(offer, shop, verified))
+            groups[key].append(offer_view(offer, shop, verified))
         canonicals = await self._canonicals(db, [k for k in order if groups[k][0].canonical_id is not None])
         results: list[MarketResult] = []
         for key in order:
@@ -161,7 +163,7 @@ class NetworkQueryPortImpl:
             title=canonical.title,
             brand=canonical.brand,
             category_code=canonical.category_code,
-            offers=tuple(sorted((_offer(o, s, verified) for o, s in rows), key=_price_key)),
+            offers=tuple(sorted((offer_view(o, s, verified) for o, s in rows), key=_price_key)),
         )
 
     async def visit_target(self, db: AsyncSession, offer_id: UUID) -> VisitTarget | None:
@@ -172,6 +174,20 @@ class NetworkQueryPortImpl:
         return VisitTarget(
             offer_id=offer.id, shop_id=offer.shop_id, shop_slug=shop.slug, product_id=offer.product_id
         )
+
+    async def sitemap(self, db: AsyncSession, limit: int = 50_000) -> list[tuple[UUID, datetime]]:
+        await _public(db)
+        rows = await db.execute(
+            select(PublicOffer.canonical_id, func.max(PublicOffer.updated_at))
+            .join(Shop, Shop.id == PublicOffer.shop_id)
+            .where(
+                PublicOffer.status == "ACTIVE", Shop.status == "ACTIVE", PublicOffer.canonical_id.is_not(None)
+            )
+            .group_by(PublicOffer.canonical_id)
+            .order_by(func.max(PublicOffer.updated_at).desc())
+            .limit(limit)
+        )
+        return [(c, u) for c, u in rows if c is not None]
 
     @staticmethod
     async def _canonicals(db: AsyncSession, ids: Sequence[UUID]) -> dict[UUID, CanonicalProduct]:

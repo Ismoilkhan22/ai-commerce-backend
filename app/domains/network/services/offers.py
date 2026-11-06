@@ -18,9 +18,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.network.models.orm import OFFER_FIELDS, CanonicalProduct, PublicOffer, SkuLink
+from app.domains.network.models.orm import CanonicalProduct, PublicOffer, SkuLink
 from app.platform.audit.services.audit_service import AuditService
-from app.platform.shops.models.orm import Shop
+from app.platform.shops.models.orm import Branch, Shop
 from app.shared.clock import utcnow
 from app.shared.contracts.catalog import CatalogQueryPort, NetworkSkuFacts
 from app.shared.contracts.commerce import StockQueryPort
@@ -31,7 +31,7 @@ from app.shared.types.actor import ActorContext
 OFFER = "network.public_offer"
 _NOT_ALNUM = re.compile(r"[\W_]+", re.UNICODE)
 LINK = "network.sku_link"
-DEFAULT_FIELDS = list(OFFER_FIELDS)
+DEFAULT_FIELDS = ["availability", "condition", "price", "warranty"]  # filial (M33) — faqat ega yoqsa
 SYSTEM_REASONS = ("NO_PRICE", "NOT_SELLABLE", "SHOP_SUSPENDED")  # tuzalsa taklif o'zi qaytadi
 
 
@@ -112,6 +112,9 @@ class OfferService:
             offer = await self._offer(db, actor.shop_id, sku_id)
             avail = availability.get(sku_id)
             values = _projection(fact, avail.status if avail else "OUT_OF_STOCK")
+            values["branches"] = (
+                await self._branches(db, actor.shop_id, avail) if "branch" in permitted else None
+            )
             if offer is None:
                 offer = PublicOffer(
                     shop_id=actor.shop_id,
@@ -214,6 +217,11 @@ class OfferService:
             assert fact is not None
             avail = availability.get(offer.sku_id)
             values = _projection(fact, avail.status if avail else "OUT_OF_STOCK")
+            values["branches"] = (
+                await self._branches(db, shop_id, avail)
+                if "branch" in (offer.permitted_fields or ())
+                else None
+            )
             diff = {k: v for k, v in values.items() if getattr(offer, k) != v}
             revived = offer.status != "ACTIVE"
             if diff or revived:
@@ -254,6 +262,30 @@ class OfferService:
         return await self.refresh(db, actor, shop_id, list(rows.scalars()))
 
     # ------------------------------------------------------------------ yordamchilar
+    @staticmethod
+    async def _branches(db: AsyncSession, shop_id: UUID, avail: Any) -> list[dict[str, Any]]:
+        """M33: ochiq olib ketish filiallari koordinatasi bilan — faqat ega `branch` maydonini yoqqanda."""
+        statuses = {b.branch_id: b.status for b in (avail.pickup_branches if avail else ())}
+        rows = await db.execute(
+            select(Branch).where(
+                Branch.shop_id == shop_id,
+                Branch.status == "ACTIVE",
+                Branch.is_pickup_point.is_(True),
+                Branch.latitude.is_not(None),
+                Branch.longitude.is_not(None),
+            )
+        )
+        return [
+            {
+                "name": b.name,
+                "address": b.address,
+                "lat": float(b.latitude) if b.latitude is not None else None,
+                "lon": float(b.longitude) if b.longitude is not None else None,
+                "availability": statuses.get(b.id, "OUT_OF_STOCK"),
+            }
+            for b in rows.scalars()
+        ]
+
     async def _link(self, db: AsyncSession, shop_id: UUID, fact: NetworkSkuFacts) -> SkuLink:
         link = await db.get(SkuLink, (shop_id, fact.sku_id), with_for_update=True)
         if link is not None and (link.reviewed_at is not None or link.status == "LINKED"):

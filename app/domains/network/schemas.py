@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-OfferField = Literal["price", "condition", "warranty", "availability"]
+OfferField = Literal["price", "condition", "warranty", "availability", "branch"]
 OfferStatus = Literal["ACTIVE", "WITHDRAWN", "SUSPENDED"]
 LinkStatus = Literal["LINKED", "PENDING_REVIEW", "UNLINKED"]
 

@@ -124,3 +124,108 @@ def test_verified_badge_and_buyer_report(world: World) -> None:
     assert _ok(world.client.get(f"{API}/search?q={word}"))["items"] == []
     again = _publish(world, shop.owner, sku)
     assert again.status_code == 422 and "platform_suspended" in again.text
+
+
+def test_global_advisor_uses_only_public_tools_and_returns_sources(world: World) -> None:
+    """M34 (BL-097, BL-098): faqat ommaviy tool'lar va manbalar; sitemap — faqat amaldagi takliflar."""
+    from app.platform.llm.providers.fake import FakeProvider, FakeText, FakeTools
+
+    shop = Shop(world)
+    _activate(world, shop)
+    word = f"vega{uuid4().hex[:6]}"
+    sku = _product(shop, f"{word} RTX 4070", "MSI", f"V{uuid4().hex[:7].upper()}", amount=700_000_000)
+    _ok(_publish(world, shop.owner, sku))
+    llm: FakeProvider = world.client.app.state.sales_ai.router.provider
+    llm.script.clear()
+    llm.requests.clear()
+    llm.push(
+        FakeTools((("market_search", {"query": word, "max_price_uzs": None, "in_stock_only": False}),)),
+        FakeText("Topildi: 1 ta do'konda, eng past e'lon qilingan narx 7 000 000 so'm."),
+    )
+    out = _ok(world.client.post(f"{API}/advisor", json={"message": f"{word} bormi? Tel: +998901234567"}))
+    assert out["answer"].startswith("Topildi") and len(out["sources"]) == 1
+    assert out["sources"][0]["min_price_uzs_minor"] == 700_000_000
+    request = llm.requests[0]
+    assert {t.name for t in request.tools} == {"market_search", "market_compare"}  # shop AI tool'lari yo'q
+    assert "901234567" not in str(request.messages)  # PII tashqi AI'ga ketmadi
+    usage = _admin_sql(
+        world,
+        "SELECT count(*) AS n FROM platform.ai_usage WHERE purpose = 'MARKET_ADVISOR' AND shop_id IS NULL",
+    )
+    assert usage[0]["n"] >= 2
+    sitemap = _ok(world.client.get(f"{API}/sitemap"))["items"]
+    [item] = _ok(world.client.get(f"{API}/search?q={word}"))["items"]
+    assert item["canonical_id"] in {i["canonical_id"] for i in sitemap}
+
+
+def test_branch_map_only_when_permitted_and_straight_line_distance(world: World) -> None:
+    """M33 (BL-095, BL-096): filial faqat ega `branch` ruxsat bersa; masofa — to'g'ri chiziq bo'yicha."""
+    shop = Shop(world)
+    _activate(world, shop)
+    _admin_sql(
+        world,
+        "UPDATE platform.branches SET latitude = 41.311081, longitude = 69.240562 WHERE id = $1",
+        shop.branch,
+    )
+    word = f"atlas{uuid4().hex[:6]}"
+    sku = _product(shop, f"{word} SSD", "Samsung", f"A{uuid4().hex[:7].upper()}")
+    shop.receive(sku, 3)
+    _ok(_publish(world, shop.owner, sku))  # standart — filialsiz
+    [item] = _ok(world.client.get(f"{API}/search?q={word}"))["items"]
+    product = _ok(world.client.get(f"{API}/products/{item['canonical_id']}"))
+    assert product["offers"][0]["branches"] == []
+    _ok(world.client.post(f"/api/v1/shop/network/offers/{sku}/withdraw", headers=_bearer(shop.owner)))
+    fields = ["price", "availability", "branch"]
+    _ok(
+        world.client.post(
+            "/api/v1/shop/network/offers",
+            json={"sku_ids": [sku], "permitted_fields": fields},
+            headers=_bearer(shop.owner),
+        )
+    )
+    product = _ok(world.client.get(f"{API}/products/{item['canonical_id']}?lat=41.2995&lon=69.2401"))
+    [branch] = product["offers"][0]["branches"]
+    assert branch["availability"] == "IN_STOCK" and branch["name"] == "Chilonzor"
+    assert 1.0 <= branch["distance_km"] <= 1.6  # ~1.3 km to'g'ri chiziq
+    no_location = _ok(world.client.get(f"{API}/products/{item['canonical_id']}"))
+    assert no_location["offers"][0]["branches"][0]["distance_km"] is None
+
+
+def test_ads_are_labeled_separate_and_need_approval(world: World) -> None:
+    """M37 (BL-099, BL-104): reklama alohida va belgilangan; tasdiqsiz yo'q; oddiy natija o'zgarmaydi."""
+    from datetime import UTC, datetime, timedelta
+
+    shop = Shop(world)
+    _activate(world, shop)
+    word = f"orion{uuid4().hex[:6]}"
+    sku = _product(shop, f"{word} monitor 27", "LG", f"O{uuid4().hex[:7].upper()}")
+    _ok(_publish(world, shop.owner, sku))
+    before = _ok(world.client.get(f"{API}/search?q={word}"))
+    assert before["sponsored"] == []
+    now = datetime.now(UTC)
+    ad = _ok(
+        world.client.post(
+            "/api/v1/shop/network/ads",
+            json={
+                "sku_id": sku,
+                "starts_at": (now - timedelta(hours=1)).isoformat(),
+                "ends_at": (now + timedelta(days=7)).isoformat(),
+            },
+            headers=_bearer(shop.owner),
+        ),
+        201,
+    )
+    assert ad["status"] == "PENDING_REVIEW"
+    assert _ok(world.client.get(f"{API}/search?q={word}"))["sponsored"] == []  # tasdiqsiz — yo'q
+    _ok(
+        world.client.post(
+            f"/api/v1/platform/network/ads/{ad['id']}/approve", headers=_bearer(world.admin_token)
+        )
+    )
+    after = _ok(world.client.get(f"{API}/search?q={word}"))
+    assert [s["label"] for s in after["sponsored"]] == ["Reklama"]
+    assert after["items"] == before["items"]  # oddiy natijalar reklamadan mustaqil
+    offer_id = after["sponsored"][0]["offer"]["offer_id"]
+    _ok(world.client.post(f"{API}/offers/{offer_id}/visit?ad={ad['id']}"))
+    ads = _ok(world.client.get("/api/v1/shop/network/ads", headers=_bearer(shop.owner)))["items"]
+    assert ads[0]["clicks"] == 1

@@ -160,6 +160,12 @@ class Settings(BaseSettings):
     eskiz_password: SecretStr | None = None
     eskiz_from: str = "4546"
 
+    # Stage 3 (M39): global Telegram bot — shop botlaridan alohida (BL-108); bo'sh — o'chiq
+    global_bot_token: SecretStr | None = None
+    global_bot_username: str | None = None
+    global_bot_webhook_secret: SecretStr | None = None
+    marketplace_public_url: str = "http://localhost:3003"
+
     # Mijoz IP'si (rate limit): X-Forwarded-For faqat shu manzillardan kelsa hisobga olinadi (IP yoki CIDR).
     # Lokalda — o'z kompyuteri (sayt serveri va brauzer shu yerda; XFF'ni soxtalash lokalda ataylab mumkin).
     # Prod'da — Nginx va shop sayti serverining ichki manzili (22 §8)

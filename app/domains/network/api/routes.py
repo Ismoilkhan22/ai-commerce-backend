@@ -17,6 +17,7 @@ from app.domains.network import permissions as perm
 from app.domains.network.models.orm import CanonicalProduct
 from app.domains.network.providers import NetworkServices, network_services
 from app.domains.network.schemas import NetworkSkuList, NetworkSkuRow, OfferList, OfferOut, PublishIn
+from app.domains.network.services.ads import AdIn, AdList, AdOut
 from app.domains.network.services.api_keys import ApiKeyCreatedOut, ApiKeyIn, ApiKeyList, ApiKeyOut
 from app.domains.network.services.offers import _problem
 from app.platform.shops.models.orm import Shop
@@ -114,3 +115,21 @@ async def create_api_key(body: ApiKeyIn, ctx: CanKeys, svc: Network) -> ApiKeyCr
 async def revoke_api_key(key_id: UUID, body: RevokeIn, ctx: CanKeys, svc: Network) -> ApiKeyOut:
     """Darhol: keyingi so'rovdanoq 401 (sizib chiqqan kalit — BL-089)."""
     return await svc.api_keys.revoke(ctx.db, ctx.actor, key_id, body.reason)
+
+
+# ------------------------------------------------------------------ M37: reklama (BL-099, BL-104)
+@router.get("/ads", response_model=AdList)
+async def list_ads(ctx: CanManage, svc: Network) -> AdList:
+    return await svc.ads.list_shop(ctx.db, ctx.actor)
+
+
+@router.post("/ads", response_model=AdOut, status_code=201)
+async def create_ad(body: AdIn, ctx: CanManage, svc: Network) -> AdOut:
+    """Faqat ommaviy taklif; platforma tasdiqlaguncha ko'rinmaydi. Global qidiruvda "Reklama" deb, oddiy
+    natijalardan alohida chiqadi va AI maslahatchiga ta'sir qilmaydi."""
+    return await svc.ads.create(ctx.db, ctx.actor, body)
+
+
+@router.post("/ads/{ad_id}/pause", response_model=AdOut)
+async def pause_ad(ad_id: UUID, ctx: CanManage, svc: Network) -> AdOut:
+    return await svc.ads.pause(ctx.db, ctx.actor, ad_id)
