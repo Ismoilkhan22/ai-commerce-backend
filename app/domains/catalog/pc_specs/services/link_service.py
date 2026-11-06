@@ -219,6 +219,37 @@ class LinkService:
         await db.flush()
         await self._audit(db, actor, sku.id, "catalog.sku.spec_linked", method)
 
+    async def preview_match(
+        self,
+        db: AsyncSession,
+        spec_category: str | None,
+        *,
+        brand: str | None,
+        title: str,
+        mpn: str | None,
+        model_name: str | None,
+        variant_name: str | None,
+        attributes: dict[str, Any],
+    ) -> tuple[str, UUID | None]:
+        """Import sinovi (18 §9): yozmasdan, avtomatik bog'lash xuddi shu qoidalar bilan qanday
+        bo'lishini aytadi — (MPN | MODEL | MULTIPLE | NONE | NOT_APPLICABLE, spec_id)."""
+        if spec_category is None:
+            return "NOT_APPLICABLE", None
+        product = Product(brand=brand, title=title)
+        sku = Sku(
+            mpn=mpn,
+            mpn_normalized=normalize_code(mpn),
+            model_name=model_name,
+            variant_name=variant_name,
+            attributes=attributes,
+        )
+        match = await self._auto_match(db, spec_category, product, sku)
+        if match is not None:
+            spec, method = match
+            return ("MPN" if method == "AUTO_MPN" else "MODEL"), spec.id
+        candidates = await self._matches(db, spec_category, brand, sku)
+        return ("MULTIPLE" if candidates else "NONE"), None
+
     async def auto_link_all(self, db: AsyncSession, actor: ActorContext) -> AutoLinkResult:
         """Shopning bog'lanmagan faol SKU'larini qayta tekshiradi (kutubxonaga yangi model qo'shilgach)."""
         rows = await db.execute(

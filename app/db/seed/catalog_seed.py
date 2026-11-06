@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import Settings
+from app.dependencies import get_import_stock_results
 from app.domains.catalog.domain_manifest import DOMAIN_MANIFEST as CATALOG_MANIFEST
 from app.domains.catalog.pc_specs.models.orm import ReferenceHardwareSpec, SpecRequest
 from app.domains.catalog.pc_specs.normalize import normalize_code
@@ -481,7 +482,8 @@ def _services(settings: Settings) -> tuple[CatalogServices, PermissionRegistry]:
         signed_ttl=timedelta(seconds=settings.signed_url_ttl_seconds),
     )
     use = UseService(RulesRegistry.from_manifests(manifests), audit)
-    return build_catalog_services(use, audit, files), PermissionRegistry.from_manifests(manifests)
+    permissions = PermissionRegistry.from_manifests(manifests)
+    return build_catalog_services(use, audit, files, permissions, get_import_stock_results()), permissions
 
 
 async def _platform_actor(db: AsyncSession, phone: str) -> ActorContext | None:

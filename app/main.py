@@ -21,13 +21,25 @@ from redis.asyncio import Redis
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
-from app.dependencies import get_catalog_query, get_order_query, get_stock_query
+from app.dependencies import (
+    get_catalog_query,
+    get_chat_availability,
+    get_conversation_orders,
+    get_import_stock_results,
+    get_import_stock_source,
+    get_order_query,
+    get_stock_query,
+)
 from app.domains.catalog.providers import build_catalog_services
 from app.domains.commerce.providers import build_commerce_services
+from app.domains.messaging.common import MessagingConfig
+from app.domains.messaging.providers import build_messaging_services
 from app.domains.storefront.providers import build_storefront_services
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
+from app.platform.notifications.providers import build_notification_services
+from app.platform.notifications.telegram import build_sender
 from app.platform.shops.services.platform_queries import PlatformQueryService
 from app.platform.shops.services.shop_service import ShopService
 from app.platform.staff.permissions import PermissionRegistry
@@ -46,6 +58,7 @@ from app.shared.i18n.middleware import I18nMiddleware
 from app.shared.idempotency.helpers import configure_request_hash_key
 from app.shared.observability.health import router as health_router
 from app.shared.ratelimit import MemoryRateLimiter, RedisRateLimiter
+from app.shared.realtime import MemoryBroker, RealtimeBroker, RedisBroker
 from app.shared.request_guard import RequestGuardMiddleware
 from app.shared.storefront_cors import PanelCorsMiddleware, StorefrontCorsMiddleware
 from app.shared.tracing.middleware import RequestContextMiddleware
@@ -130,6 +143,9 @@ def create_app(
         Redis.from_url(settings.redis_url) if settings.rate_limit_backend == "redis" else None
     )
     cache: Cache = RedisCache(redis) if redis is not None else MemoryCache()
+    # Realtime (WS ticket, signal) — Redis db2 (08 §3); testlarda xotirada, bitta jarayon
+    realtime_redis: Redis | None = Redis.from_url(settings.realtime_redis_url) if redis is not None else None
+    realtime: RealtimeBroker = RedisBroker(realtime_redis) if realtime_redis is not None else MemoryBroker()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -137,16 +153,21 @@ def create_app(
         app.state.db = database
         app.state.readiness_checks = {"postgres": database.ping}
         if redis is not None:
-            app.state.rate_limiter = RedisRateLimiter(redis)
+            app.state.rate_limiter = RedisRateLimiter(redis, scale=settings.rate_limit_scale)
             app.state.readiness_checks["redis"] = redis.ping
         else:
-            app.state.rate_limiter = MemoryRateLimiter(scale=settings.rate_limit_memory_scale)
+            app.state.rate_limiter = MemoryRateLimiter(scale=settings.rate_limit_scale)
         try:
             yield
         finally:
             await database.dispose()
+            queue = getattr(app.state, "task_queue", None)  # dead-letter replay ochgan arq pool (bo'lsa)
+            if queue is not None and hasattr(queue, "pool"):
+                await queue.pool.aclose()
             if redis is not None:
                 await redis.aclose()
+            if realtime_redis is not None:
+                await realtime_redis.aclose()
 
     app = FastAPI(
         title="AI Commerce OS API",
@@ -162,11 +183,21 @@ def create_app(
     app.include_router(health_router)
     manifests = discover_manifests() if manifests is None else manifests
     mount_manifests(app, manifests)
+    from app.workers.reconcile import WORKER_JOBS
+
+    app.state.scheduled_jobs = [  # /platform/jobs: hech ishlamagan ish ham ko'rinsin (QA 5a I2)
+        (job.name, job.every_seconds, job.cron)
+        for job in [*(j for m in manifests for j in m.scheduled_jobs), *WORKER_JOBS]
+    ]
     app.state.cache = cache
+    app.state.realtime_heartbeat_seconds = settings.realtime_heartbeat_seconds
+    app.state.ws_allowed_origins = [o.rstrip("/") for o in settings.cors_origins]  # WS Origin (QA 5a I1)
+    # Dead-letter "qayta yuborish" — API'dan darhol navbatga (QA 5a F1); xotira rejimida RecordingQueue
+    app.state.arq_redis_url = settings.arq_redis_url if redis is not None else None
     app.state.trusted_proxies = settings.proxy_networks()  # rate limit uchun mijoz IP'si (QA M04 F3)
     app.state.storefront_ssr_read_limit = settings.storefront_ssr_read_limit_per_minute
     configure_request_hash_key(settings.idempotency_hash_key.get_secret_value().encode())
-    _wire_services(app, settings, manifests, cache)
+    wire_services(app.state, settings, manifests, cache, realtime)
 
     # Starlette middleware'larni teskari tartibda o'raydi: oxirgi qo'shilgan — eng tashqi.
     app.add_middleware(RequestGuardMiddleware)  # eng ichkisi: NUL/NaN, JSON chegarasi, deadlock retry
@@ -197,25 +228,45 @@ def _operation_id(route: APIRoute) -> str:
     return f"{route.tags[0]}_{route.name}" if route.tags else route.name
 
 
-def _wire_services(
-    app: FastAPI, settings: Settings, manifests: Sequence[DomainManifest], cache: Cache
+def wire_services(
+    state: Any,
+    settings: Settings,
+    manifests: Sequence[DomainManifest],
+    cache: Cache,
+    realtime: RealtimeBroker,
 ) -> None:
-    """Platform va domen servislari bir marta yaratiladi (stateless) va app.state'da turadi."""
+    """Platform va domen servislari bir marta yaratiladi (stateless) va `state` da turadi.
+
+    `state` — API'da `app.state`, fon jarayonlarida `app.workers.runtime` yig'gan holat (bir xil servislar).
+    """
     auth_config = settings.auth_config()
+    state.cache = cache
+    state.realtime = realtime
+    bot_token = settings.platform_telegram_bot_token
+    state.notifications = build_notification_services(
+        build_sender(bot_token.get_secret_value() if bot_token else None),
+        bot_username=settings.platform_telegram_bot_username,
+        bot_configured=bot_token is not None,
+        webhook_secret=(
+            settings.platform_telegram_webhook_secret.get_secret_value()
+            if settings.platform_telegram_webhook_secret
+            else None
+        ),
+    )
     audit = AuditService()
     use = UseService(RulesRegistry.from_manifests(manifests), audit)
     hasher = PasswordHasher(
         auth_config.argon2_time_cost, auth_config.argon2_memory_kib, auth_config.argon2_parallelism
     )
     staff = StaffService(use, audit, auth_config)
-    app.state.auth_config = auth_config
-    app.state.permissions = PermissionRegistry.from_manifests(manifests)
-    app.state.use = use
-    app.state.auth_service = AuthService(auth_config, hasher, audit, use)
-    app.state.staff_service = staff
-    app.state.shop_service = ShopService(use, audit, auth_config, staff, get_order_query())
-    app.state.platform_queries = PlatformQueryService()
-    app.state.platform_team = PlatformTeamService(audit, auth_config)
+    state.auth_config = auth_config
+    state.permissions = PermissionRegistry.from_manifests(manifests)
+    state.use = use
+    state.auth_service = AuthService(auth_config, hasher, audit, use)
+    state.staff_service = staff
+    state.shop_service = ShopService(use, audit, auth_config, staff, get_order_query())
+    state.platform_queries = PlatformQueryService()
+    state.platform_team = PlatformTeamService(audit, auth_config)
     files = FileService(
         storage=LocalDiskStorage(Path(settings.storage_local_dir)),
         signer=UrlSigner(auth_config.jwt_secret),
@@ -223,8 +274,8 @@ def _wire_services(
         public_base_url=settings.public_files_url,
         signed_ttl=timedelta(seconds=settings.signed_url_ttl_seconds),
     )
-    app.state.file_service = files
-    app.state.catalog = build_catalog_services(use, audit, files)
+    state.file_service = files
+    state.catalog = build_catalog_services(use, audit, files, state.permissions, get_import_stock_results())
     storefront = build_storefront_services(
         use,
         audit,
@@ -234,10 +285,39 @@ def _wire_services(
         get_stock_query(),
         secret=auth_config.jwt_secret,
         site_url_template=settings.storefront_public_url,
+        chat=get_chat_availability(),
     )
-    app.state.storefront = storefront
-    app.state.commerce = build_commerce_services(
-        use, audit, files, get_catalog_query(), get_stock_query(), storefront.gate
+    state.storefront = storefront
+    state.commerce = build_commerce_services(
+        use,
+        audit,
+        files,
+        get_catalog_query(),
+        get_stock_query(),
+        storefront.gate,
+        get_import_stock_source(),
+        state.permissions,
+    )
+    state.messaging = build_messaging_services(
+        use,
+        audit,
+        files,
+        state.notifications.customer_templates,
+        get_conversation_orders(state.commerce),
+        storefront.gate,
+        messaging_config(settings),
+    )
+
+
+def messaging_config(settings: Settings) -> MessagingConfig:
+    secret, verify = settings.instagram_app_secret, settings.instagram_verify_token
+    return MessagingConfig(
+        webhook_base_url=settings.messaging_webhook_base_url,
+        telegram_mode=settings.effective_telegram_mode,
+        instagram_enabled=settings.feature_channel_instagram_dm,
+        instagram_app_secret=secret.get_secret_value() if secret else None,
+        instagram_verify_token=verify.get_secret_value() if verify else None,
+        telegram_test_tokens=settings.app_env in ("local", "test"),
     )
 
 

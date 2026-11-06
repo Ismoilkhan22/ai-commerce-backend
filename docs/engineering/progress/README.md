@@ -9,17 +9,18 @@
 
 ```
 Texnik asos ──▶ 1. Auth, shop, xodimlar ──▶ 1b. Platforma paneli ──▶ 2. Katalog ──▶ 3. Savdo ──▶ 4. Shop sayti
-     ✅           ✅ backend + frontend       ✅ A bosqich + QA   ⏳ backend ✅   ⏳ backend ✅   ⏳ baza ✅
+     ✅           ✅ backend + frontend       ✅ A bosqich + QA      ✅ + QA        ✅ + QA       ✅ + QA (commit kutmoqda)
 ──▶ 5. Kanallar va inbox (+ fon ishlari) ──▶ 6. AI sotuvchi ──▶ 7. Xabarnomalar, kafolat, hisobotlar
+   ✅ + QA (commit kutmoqda)
 ```
 
 - [x] **Texnik asos** — S0-01, S0-02, S0-03, S0-07 → [M00-foundation.md](M00-foundation.md)
 - [x] **1-modul. Auth, shoplar va xodimlar** — S0-04 → [M01-auth-shops-staff.md](M01-auth-shops-staff.md)
 - [x] **1b. Platforma paneli, A bosqich** — business/15 to'liq: bosh sahifa, shoplar, kartochka, jurnal, jamoa, izohlar, ⌘K, demo ma'lumot. Mustaqil QA tekshiruvi va tuzatishlar (2026-10-25) → [M01b-platform-admin.md](M01b-platform-admin.md)
 - [x] **2-modul. Katalog** — mahsulot va SKU, narx va kurs, texnik ma'lumotlar kutubxonasi, fayllar (S1-02, S1-03, S1-04, S0-08). Baza — DEC-133. Backend + frontend + e2e, mustaqil QA 2 tur (2026-10-25) → [M02-catalog.md](M02-catalog.md)
-- [ ] **3-modul. Savdo (commerce)** — ombor (S1-05), tez sotuv, buyurtmalar va band qilish, saytdan buyurtma so'rovi. Baza tasdiqlangan — DEC-134 ([db/commerce.dbml](../db/commerce.dbml)). Backend bitdi (2026-10-26) → [M03-commerce.md](M03-commerce.md). Hozir: frontend. Lead va PC taklifi — 6-modul bilan
-- [ ] **4-modul. Shop sayti** — S1-07. Baza tasdiqlangan — DEC-135 ([db/storefront.dbml](../db/storefront.dbml)). Backend bitdi (2026-10-26) → [M04-storefront.md](M04-storefront.md). Hozir: frontend (xaridor sayti va "Shop sayti" bo'limi)
-- [ ] **5-modul. Kanallar va inbox** — S2, fon ishlari (S0-06), katalog importi (S1-06)
+- [x] **3-modul. Savdo (commerce)** — ombor (S1-05), tez sotuv, buyurtmalar va band qilish. Baza — DEC-134, DEC-136. Backend + frontend + e2e, mustaqil QA 2 tur (2026-10-26) → [M03-commerce.md](M03-commerce.md). Lead va PC taklifi — 6-modul bilan
+- [x] **4-modul. Shop sayti** — S1-07. Baza — DEC-135, DEC-141 (taklif). Backend + xaridor sayti (`shop-storefront`) + panelda "Sayt" bo'limi, e2e, mustaqil QA 2 tur (2026-10-26) → [M04-storefront.md](M04-storefront.md). Commit founder ko'rib chiqqandan keyin
+- [x] **5-modul. Kanallar va inbox** — S2, fon ishlari (S0-06), katalog importi (S1-06). Baza — DEC-137…140 (taklif, founder ko'rib chiqadi). 5a fon ishlari, vazifalar, xabarnomalar, realtime → [M05a](M05a-jobs-notifications.md); 5b sayt chati, Telegram, inbox, xaridorga holat xabarlari → [M05b](M05b-messaging.md); 5c katalog importi (CSV/XLSX) → [M05c](M05c-catalog-import.md). Har biri backend + frontend + e2e + mustaqil QA (2026-10-26). Commit founder ko'rib chiqqandan keyin
 - [ ] **6-modul. AI sotuvchi** — S3, PC moslik engine'i
 - [ ] **Instagram izohlari** — DEC-132: 5 va 6-modullardan keyin
 - [ ] **7-modul. Xabarnomalar, kafolat, hisobotlar** — S2/S5
@@ -29,8 +30,8 @@ Texnik asos ──▶ 1. Auth, shop, xodimlar ──▶ 1b. Platforma paneli ─
 
 ## Muddati bor texnik qarzlar
 
-- [ ] **TD-01** — partition'larni oldinga yaratadigan rejali ish — **2027-12-01 gacha**
-- [ ] **TD-02** — eskirgan `idempotency_keys` ni tozalash — 1-pilotdan oldin
+- [x] **TD-01** — partition'larni oldinga yaratadigan rejali ish: `audit_partition_create` (har oy 25-si), `platform.ensure_monthly_partitions` (SECURITY DEFINER) → [M05a](M05a-jobs-notifications.md)
+- [x] **TD-02** — eskirgan `idempotency_keys` ni tozalash: `idempotency_cleanup` (har soat) → [M05a](M05a-jobs-notifications.md)
 - [ ] **TD-03** — production fayl ombori: `FileStorage` porti tayyor, dev va testda disk adapteri (`var/storage`). MinIO olib tashlandi (obrazi Docker Hub'dan yuklanmaydi). S3-mos adapter (masalan, O'zbekistondagi S3-mos xizmat) — deploy bilan, **S0-10 gacha**
 
 ---

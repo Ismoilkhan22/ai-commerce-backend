@@ -7,7 +7,8 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic_core import PydanticCustomError
 
 from app.platform.staff.schemas import LinkOut
 
@@ -56,6 +57,35 @@ class ShopProfileUpdate(BaseModel):
     timezone: str = Field(default="Asia/Tashkent", max_length=64)
 
 
+_HHMM = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
+
+
+class InboxHours(BaseModel):
+    """Operatorlar ish vaqti (shop vaqt mintaqasida): kunlar (1 — dushanba … 7 — yakshanba) va soat oralig'i.
+    Ish vaqtidan tashqari "operator kutilmoqda" eslatmasi kechiktiriladi, xaridorga bir marta
+    `customer.handoff_after_hours` matni ketadi (db/notifications.md §5). Bo'sh — doim ish vaqti."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    days: list[Annotated[int, Field(ge=1, le=7)]] = Field(min_length=1, max_length=7)
+    start: str = Field(pattern=_HHMM, description="09:00")
+    end: str = Field(
+        pattern=_HHMM, description="19:00 (start dan katta bo'lsa — o'sha kun; kichik — tungi smena)"
+    )
+
+    @field_validator("days")
+    @classmethod
+    def _unique_days(cls, days: list[int]) -> list[int]:
+        return sorted(set(days))  # [1, 1, 1] → [1] (QA 5b M4): takror kun ma'no o'zgartirmaydi
+
+    @field_validator("end")
+    @classmethod
+    def _not_empty_window(cls, end: str, info: ValidationInfo) -> str:
+        if end == info.data.get("start"):  # 09:00–09:00 — "doim yopiq" emas, xato (QA 5b M4)
+            raise PydanticCustomError("invalid_range", "end must differ from start")
+        return end
+
+
 class PolicyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,6 +98,8 @@ class PolicyOut(BaseModel):
     stock_display: Literal["EXACT", "STATUS_ONLY"]
     low_stock_threshold: int
     delivery_enabled: bool
+    handoff_reminder_minutes: int
+    inbox_hours: InboxHours | None
     version: int
 
 
@@ -84,6 +116,10 @@ class PolicyUpdate(BaseModel):
     low_stock_threshold: int = Field(ge=0, le=1000)
     # Yuborilmasa o'zgarmaydi (eski klientlar uchun): sayt formasida "yetkazib berish" bormi
     delivery_enabled: bool | None = None
+    # 5b: "operator kutilmoqda" eslatmasi (daqiqa) va ish vaqti. Yuborilmasa o'zgarmaydi;
+    # `inbox_hours: null` — o'chiriladi (doim ish vaqti)
+    handoff_reminder_minutes: int | None = Field(default=None, ge=1, le=1440)
+    inbox_hours: InboxHours | None = None
 
 
 class BranchIn(BaseModel):

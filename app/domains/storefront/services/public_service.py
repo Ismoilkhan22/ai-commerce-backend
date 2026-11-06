@@ -58,6 +58,7 @@ from app.shared.clock import utcnow
 from app.shared.consent import PRIVACY_KEYS, STOREFRONT_CONSENT_VERSION
 from app.shared.contracts.catalog import CatalogQueryPort, PublicCategory
 from app.shared.contracts.commerce import SkuAvailability, StockQueryPort, StockStatus
+from app.shared.contracts.messaging import ChatAvailabilityPort
 from app.shared.contracts.storefront import SiteAccess, ensure_open
 from app.shared.errors.base import NotFoundError
 from app.shared.i18n.translator import t
@@ -90,7 +91,9 @@ class PublicService:
         cache: Cache,
         gate: SiteGate,
         site_url_template: str,
+        chat: ChatAvailabilityPort | None = None,
     ) -> None:
+        self.chat = chat
         self.catalog = catalog
         self.stock = stock
         self.files = files
@@ -146,6 +149,7 @@ class PublicService:
             pickup_branch_count=len(await self._pickup_branches(db, access.shop_id)),
             consent=PublicConsent(version=STOREFRONT_CONSENT_VERSION, text=t("consent.storefront_order")),
             legal=PublicLegal(legal_name=shop.legal_name, tin=shop.tin),
+            chat_enabled=await self.chat.webchat_enabled(db, access.shop_id) if self.chat else False,
         )
 
     async def privacy(self, db: AsyncSession, access: SiteAccess) -> PublicPrivacy:

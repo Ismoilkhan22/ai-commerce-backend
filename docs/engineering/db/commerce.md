@@ -106,6 +106,7 @@ Bu oxirgi himoya. Asosiy himoya — qulf va amaldan oldingi tekshiruv.
 - **`requested_by`**, **`requested_at`** — kim va qachon so'radi.
 - **`decided_by`**, **`decided_at`**, **`decision_note`** — kim tasdiqladi yoki rad etdi. Rad etilsa, sabab majburiy. Ega yoki menejer o'zi tuzatsa, yozuv darhol `APPROVED` bo'ladi va `decided_by` — o'zi.
 - **`on_hand_before`**, **`on_hand_after`** — tasdiq paytidagi eski va yangi qoldiq. Business/04 §3: "tarixda eski va yangi qiymat saqlanadi".
+- **`target_on_hand`** — faqat katalog importi tuzatishida (5c QA F3, `commerce_0006`): fayldagi **absolyut** qoldiq. Farq tasdiq paytida joriy qoldiqdan qayta hisoblanadi — so'rovdan keyin sotuv yoki kirim bo'lsa ham natija fayldagi raqamga teng. Qoldiq allaqachon maqsadda bo'lsa — daftarga yozuvsiz yopiladi. Shu SKU+filial uchun yangi import eski kutilayotgan import tuzatishini rad etadi (`commerce.stock.adjustment_superseded`), farqlar ustma-ust qo'shilmaydi. Tasdiqlovchi ekranda "maqsad X (hozir Y)" ko'rinadi (`AdjustmentOut.target_on_hand`, `current_on_hand`).
 - **`version`** — ikki menejer bir so'rovni bir vaqtda tasdiqlay olmaydi.
 
 **Tasdiq paytida qayta tekshiriladi:** so'rov yozilgandan keyin qoldiq o'zgargan bo'lishi mumkin. Tuzatish qoldiqni band + ajratilgandan pastga tushira olmaydi (TC-CON-12). Tushirsa — tasdiqlab bo'lmaydi: avval menejer buyurtmalarni ko'rib chiqadi (M06).

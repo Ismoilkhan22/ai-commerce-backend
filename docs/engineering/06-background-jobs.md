@@ -29,6 +29,16 @@ API 3 nusxada ishlasa, rejali ish 3 marta bajarilmasligi kerak. Server o'chsa, v
 
 Hammasi bitta Docker image, boshqa buyruq bilan: `outbox-worker`, `task-worker`, `scheduler` (`22`).
 
+**5a holati (2026-10-26)** — qurilgan ([progress/M05a](progress/M05a-jobs-notifications.md)):
+- `app/workers/outbox_worker.py` (`python -m app.workers.outbox_worker`), `app/workers/task_worker.py` (`arq app.workers.task_worker.WorkerSettings`: `dispatch_event`, `notification_send`), `app/workers/scheduler.py` (`python -m app.workers.scheduler`); lokalda uchalasi bitta jarayonda — `make worker` (`app/workers/dev.py`).
+- Rejali ishlar manifest'larda (`DomainManifest.scheduled_jobs`), tinglovchilar — `event_subscribers`; natija `platform.job_runs` da.
+- Redis: arq — db1 (`ARQ_REDIS_URL`), realtime — db2 (`REALTIME_REDIS_URL`). Hozircha bitta `default` navbat; `low` — 5c (import) bilan.
+
+**5b holati (2026-10-26)** — messaging ([progress/M05b](progress/M05b-messaging.md)):
+- Tinglovchilar: `channel_send` (`messaging.message.queued`; tranzaksiyasiz — tayyorlash TX → tashqi chaqiruv → natija TX; 5 urinish, 429 da `retry_after`, javobdan keyingi timeout — `UNKNOWN`, qayta yuborilmaydi), `attachment_fetch` (rasmlarni fayl omboriga), `order_status_notify` (`commerce.order.confirmed/ready/completed/cancelled` → xaridorga bitta xabar).
+- Rejali ishlar: `messaging_handoff_reminders` (har 2 daq, `inbox_hours` ni hisobga oladi, bir uzatishga bir eslatma), `messaging_stuck_sending` (har 5 daq: 5 daqiqadan beri `SENDING` → `UNKNOWN`), `messaging_retention` (04:10, 12 oy), `messaging_provider_events_cleanup` (04:20, 30 kun), `messaging_webchat_sessions_cleanup` (04:25).
+- Lokal Telegram: `TELEGRAM_MODE=polling` (lokalda standart) — `make worker` ichida `app/workers/telegram_polling.py` (`getUpdates`, offset `channel_accounts.settings.polling_offset` da). Production'da webhook.
+
 **Asosiy qoida:** service hech qachon to'g'ridan-to'g'ri `arq.enqueue_job()` qilmaydi. Vazifa **faqat outbox orqali** navbatga tushadi — COMMIT va enqueue o'rtasida server o'chsa ham yo'qolmaydi (ADR-033). Istisno: scheduler (DB holatidan qayta tiklanadigan ishlar) va task ichidan keyingi task (o'zi idempotent bo'lsa).
 
 ---
@@ -93,6 +103,8 @@ async def ai_reply(ctx, *, shop_id: str, conversation_id: str, message_id: str, 
 
 ---
 
+**Katalog importi (5c, amalda):** alohida arq navbati o'rniga outbox bo'laklari — `catalog.import.chunk` (sinov 1000, yozish 500 qator; har bo'lak o'z tranzaksiyasida, nazorat nuqtasi `processed_rows`, oxirida keyingi bo'lak event'i), `catalog.import.completed` → commerce `commerce.import_stock` (300 qatordan, `commerce.import_stock.continue`), `commerce.import_stock.applied` → import `COMPLETED`. Rejali ish `catalog_import_maintenance` (har 15 daq): 24 soatlik sinov `EXPIRED`, 10 daqiqa jim bo'lak qayta qo'yiladi, 30 kunlik qatorlar tozalanadi ([progress/M05c](progress/M05c-catalog-import.md)).
+
 ## 5. `scheduler_worker`
 
 ### 5.1 Leader va lock
@@ -117,7 +129,7 @@ async def main():
 | Ish | Jadval | Egasi | Nima qiladi | Idempotency kaliti | Qoida |
 |---|---|---|---|---|---|
 | `order_confirm_reminder` | har 15 daq | commerce | `PENDING_CONFIRMATION` > 24 soat → operator va menejerga eslatma; **bekor qilmaydi** | `order_reminder:{order_id}:24h` | DEC-104 |
-| `reservation_review` | har 15 daq | commerce | `ACTIVE` rezerv > 72 soat (`shop_policy.reservation_review_hours`) → menejerga "bekor qilinsinmi?" vazifasi; holat o'zgarmaydi | `reservation_review:{reservation_id}:72h` | DEC-104 |
+| `reservation_review` | har 15 daq | commerce | ochiq band (`ACTIVE`/`ALLOCATED`, buyurtma `CONFIRMED`/`PROCESSING`/`EXCEPTION`) `review_at` dan o'tgan → menejerga "Kutamiz / Bekor" vazifasi; holat o'zgarmaydi. "Kutamiz" muddatni suradi — yangi oyna, yangi vazifa | `reservation_review:{order_id}:{review_at}` | DEC-104, DEC-134 |
 | `quote_expiry` | har 5 daq | commerce | `SENT` va `expires_at < now()` → `EXPIRE` (USE orqali), `commerce.quote.expired` | holat o'tishining o'zi (takror `SENT` emas) | DEC-103 |
 | `conversation_waiting_reminder` | har 5 daq | messaging | `HUMAN_NEEDED` > shop sozlagan vaqt → menejerga eslatma | `conv_waiting:{conversation_id}:{speaker_version}` | `business/05` 4-qism |
 | `exchange_rate_staleness` | har soat | catalog | shop kursi 3 kundan eski → egaga ogohlantirish; yangi taklif yakuniy narxi bloklanadi | `fx_stale:{shop_id}:{date}` | BL-018, UAT-M05 |
@@ -125,8 +137,8 @@ async def main():
 | `channel_health_check` | har 30 daq | messaging | token muddati yaqin / xatolar ko'p → `DEGRADED`, egaga ogohlantirish | `channel_health:{channel_id}:{hour}` | FSM-03 |
 | `audit_partition_create` | har oy 25-sanasi | platform/audit | keyingi oy partitsiyalari (`audit.audit_entries`, `platform.transition_log`); kamida 12 oy oldinga (TD-01) | partition nomi | `07` |
 | `audio_purge` | har soat | reporting | transkripsiya qilingan audio fayllarni o'chiradi | `audio_id` | DEC-117 |
-| `outbox_reconcile` (`app.workers.reconcile_tasks`) | har 5 daq | workers | `PUBLISHED` > 10 daq, lekin kutilgan consumer uchun `consumer_receipts` yo'q → `dispatch_event` qayta qo'yiladi | `{event_id}:{consumer}` | ADR-033 |
-| `outbox_cleanup` | har kuni 03:00 | platform | `PUBLISHED` > 14 kun va `consumer_receipts` > 7 kun — o'chirish (bo'laklab, 1000 tadan; muddatlar manbai — `07` §5.3) | — | — |
+| `outbox_reconcile` (`app.workers.reconcile_tasks`) | har 5 daq | workers | `PUBLISHED` > 10 daq (1 kun ichida), lekin kutilgan consumer uchun `consumer_receipts` yo'q → `dispatch_event` qayta qo'yiladi; admin qayta yuborgan (`REPLAYED`) dead-letter — event yoshidan qat'i nazar (QA 5a F1) | `{event_id}:{consumer}` (replay — `:replay:{vaqt}`) | ADR-033 |
+| `outbox_cleanup` | har kuni 03:00 | platform | `PUBLISHED` > 14 kun va `consumer_receipts` > 7 kun — o'chirish (bo'laklab, 1000 tadan; muddatlar manbai — `07` §5.3). Ochiq yoki oxirgi 1 kunda qayta yuborilgan dead-letter'li event o'chirilmaydi | — | — |
 | `idempotency_cleanup` | har soat | platform | HTTP `idempotency_keys` > 24 soat — o'chirish (`07` §5.3) | — | — |
 | `retention_purge` | har kuni 04:00 | platform | `26` dagi muddatlar bo'yicha (huquqshunos tasdig'idan keyin yoqiladi) | `retention:{table}:{date}` | `26` |
 | `ai_usage_rollup` | har 10 daq | platform/billing | AI xarajatini shop bo'yicha yig'adi; limitga yaqin → ogohlantirish; tugasa → `platform.ai_quota.exhausted` | `ai_quota:{shop_id}:{period}` | DEC-119 |
@@ -191,3 +203,5 @@ Har vazifa span'i outbox'dagi `traceparent` ga bog'langan (`09`).
 
 → [07-data-layer.md](07-data-layer.md) — schemalar va jadvallar
 → [08-cache-and-realtime.md](08-cache-and-realtime.md) — Redis va WebSocket
+
+**Platforma paneli — "Fon ishlari"** (`GET /api/v1/platform/jobs`, 5a): hamma ro'yxatdagi ish (hech ishlamagani ham) — jadval, taxminiy oraliq, `overdue` (oxirgi muvaffaqiyatdan 3 × oraliqdan ko'p o'tdi), `alert` (oxirgi ish ogohlantirish qoldirgan, masalan ombor solishtiruvida farq), oxirgi ishga tushish va xato kodi (QA 5a I2, I7).

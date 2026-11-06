@@ -6,15 +6,16 @@ avtomatik topadi va router'larni surface prefiksi bilan ulaydi.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fastapi import APIRouter
 
+from app.shared.events.registry import ScheduledJob, Subscriber
 from app.shared.types.state import StateMachineRule
 
-Surface = Literal["auth", "shop", "storefront", "webhooks", "platform", "public"]
+Surface = Literal["auth", "shop", "storefront", "webhooks", "platform", "public", "realtime"]
 
 # 11 §2, ADR-024. URL'da domen nomi yo'q.
 SURFACE_PREFIXES: dict[Surface, str] = {
@@ -24,6 +25,7 @@ SURFACE_PREFIXES: dict[Surface, str] = {
     "webhooks": "/api/v1/webhooks",
     "platform": "/api/v1/platform",
     "public": "/api/v1/public",
+    "realtime": "/api/v1",  # WebSocket: /api/v1/ws (08 §6)
 }
 
 
@@ -33,9 +35,9 @@ class DomainManifest:
     schema_name: str | None = None
     routers: dict[Surface, APIRouter] = field(default_factory=dict)
     state_machine_rules: Sequence[StateMachineRule] = ()  # 04, ADR-034
-    # Keyingi slice'larda to'ldiriladi: S0-06 (subscribers, jobs), S0-04 (permissions)
-    event_subscribers: Sequence[Callable[..., Any]] = ()
-    scheduled_jobs: Sequence[Any] = ()
+    # Fon ishlari (S0-06, 05 §6, 06 §5): app.workers yig'adi va ishga tushiradi
+    event_subscribers: Sequence[Subscriber] = ()
+    scheduled_jobs: Sequence[ScheduledJob] = ()
     permissions: Sequence[str] = ()
     # Rol → shu modul ruxsatlari (10 §6). Ilova ishga tushganda hamma modullardan yig'iladi.
     role_grants: Mapping[str, frozenset[str]] = field(default_factory=dict)

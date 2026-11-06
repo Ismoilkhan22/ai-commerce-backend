@@ -21,9 +21,10 @@ MODULE_MANIFEST = DomainManifest(
                 "staff.member.disable",
                 "staff.member.password_reset",
                 "staff.task.view",
+                "staff.task.assign",
             }
         ),
-        "MANAGER": frozenset({"staff.member.view", "staff.task.view"}),
+        "MANAGER": frozenset({"staff.member.view", "staff.task.view", "staff.task.assign"}),
         "SALES": frozenset({"staff.task.view"}),
         "WAREHOUSE": frozenset({"staff.task.view"}),
     },

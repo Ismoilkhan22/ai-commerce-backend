@@ -96,7 +96,17 @@ CREATE INDEX outbox_due ON commerce.outbox_events (next_attempt_at) WHERE status
 
 `platform` schemasida ham bor (`platform.shop.activated`, `platform.notification.customer_delivery_requested`). Yozish — `write_outbox(db, event)` (`app/shared/events/outbox.py`).
 
-`PUBLISHED` qatorlar 7 kundan keyin o'chiriladi (`06` tozalash ishi); `DEAD` qatorlar qo'lda ko'rilmaguncha qoladi.
+`PUBLISHED` qatorlar 14 kundan keyin o'chiriladi (`06` tozalash ishi, DEC-138 2-qaror; 07 §5.3 — yagona manba); `DEAD` qatorlar qo'lda ko'rilmaguncha qoladi.
+
+**5a holati (2026-10-26):** outbox `platform`, `catalog`, `commerce`, `storefront` schemalarida (`app/shared/events/models.py`, `OUTBOX_SCHEMAS`); `messaging` — 5b bilan. Worker'lar — `app/workers/` ([progress/M05a](progress/M05a-jobs-notifications.md)).
+
+**5b holati (2026-10-26):** `messaging` schemasida ham outbox (`OUTBOX_SCHEMAS` += `messaging`). Event'lar ([progress/M05b](progress/M05b-messaging.md)):
+- `messaging.message.received` — xaridor xabari saqlandi (`conversation_id`, `channel`, `kind`, `seq`, `attachments` soni); tinglovchi `attachment_fetch` (rasm bo'lsa), realtime;
+- `messaging.message.queued` — chiquvchi xabar navbatda; tinglovchi `channel_send` (tashqi yuborish, tranzaksiyasiz);
+- `messaging.message.sent`, `messaging.message.failed`, `messaging.message.discarded` (AI javobi fencing'dan o'tmadi);
+- `messaging.conversation.updated`, `.handed_off`, `.assigned`, `.resolved`, `.reopened`, `.order_linked` — suhbat o'zgardi (`status`, `speaker_mode`, `speaker_version`, `assignee_membership_id`, `previous_assignee_id`, `command`); realtime;
+- `messaging.channel.connected`, `messaging.channel.disconnected` (`reason_code`), kanal `DEGRADED` bo'lganda — vazifa.
+Xabar ID'si payload kaliti emas, `aggregate_id` da yuradi (PII kalit tekshiruvi `message`/`text`/`body` so'zlarini taqiqlaydi). `commerce.order.*` payload'iga `conversation_id` qo'shildi — `order_status_notify` (messaging, tranzaksion) shu bilan xaridorga holat xabarini yozadi.
 
 ---
 
@@ -124,7 +134,7 @@ loop (har 200 ms yoki LISTEN outbox_new orqali uyg'onadi):
 
 - 1–2 nusxa ishlaydi; `SKIP LOCKED` tufayli bir qatorni ikkitasi olmaydi.
 - `LISTEN/NOTIFY` faqat uyg'otish uchun, ishonchlilik uchun emas — poll baribir ishlaydi.
-- Subscriber'i yo'q event ham `PUBLISHED` bo'ladi (kelajakdagi consumer uchun tarix — 7 kun).
+- Subscriber'i yo'q event ham `PUBLISHED` bo'ladi (kelajakdagi consumer uchun tarix — 14 kun).
 - **Redis ishlamasa:** qatorlar `PENDING` qoladi va qayta urinadi; hech qachon Redis sabab `DEAD` bo'lmaydi. `DEAD` — faqat dasturiy xato (noma'lum `event_type`, envelope buzilgan). Alert: eng eski `PENDING` yoshi > 120 s (`09`).
 - **Rekonsilyatsiya** (Redis ma'lumoti yo'qolsa): `published_at` 10 daqiqadan eski, lekin kutilgan subscriber uchun `consumer_receipts` yozuvi yo'q event'lar qayta navbatga qo'yiladi (`06` §5).
 
@@ -180,6 +190,7 @@ Qoidalar:
 - Tugagach: `platform.dead_letters` ga yozuv — `event_id`, `event_type`, `consumer_name`, `shop_id`, `attempts`, `last_error` (PII'siz), `first_failed_at`. Sentry'ga `error`, alert (`09`).
 - Platforma paneli: ro'yxat, sabab, **qayta yuborish** (`POST /api/v1/platform/dead-letters/{id}/replay`) — ruxsat `platform.dead_letter.replay`, audit yozuvi, asl `causation_id` saqlanadi.
 - Qayta yuborish idempotent: `consumer_receipts` tufayli bajarilgan ish takrorlanmaydi.
+- Qayta yuborish **darhol** navbatga qo'yadi (API'dan, `dispatch_event`, yangi `job_id`). Navbat ishlamasa — `outbox_reconcile` `REPLAYED` yozuvni event yoshidan qat'i nazar qayta qo'yadi. Event 14 kunlik saqlashdan keyin tozalangan bo'lsa — `409 INVALID_STATE_TRANSITION` (`reason: event_purged`), soxta `REPLAYED` yo'q. Ochiq (`OPEN`) yoki oxirgi 1 kunda qayta yuborilgan dead-letter'li event tozalanmaydi (QA 5a F1).
 - Butun proyeksiyani qayta qurish (`reporting`) — event tarixidan emas, manba jadvallardan (Query Port yoki eksport) qilinadi; buyurtma va qoldiq hech qachon event oqimidan tiklanmaydi.
 
 ---
@@ -194,24 +205,27 @@ Bildirishnomalar (xaridor va xodimga) event consumer'i emas: domen o'z service'i
 
 | Event | Qachon | Payload | Consumer'lar | Idempotency |
 |---|---|---|---|---|
-| `catalog.product.published` | FSM-02 → `PUBLISHED` | `product_id`, `sku_ids[]`, `product_version` | storefront (kesh), reporting | `product_version` |
+| `catalog.product.published` | FSM-02 → `PUBLISHED` (qayta chiqarish ham) | `product_id`, `product_version`, `status` | storefront (kesh), reporting | `product_version` |
 | `catalog.product.hidden` | → `HIDDEN` | `product_id`, `product_version` | storefront, reporting | `product_version` |
 | `catalog.product.archived` | → `ARCHIVED` | `product_id`, `product_version` | storefront, reporting | `product_version` |
-| `catalog.price.changed` | yangi narx versiyasi | `sku_id`, `price_version`, `price` (Money), `currency_source` (`UZS`/`USD`) | storefront, reporting | yuqori `price_version` g'olib |
+| `catalog.product.updated` | mahsulot matni o'zgardi (nom, brend, tavsif, toifa) — QA 5a F3 | `product_id`, `product_version`, `changed_fields[]` (faqat maydon nomlari) | storefront (kesh darhol eskiradi) | `product_version` |
+| `catalog.sku.changed` | variant yaratildi, o'zgardi yoki arxivlandi | `sku_id`, `product_id`, `action` (`created`/`updated`/`archived`), `status`; agregat — `catalog.sku` (o'z versiyasi) | storefront (kesh) | `sku_id`+`aggregate_version` |
+| `catalog.media.changed` | rasm qo'shildi, olindi yoki tartibi o'zgardi | `product_id`, `product_version`, `action` (`added`/`removed`/`reordered`); mahsulot versiyasi oshadi | storefront (kesh) | `product_version` |
+| `catalog.price.changed` | yangi narx versiyasi | `sku_id`, `price_version_id`, `price` (Money), `currency_source` (`UZS`/`USD`); tartib — `aggregate_version` (joriy narx versiyasi) | storefront, reporting | yuqori `price_version` g'olib |
 | `catalog.exchange_rate.updated` | shop kursi yangilandi | `rate_id`, `base`, `quote`, `rate_micro`, `effective_at`, `source` | storefront (kesh), reporting | `rate_id` |
 | `catalog.import.completed` | import tugadi; qoldiq ustunlari `catalog.import_stock_rows` ga bosqichlab yozilgan | `import_id`, `created`, `updated`, `failed`, `status`, `has_stock_rows` | commerce (qoldiq qatorlarini `CatalogQueryPort.get_import_stock_rows()` bilan o'qib, `RECEIPT`/`ADJUSTMENT` idempotent qo'llaydi), storefront (to'liq kesh tozalash), reporting | `import_id` |
 | `catalog.pc_ruleset.activated` | PC moslik qoidalarining yangi versiyasi faollashdi (`pc-2026-10-v1` …) | `ruleset_id`, `version` | sales_ai (keshlangan tekshiruv natijalarini bekor qiladi), commerce (yangi takliflar shu versiya bilan) | `ruleset_id` |
-| `catalog.hardware_spec.updated` | texnik ma'lumotlar kutubxonasidagi model yangilandi yoki SKU qayta bog'landi | `spec_id`, `spec_version`, `sku_ids[]` | sales_ai, storefront (kesh), reporting | `spec_id`+`spec_version` |
+| `catalog.hardware_spec.updated` | kutubxona modelining versiyasi tasdiqlandi (platforma darajasi, `shop_id` yo'q) | `spec_id`, `spec_version`, `category`; catalog o'zi har shopda bog'lanmagan SKU'larni qayta bog'laydi (5a) | sales_ai, storefront (kesh), reporting | `spec_id`+`spec_version` |
 
 ### 8.2 `commerce`
 
 | Event | Qachon | Payload | Consumer'lar | Idempotency |
 |---|---|---|---|---|
-| `commerce.stock.changed` | `on_hand`/`reserved`/`allocated` o'zgardi (kirim, tuzatish, band, sotuv) | `sku_id`, `branch_id`, `on_hand`, `reserved`, `allocated`, `available`, `stock_version`, `reason` | storefront (kesh), reporting | absolyut qiymat, `stock_version` |
-| `commerce.quick_sale.recorded` | do'kondagi tez sotuv (DEC-123) | `sale_id`, `sku_id`, `branch_id`, `qty`, `price` (Money) | reporting | `sale_id` |
-| `commerce.reservation.created` | `CONFIRM` ichida | `reservation_id`, `order_id`, `lines[]` (sku, branch, qty) | reporting | `reservation_id` |
-| `commerce.reservation.released` | `CANCEL` ichida | `reservation_id`, `order_id` | reporting | `reservation_id` |
-| `commerce.reservation.expired` | menejer `EXPIRE` | `reservation_id`, `order_id` | reporting | `reservation_id` |
+| `commerce.stock.changed` | `on_hand`/`reserved`/`allocated` o'zgardi (kirim, tuzatish, band, sotuv) | `sku_id`, `branch_id`, `on_hand`, `reserved`, `allocated`, `available`, `stock_version`, `reason`. Agregat — `commerce.stock_balance`, ID = `uuid5(ns, "{branch_id}:{sku_id}")` (filial × SKU qatori), versiya — shu qator versiyasi (QA 5a F4) | storefront (kesh), reporting | absolyut qiymat, `stock_version` |
+| `commerce.quick_sale.recorded` | do'kondagi tez sotuv (DEC-123) | `sale_id`, `branch_id`, `total_minor`, `currency`, `lines[]` (`sku_id`, `qty`) — bir sotuvda bir necha SKU | reporting | `sale_id` |
+| `commerce.reservation.created` | `CONFIRM` ichida — **har band (buyurtma qatori) uchun bitta** | `reservation_id`, `order_id`, `sku_id`, `branch_id`, `qty`, `status`; agregat — `commerce.reservation` (band versiyasi; buyurtma versiyasi bilan to'qnashmaydi — QA 5a F4) | reporting | `reservation_id` |
+| `commerce.reservation.released` | `CANCEL` ichida | xuddi shunday | reporting | `reservation_id`+`aggregate_version` |
+| `commerce.reservation.expired` | menejer `EXPIRE` | xuddi shunday | reporting | `reservation_id`+`aggregate_version` |
 | `commerce.lead.created` | yangi lead | `lead_id`, `conversation_id?`, `source` | messaging (suhbatga bog'lash), reporting | `lead_id` |
 | `commerce.lead.status_changed` | FSM-05 o'tishi | `lead_id`, `from`, `to`, `lost_reason?` | reporting | `lead_id` + `aggregate_version` |
 | `commerce.quote.drafted` | taklif qoralamasi (AI yoki xodim) | `quote_id`, `revision`, `lead_id?`, `conversation_id?`, `compatibility` (`PASS`/`REVIEW_REQUIRED`/`BLOCK`) | sales_ai (suhbat konteksti), reporting | `quote_id`+`revision` |
@@ -221,16 +235,19 @@ Bildirishnomalar (xaridor va xodimga) event consumer'i emas: domen o'z service'i
 | `commerce.quote.expired` | → `EXPIRED` | `quote_id`, `revision` | sales_ai, reporting | `quote_id`+`revision` |
 | `commerce.order.drafted` | `DRAFT` yaratildi (AI, sayt, xodim) | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `conversation_id?` | messaging (suhbatni buyurtmaga bog'lash), reporting | `order_id` |
 | `commerce.order.submitted` | → `PENDING_CONFIRMATION` | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?` | reporting | `order_id`+`aggregate_version` |
-| `commerce.order.confirmed` | → `CONFIRMED` (band qilish bilan bitta TX) | `order_id`, `reservation_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `fulfillment_method` | reporting | `order_id`+`aggregate_version` |
+| `commerce.order.confirmed` | → `CONFIRMED` (band qilish bilan bitta TX) | `order_id`, `reservation_ids[]` (har qatorga bitta band), `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `fulfillment_method` | reporting | `order_id`+`aggregate_version` |
 | `commerce.order.processing` | → `PROCESSING` | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?` | reporting | `order_id`+`aggregate_version` |
 | `commerce.order.ready` | `MARK_READY` (holat o'zgarmaydi, `ready_at`) | `order_id`, `ready_at`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?` | reporting | `order_id`+`ready_at` |
-| `commerce.order.completed` | → `COMPLETED` (qoldiq kamaydi) | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `lines[]` (`sku_id`, `qty`, `unit_price_minor`), `lead_id?` | reporting, support (kafolat sanasi uchun konteks) | `order_id` |
-| `commerce.order.cancelled` | → `CANCELLED` | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `reason_code`, `from_status` | reporting | `order_id` |
-| `commerce.order.exception` | → `EXCEPTION` | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `reason_code` | reporting | `order_id`+`aggregate_version` |
+| `commerce.order.completed` | → `COMPLETED` (qoldiq kamaydi) | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `lines[]` (`sku_id`, `qty`, `unit_price_minor` — so'mda, chegirmasiz; `line_total_minor` — chegirma bilan), `lead_id?` | reporting, support (kafolat sanasi uchun konteks) | `order_id` |
+| `commerce.order.cancelled` | → `CANCELLED` | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `reason_code` (`STAFF_CANCELLED` — xodim, `EXPIRED` — 72 soatlik qaror; erkin matn event'ga tushmaydi), `from_status` | reporting | `order_id` |
+| `commerce.order.exception` | → `EXCEPTION` | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `reason_code` (`STAFF_REPORTED`) | reporting | `order_id`+`aggregate_version` |
 | `commerce.import_stock.applied` | `catalog.import.completed` dan keyin import qoldiq qatorlari qo'llandi | `import_id`, `applied_rows`, `skipped_rows`, `branch_id` | catalog (import holati), reporting | `import_id` |
-| `commerce.order.paid_marked` | `MARK_PAID` (DEC-100a, tekshirilmagan) | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `marked_by`, `amount_minor?` | reporting | `order_id` |
+| `commerce.order.assigned` | mas'ul operator o'zgardi (`TAKE`, `ASSIGN`; 5a da qo'shildi) | buyurtma event'lari umumiy maydonlari (`order_id`, `status`, `branch_id`, `assigned_staff_id` …) | platform (realtime — yangi mas'ulga signal), reporting | `order_id`+`aggregate_version` |
+| `commerce.order.paid_marked` | `MARK_PAID` (DEC-100a, tekshirilmagan) | `order_id`, `total_minor`, `currency`, `source` (`AI`/`STOREFRONT`/`STAFF`), `channel?`, `branch_id`, `assigned_staff_id?`, `marked_by` (a'zolik ID), `method` (`CASH`/`CARD`/…); summa belgilanmaydi — buyurtma jami | reporting | `order_id` |
 
 `commerce.order.ready` — holat emas, amal (`business/05`: "olib ketishga tayyor" holatni o'zgartirmaydi). Nom saqlandi.
+
+Hamma `commerce.order.*` event'larida `aggregate_version` — shu o'zgarishdan **keyingi** buyurtma versiyasi (event yozishdan oldin flush), `from_status` — o'tish bo'lgan bo'lsa. Saytdan kelgan buyurtma ham avval `drafted`, keyin `submitted` beradi (QA 5a F10).
 
 ### 8.3 `messaging`
 
@@ -272,11 +289,14 @@ Xabar matni payload'da yo'q — sales_ai `MessagingQueryPort.get_conversation_co
 
 | Event | Qachon | Payload | Consumer'lar | Idempotency |
 |---|---|---|---|---|
-| `platform.shop.activated` | FSM-01 → `ACTIVE` | `shop_id`, `slug` | storefront (sayt yoqiladi), sales_ai (agent yoqiladi), reporting | `shop_id`+`aggregate_version` |
-| `platform.shop.suspended` | → `SUSPENDED` | `shop_id`, `reason_code` | storefront (yangi buyurtma yopiladi), sales_ai (agent o'chadi), messaging (avtomatik javob to'xtaydi) | `shop_id`+`aggregate_version` |
+| `platform.shop.activated` | FSM-01 → `ACTIVE` (qayta yoqish ham) | `shop_id`, `slug`, `from_status`, `command` | storefront (sayt yoqiladi), sales_ai (agent yoqiladi), reporting | `shop_id`+`aggregate_version` |
+| `platform.shop.closed` | → `CLOSED` (5a) | `shop_id`, `slug`, `from_status`, `command` | storefront, sales_ai, messaging, reporting | `shop_id`+`aggregate_version` |
+| `platform.shop.suspended` | → `SUSPENDED` | `shop_id`, `slug`, `from_status`, `command` (erkin sabab matni event'ga tushmaydi) | storefront (yangi buyurtma yopiladi), sales_ai (agent o'chadi), messaging (avtomatik javob to'xtaydi) | `shop_id`+`aggregate_version` |
 | `platform.staff.access_revoked` | a'zolik `DISABLED` yoki rol olib tashlandi | `principal_id`, `revoked_roles[]` | messaging (suhbatlarni qayta taqsimlash), commerce (buyurtmalar uchun qayta biriktirish vazifasi) | `principal_id`+`aggregate_version` |
 | `platform.shop.policy_changed` | Shop sozlamalari (`shop_policies`) o'zgardi | `changed_fields[]` (masalan `stock_display`, `quote_ttl_hours`), `version` | storefront (`stock_display` → `public_products` qayta hisoblanadi, kesh tozalanadi), sales_ai (siyosat keshini yangilaydi), commerce (muddatlar) | `shop_id`+`version` |
 | `platform.ai_quota.exhausted` | AI limiti tugadi (DEC-119) | `period`, `limit`, `used` | sales_ai (rejim `OFF`, yangi xabarlar operatorga) | `period` |
+| `platform.notification.created` | xodim xabarnomasi yaratildi (5a) | `notification_id`, `recipient_membership_id`, `template_key`, `priority` | platform (realtime signali; platforma botiga yetkazish) | `notification_id` |
+| `platform.task.created`, `platform.task.closed` | xodim vazifasi ochildi yoki yopildi (5a) | `task_id`, `type`, `status`, `subject_type`, `subject_id`, `branch_id`, `assignee_membership_id`, `assignee_role` | platform (realtime signali) | `task_id`+`aggregate_version` |
 | `platform.notification.customer_delivery_requested` | xaridorga kanal orqali xabar kerak (FSM-12 `SCHEDULED`) | `notification_id`, `conversation_id`, `template_key`, `locale`, `rendered_ref` | messaging (shop kanali orqali yuboradi) | `notification_id` |
 | `platform.privacy.export_requested` | xaridor ma'lumotlarini eksport so'rovi (`26`) | `request_id`, `subject_ref` (hash), `deadline_at` | commerce, messaging, support, sales_ai, reporting (o'z qismini tayyorlaydi) | `request_id`+consumer |
 | `platform.privacy.erasure_requested` | xaridor ma'lumotini o'chirish/anonimlashtirish | `request_id`, `subject_ref`, `deadline_at` | commerce, messaging, support, sales_ai, reporting | `request_id`+consumer |

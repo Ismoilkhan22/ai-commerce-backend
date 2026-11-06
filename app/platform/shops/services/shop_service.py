@@ -45,9 +45,17 @@ from app.shared.errors.base import (
     ShopHasOpenOrdersError,
     ValidationError,
 )
+from app.shared.events.outbox import write_outbox
 from app.shared.http import check_version
 from app.shared.phone import normalize_phone
 from app.shared.types.actor import ActorContext
+
+# FSM-01 holatiga kirildi → event (05 §8.6)
+_SHOP_EVENTS = {
+    "ACTIVE": "platform.shop.activated",
+    "SUSPENDED": "platform.shop.suspended",
+    "CLOSED": "platform.shop.closed",
+}
 
 
 def _not_unique(field: str) -> ValidationError:
@@ -163,6 +171,8 @@ class ShopService:
                 max=data.discount_limit_manager_pct,
             )
         wanted = data.model_dump(exclude_none=True)
+        if "inbox_hours" in data.model_fields_set:  # null — ish vaqti o'chiriladi (doim ochiq)
+            wanted["inbox_hours"] = data.inbox_hours.model_dump() if data.inbox_hours else None
         changed = {k: v for k, v in wanted.items() if getattr(policy, k) != v}
         for key, value in changed.items():
             setattr(policy, key, value)
@@ -461,6 +471,26 @@ class ShopService:
             reason=reason,
             diff={"status": {"old": rule.from_status, "new": target}},
         )
+        event_type = _SHOP_EVENTS.get(target)
+        if (
+            event_type is not None
+        ):  # 05 §8.6: sayt, AI va kanallar shu event bilan yoqiladi/o'chadi (QA 5a I6)
+            await write_outbox(
+                db,
+                schema="platform",
+                event_type=event_type,
+                actor=actor,
+                shop_id=shop.id,
+                aggregate_type=SHOP,
+                aggregate_id=shop.id,
+                aggregate_version=shop.version,
+                payload={
+                    "shop_id": shop.id,
+                    "slug": shop.slug,
+                    "from_status": rule.from_status,
+                    "command": command,
+                },
+            )
         return ShopOut.model_validate(shop)
 
     async def _shop(self, db: AsyncSession, shop_id: UUID | None, for_update: bool = False) -> Shop:

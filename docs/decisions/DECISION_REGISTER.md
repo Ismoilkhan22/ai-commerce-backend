@@ -624,6 +624,58 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Stok kirimi menejer tasdig'idan o'tadimi | **Yo'q** — omborchi, menejer va ega kiritgan kirim darhol qoldiqqa qo'shiladi | Kirim qoldiqni oshiradi, xavf kam; xato kirim tuzatish bilan to'g'rilanadi. `business/04` dagi "Tasdiqlaydi" olib tashlandi |
 | Faollashtirilmagan shop (qoralama, tekshiruvda) savdo qila oladimi | **Ha** — yangi savdo faqat to'xtatilgan (SUSPENDED) va yopilgan (CLOSED) shopda bloklanadi | FSM-01 qoidasi so'zma-so'z; shop tizimni faollashtirishgacha o'rganadi. Sayt faqat faol shopda ochiladi |
 
+### DEC-137 — Kanallar va inbox bazasi (5-modul, `messaging`) — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Nima:** founder 2026-10-26 da 5-modul qarorlarini Claude'ga topshirdi; ish tugagach birga ko'rib chiqiladi.
+**Qayerda:** `engineering/db/messaging.dbml`, `engineering/db/messaging.md`.
+
+| Savol | Tanlov | Nega | Muqobil |
+|---|---|---|---|
+| Chiquvchi xabarlar | Kiruvchi va chiquvchi — bitta `messages` jadvali | Suhbat lentasi bitta so'rov; fencing indeksi shu yerda | Alohida `outbound_messages` |
+| Xabar matnini shifrlash | Ustun darajasida yo'q: disk shifrlash + RLS + 12 oy saqlash | Operator qidiruvi va AI konteksti | `body_enc` (AES-GCM) |
+| Suhbatlar soni | Bir xaridor — bitta suhbat, yopilgani qayta ochiladi | Tarix bir joyda | Har murojaatga yangi suhbat |
+| Sayt chati kaliti | Sayt domenidagi httpOnly cookie, sayt ilovasi API'ga uzatadi | Uchinchi tomon cookie'lari bloklanadi | localStorage + header |
+| Xom webhook | Saqlanmaydi — faqat dedup kaliti va natija, 30 kun | Shaxsiy ma'lumot kam | Payload 7 kun |
+| Telegram'dagi telefon | `customer_identities` da shifrlangan + HMAC | Buyurtmaga bog'lash | Faqat `llm_pii_refs` |
+| Kanal akkauntlari | Shopda har kanal turidan bitta faol | Oddiy | Bir nechta bot |
+| O'qilganlik | Suhbat darajasida (`staff_last_read_seq`) | Kichik jamoalar | Har xodimga alohida |
+| Teglar, izohlar, tayyor javoblar | Teglar ustunda, izohlar alohida jadvalda, tayyor javoblar yo'q | Stage 1 uchun yetarli | Teglar jadvali |
+| FSM-04 talqini | `WAITING_CUSTOMER → AI_ACTIVE`; qayta ochilgan suhbat oldingi speaker bilan; avtomatik yopish yo'q | engineering/04 §11.1 | `business/05` ga qo'shilishi kerak |
+| Kanal tokeni | Bazada shifrlangan ustun | Pilotda secret manager yo'q | Secret manager |
+| `channel_accounts` RLS | Ha, webhook `account_ref` konteksti orqali | Yagona himoya qoidasi | `SECURITY DEFINER` funksiya |
+
+### DEC-138 — Fon ishlari (5-modul, S0-06) — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/jobs.dbml`, `engineering/db/jobs.md`.
+
+| Savol | Tanlov | Nega | Muqobil |
+|---|---|---|---|
+| Outbox shakli | `envelope jsonb` (engineering/05) | Bitta format, versiyalash oson | Alohida ustunlar (07) |
+| Yuborilgan event'lar | 14 kun saqlanadi | Muammoni tekshirish uchun | 7 kun |
+| `app_scheduler` roli | Pilotda yo'q; shoplararo ro'yxatlar va partitsiya (TD-01) — `SECURITY DEFINER` funksiyalar | Kam rol, kam xato | Alohida rol |
+| Ish natijalari | `platform.job_runs` jadvali | Monitoring hali yo'q | Faqat metrikalar |
+| Kechki solishtiruv | Faqat ogohlantirish va vazifa, avtomatik tuzatmaydi | Pul va qoldiq — odam qarori | Avtomatik tuzatish |
+
+### DEC-139 — Xodim xabarnomalari va vazifalar (5-modul) — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/notifications.dbml`, `engineering/db/notifications.md`.
+
+| Savol | Tanlov | Nega | Muqobil |
+|---|---|---|---|
+| Xabar matnlari | Standart matnlar kodda, bazada faqat shop o'zgartirganlari | Tarjima va versiya kod bilan | Hammasi bazada |
+| Jadval | Bitta `notifications`, har qabul qiluvchiga bitta qator | Oddiy | intents + deliveries |
+| Realtime | Jadval yo'q: tartib raqami Redis'da, bo'shliqda klient qayta yuklaydi | Kam yuk | `realtime_changes` jadvali |
+| Xodimga Telegram | Bitta platforma boti; xodim bir martalik kod bilan ulanadi, kodning faqat xeshi saqlanadi | Shop botiga bog'liq emas | Shop botlari xodimlarga ham yozadi |
+| Shop sozlamalari | `shop_policies.handoff_reminder_minutes = 15`, `inbox_hours` (ixtiyoriy) | Har shop o'zi | Platforma bo'yicha bitta qiymat |
+| "Ko'rib chiqish kerak" | 3-moduldagi hisoblangan ro'yxat `staff_tasks` ga o'tadi (`dedup_key`) | Eslatma va bildirishnoma bilan | Hisoblangan ro'yxat qoladi |
+
+### DEC-140 — Katalog importi (5-modul, S1-06) — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Qayerda:** `engineering/db/catalog_import.dbml`, `engineering/db/catalog_import.md`.
+
+| Savol | Tanlov | Nega | Muqobil |
+|---|---|---|---|
+| Qoldiqni qo'llash | Kirim (yangi SKU) va tuzatish (farq) hujjatlari orqali | DEC-134/136 qoidalari bilan bir xil | `IMPORT_INITIAL` / `IMPORT_SYNC` daftar sabablari |
+| Omborchi importi | Mavjud SKU farqi tasdiqqa tushadi, yangi SKU kirimi darhol | Tuzatish qoidasi (DEC-134) saqlanadi | Omborchiga qoldiqli import yo'q |
+| RLS | Import jadvallarida yoqiladi | Yagona himoya qoidasi | Faqat ilova filtri |
+| Parallel importlar | Bir vaqtda bitta faol; tasdiqlanmagan sinov 24 soatda eskiradi | Ziddiyat yo'q | Bir nechta parallel |
+
 ### DEC-141 — Saytda tugagan mahsulotga so'rov — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
 **Nima:** 4-modul QA'sida chiqdi: sayt "Hozir mavjud emas" mahsulotni savatga qo'shishga ruxsat bermasdi, backend va M07 esa bunday so'rovni qabul qiladi.
 

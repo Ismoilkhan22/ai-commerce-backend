@@ -47,6 +47,7 @@ from app.platform.storage.services.file_service import FileService
 from app.platform.use.services.use_service import UseService
 from app.shared.clock import utcnow
 from app.shared.errors.base import FileInUseError, InvalidTransitionError, NotFoundError, ValidationError
+from app.shared.events.outbox import write_outbox
 from app.shared.http import check_version
 from app.shared.pagination import decode_cursor, encode_cursor
 from app.shared.text import NUL
@@ -224,6 +225,7 @@ class ProductService:
                 entity_version=product.version,
                 diff={"changed": sorted(changed)},
             )
+            await self._product_event(db, actor, product, changed_fields=sorted(changed))
         if {"brand", "category_code"} & changed.keys():  # avtomatik bog'lanish brend va toifaga bog'liq
             category = await self._category(db, product)
             if "category_code" in changed:  # boshqa turdagi modelga bog'lanish qolmasin (qo'lda ham)
@@ -261,7 +263,18 @@ class ProductService:
             reason=reason,
             diff={"status": {"old": rule.from_status, "new": target}},
         )
-        # TODO(S0-06): outbox — `catalog.product.published` / `.hidden` / `.archived` (sayt, AI qidiruvi)
+        # Sayt keshi va AI qidiruvi (05 §8.1); qayta chiqarish ham "published"
+        await write_outbox(
+            db,
+            schema="catalog",
+            event_type=f"catalog.product.{target.lower()}",
+            actor=actor,
+            shop_id=product.shop_id,
+            aggregate_type=PRODUCT,
+            aggregate_id=product.id,
+            aggregate_version=product.version,
+            payload={"product_id": product.id, "product_version": product.version, "status": target},
+        )
         return await self._detail(db, actor, product)
 
     # ================================================================== SKU
@@ -310,6 +323,7 @@ class ProductService:
                 entity_version=sku.version,
                 diff={"changed": sorted(k for k in changed if k != "mpn_normalized")},
             )
+            await self._sku_event(db, actor, sku, "updated")
         if {"mpn", "model_name"} & changed.keys():
             await self.links.auto_link(
                 db, actor, sku, product, (await self._category(db, product)).spec_category
@@ -343,6 +357,7 @@ class ProductService:
             entity_version=sku.version,
             diff={"status": {"old": "ACTIVE", "new": "ARCHIVED"}},
         )
+        await self._sku_event(db, actor, sku, "archived")
         return await self._detail(db, actor, product)
 
     # ================================================================== rasmlar
@@ -380,6 +395,7 @@ class ProductService:
         await self.audit.record(
             db, action="catalog.product.media_added", entity_type=PRODUCT, entity_id=product.id, actor=actor
         )
+        await self._media_event(db, actor, product, "added")
         return await self._detail(db, actor, product)
 
     async def remove_media(
@@ -400,6 +416,7 @@ class ProductService:
         await self.audit.record(
             db, action="catalog.product.media_removed", entity_type=PRODUCT, entity_id=product.id, actor=actor
         )
+        await self._media_event(db, actor, product, "removed")
         return await self._detail(db, actor, product)
 
     async def reorder_media(
@@ -413,7 +430,138 @@ class ProductService:
         for position, media_id in enumerate(media_ids):
             media[media_id].position = position  # 0 — asosiy rasm
         await db.flush()
+        await self._media_event(db, actor, product, "reordered")
         return await self._detail(db, actor, product)
+
+    # ================================================================== event'lar (QA 5a F3)
+    # Mahsulot matni, variant va rasmlar o'zgarsa — sayt keshi darhol eskiradi (08 §4.1). Faqat ID va kodlar.
+    async def _product_event(
+        self, db: AsyncSession, actor: ActorContext, product: Product, *, changed_fields: list[str]
+    ) -> None:
+        await write_outbox(
+            db,
+            schema="catalog",
+            event_type="catalog.product.updated",
+            actor=actor,
+            shop_id=product.shop_id,
+            aggregate_type=PRODUCT,
+            aggregate_id=product.id,
+            aggregate_version=product.version,
+            payload={
+                "product_id": product.id,
+                "product_version": product.version,
+                "changed_fields": changed_fields,
+            },
+        )
+
+    async def _sku_event(self, db: AsyncSession, actor: ActorContext, sku: Sku, action: str) -> None:
+        await write_outbox(
+            db,
+            schema="catalog",
+            event_type="catalog.sku.changed",
+            actor=actor,
+            shop_id=sku.shop_id,
+            aggregate_type=SKU,
+            aggregate_id=sku.id,
+            aggregate_version=sku.version,
+            payload={"sku_id": sku.id, "product_id": sku.product_id, "action": action, "status": sku.status},
+        )
+
+    async def _media_event(
+        self, db: AsyncSession, actor: ActorContext, product: Product, action: str
+    ) -> None:
+        """Rasmlar mahsulot tarkibi: mahsulot versiyasi oshadi (event tartibi uchun, 05 §6)."""
+        product.updated_at = utcnow()
+        await db.flush()
+        await write_outbox(
+            db,
+            schema="catalog",
+            event_type="catalog.media.changed",
+            actor=actor,
+            shop_id=product.shop_id,
+            aggregate_type=PRODUCT,
+            aggregate_id=product.id,
+            aggregate_version=product.version,
+            payload={"product_id": product.id, "product_version": product.version, "action": action},
+        )
+
+    # ================================================================== import (5c, 18 §6)
+    async def import_create(
+        self, db: AsyncSession, actor: ActorContext, category: Category, data: ProductCreate
+    ) -> tuple[Product, Sku]:
+        """Import qatori → qoralama kartochka va bitta SKU (saytga avtomatik chiqmaydi). Javob kartochkasi
+        yig'ilmaydi — bo'lakda 500 qator."""
+        product = Product(
+            shop_id=actor.shop_id,
+            category_code=category.code,
+            title=data.title.strip(),
+            brand=_clean(data.brand),
+            description=_clean(data.description),
+            created_by=actor.membership_id,
+        )
+        db.add(product)
+        await db.flush()
+        await self.audit.record(
+            db, action="catalog.product.created", entity_type=PRODUCT, entity_id=product.id, actor=actor
+        )
+        sku = await self._create_sku(db, actor, product, category, data.skus[0], field_prefix="skus[0].")
+        return product, sku
+
+    async def import_update(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        product: Product,
+        sku: Sku,
+        product_changes: dict[str, Any],
+        sku_changes: dict[str, Any],
+    ) -> bool:
+        """Mavjud SKU va kartochka yangilanadi (faqat fayldagi maydonlar). Qoida va event'lar — `update` va
+        `update_sku` dagidek. True — nimadir o'zgardi."""
+        self._ensure_editable(product, "EDIT")
+        if sku.status != "ACTIVE":
+            raise InvalidTransitionError(
+                "SKU is archived", entity=SKU, **{"from": sku.status}, command="EDIT"
+            )
+        if "category_code" in product_changes and product_changes["category_code"] != product.category_code:
+            await self.categories.usable(db, product_changes["category_code"])
+        product_diff = {k: v for k, v in product_changes.items() if getattr(product, k) != v}
+        if "mpn" in sku_changes:
+            sku_changes = {**sku_changes, "mpn_normalized": normalize_code(sku_changes["mpn"])}
+        sku_diff = {k: v for k, v in sku_changes.items() if getattr(sku, k) != v}
+        for key, value in product_diff.items():
+            setattr(product, key, value)
+        for key, value in sku_diff.items():
+            setattr(sku, key, value)
+        await db.flush()
+        if product_diff:
+            await self.audit.record(
+                db,
+                action="catalog.product.updated",
+                entity_type=PRODUCT,
+                entity_id=product.id,
+                actor=actor,
+                entity_version=product.version,
+                diff={"changed": sorted(product_diff)},
+            )
+            await self._product_event(db, actor, product, changed_fields=sorted(product_diff))
+        if sku_diff:
+            await self.audit.record(
+                db,
+                action="catalog.sku.updated",
+                entity_type=SKU,
+                entity_id=sku.id,
+                actor=actor,
+                entity_version=sku.version,
+                diff={"changed": sorted(k for k in sku_diff if k != "mpn_normalized")},
+            )
+            await self._sku_event(db, actor, sku, "updated")
+        category = await self._category(db, product)
+        if "category_code" in product_diff:
+            await self.links.drop_mismatched(db, actor, await self._skus(db, product), category.spec_category)
+        if {"brand", "category_code"} & product_diff.keys() or {"mpn", "model_name"} & sku_diff.keys():
+            await self.links.auto_link(db, actor, sku, product, category.spec_category)
+        return bool(product_diff or sku_diff)
 
     # ================================================================== ichki
     async def _create_sku(
@@ -444,6 +592,7 @@ class ProductService:
         await self.audit.record(
             db, action="catalog.sku.created", entity_type=SKU, entity_id=sku.id, actor=actor
         )
+        await self._sku_event(db, actor, sku, "created")
         if data.price is not None:
             await self.pricing.apply_price(db, actor, sku, data.price, 0)
         await self.links.auto_link(db, actor, sku, product, category.spec_category)

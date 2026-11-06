@@ -34,6 +34,7 @@ from app.shared.clock import utcnow
 from app.shared.db.session import Database, set_identity_context
 from app.shared.errors.base import ForbiddenError, ShopNotActiveError, UnauthenticatedError
 from app.shared.i18n.locale import SUPPORTED_LOCALES, set_locale
+from app.shared.ratelimit import enforce
 from app.shared.types.actor import ActorContext
 
 
@@ -174,8 +175,18 @@ async def shop_token_claims(request: Request, credentials: Bearer) -> AccessClai
     return decode_access_token(config, _token(credentials), "shop")
 
 
+SHOP_USER_REQUESTS_PER_MINUTE = 300  # 08 §5.1: /api/v1/shop/* — xodim (va shop) bo'yicha
+
+
 async def shop_context(request: Request, credentials: Bearer) -> AsyncIterator[RequestContext]:
-    async with _context(request, _token(credentials), "shop") as ctx:
+    token = _token(credentials)
+    limiter = getattr(request.app.state, "rate_limiter", None)
+    if limiter is not None:  # bazaga tegmasdan — token imzosi bo'yicha (QA 5a F11)
+        claims = decode_access_token(request.app.state.auth_config, token, "shop")
+        await enforce(
+            limiter, f"shop-user:{claims.principal_id}:{claims.shop_id}", SHOP_USER_REQUESTS_PER_MINUTE
+        )
+    async with _context(request, token, "shop") as ctx:
         yield ctx
 
 

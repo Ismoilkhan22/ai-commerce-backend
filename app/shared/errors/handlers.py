@@ -48,6 +48,8 @@ _PYDANTIC_CODES = {
     "too_long": "max_length",
     "enum": "invalid_choice",
     "literal_error": "invalid_choice",
+    "invalid_range": "invalid_range",
+    "contact_required": "required",
 }
 _PYDANTIC_PARAMS = {
     "ge": "min",

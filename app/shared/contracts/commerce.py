@@ -14,6 +14,8 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.shared.types.actor import ActorContext
+
 StockStatus = Literal["IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK"]
 
 
@@ -65,3 +67,47 @@ class OrderQueryPort(Protocol):
         """Ochiq buyurtmalar soni holat bo'yicha (faqat noldan kattalari). Tranzaksiyaga shu shop
         konteksti o'rnatiladi (RLS)."""
         ...
+
+
+@dataclass(frozen=True)
+class OrderRef:
+    id: UUID
+    number: int
+    status: str
+    version: int = 0
+    previous_conversation_id: UUID | None = None  # qayta bog'lashda — eski suhbat (last_order_id yangilanadi)
+
+
+class ConversationOrdersPort(Protocol):
+    """messaging (5b) suhbatdan buyurtma qoralamasini shu orqali ochadi va buyurtmani suhbatga bog'laydi.
+    Ruxsat va ko'rinish (operator — o'ziniki) commerce'ning o'zida tekshiriladi (10 §6.8)."""
+
+    async def create_draft(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        *,
+        conversation_id: UUID,
+        customer_ref: UUID,
+        customer_name: str | None,
+        customer_phone: str | None,
+        customer_locale: str,
+        branch_id: UUID | None,
+        fulfillment_method: str,
+    ) -> OrderRef: ...
+
+    async def link(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        *,
+        order_id: UUID,
+        conversation_id: UUID,
+        customer_ref: UUID,
+        relink: bool = False,
+        expected_version: int | None = None,
+    ) -> OrderRef: ...
+
+    async def for_conversation(
+        self, db: AsyncSession, actor: ActorContext, conversation_id: UUID
+    ) -> list[OrderRef]: ...

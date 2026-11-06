@@ -94,7 +94,7 @@ Login ──▶ access JWT (10–15 daq) — faqat xotirada
 Sahifa yangilandi ──▶ silent refresh ──▶ yangi access token
 401 ──▶ bir marta refresh ──▶ yana 401 ──▶ /login
 Ikki tab bir vaqtda ──▶ Web Locks qulfi ──▶ bir vaqtda faqat bitta refresh (rotatsiya "qayta ishlatish" bo'lib qolmasin)
-WebSocket ──▶ POST /api/v1/auth/ws-ticket ──▶ qisqa ticket ──▶ /ws?ticket=...   (realtime moduli bilan)
+WebSocket ──▶ POST /api/v1/auth/ws-ticket ──▶ qisqa ticket ──▶ /api/v1/ws?ticket=...   (5a, 08 §6)
 ```
 
 - `app.<platforma>.uz` va `api.<platforma>.uz` bitta site ostida (cookie SameSite uchun). Lokalda hammasi `localhost` da.
@@ -187,11 +187,16 @@ Frontend'da qo'shimcha tarjima faqat backend bermaydigan matnlar uchun (`package
 ## 8. WebSocket inbox
 
 ```
-Dashboard ──ticket──▶ /ws ──▶ platform/realtime (Redis pub/sub orqali ko'p worker)
-Kanallar: shop:{shop_id}:inbox, conversation:{id}
-Event'lar: message.created, conversation.updated (speaker_mode, speaker_version), task.created
+Dashboard ──POST /api/v1/auth/ws-ticket──▶ /api/v1/ws?ticket= ──▶ platform/realtime (Redis pub/sub, ko'p nusxa)
+Kanal: har xodimga bitta (cos:v1:rt:m:{membership_id}); kimga — server bazadan hal qiladi
+5a turlari: hello, ping, notification.created, task.created, task.closed, order.changed, stock.changed
+5b turlari: message.created (resource.id — xabar, conversation_id), conversation.changed
 ```
-- Server faqat xodim ruxsati bor suhbat kanallariga obuna qiladi (TC-ISO-06).
+
+**5b kontrakti** (progress/M05b §8): inbox — `GET /shop/conversations` (filtrlar), `…/counts`, suhbat ETag + `If-Match` amallar, tugmalar `allowed_actions` bo'yicha; xabarlar `after_seq`/`before_seq`; signal kelganda tegishli so'rov qayta yuboriladi (matn WS'da yo'q). Sayt chati vidjeti — `shop-storefront` ilovasi token'ni httpOnly cookie'da saqlaydi va API'ga `X-Chat-Session` bilan uzatadi; polling `poll_interval_seconds`. Kanal sozlamalari — `/shop/channels` (bot tokeni faqat ega), xaridor matnlari — `/shop/message-templates`, ish vaqti — `PATCH /shop/policies` (`inbox_hours`, `handoff_reminder_minutes`).
+- Signalda faqat `type`, `resource {kind, id, version}`, `seq`, `trace_id` — ma'lumot REST'dan olinadi.
+- `seq` sakrasa (bo'shliq) — ochiq ro'yxatlar qayta yuklanadi; yopilish `4401` — yangi ticket, `4403` — shop yopilgan.
+- Server faqat xodim ruxsati bor signallarni yuboradi (TC-ISO-06).
 - Uzilsa: eksponensial qayta ulanish + `GET` bilan oxirgi holatni olish (event'lar yo'qolishi mumkin deb hisoblanadi).
 - Operator "olish" bosganda `speaker_version` bilan so'rov; 409 bo'lsa — "boshqa odam oldi".
 

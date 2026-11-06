@@ -220,6 +220,9 @@ class AdjustmentOut(BaseModel):
     decision_note: str | None
     on_hand_before: int | None
     on_hand_after: int | None
+    # Import tuzatishi: fayldagi absolyut qoldiq; tasdiqda farq joriy qoldiqdan qayta hisoblanadi (QA F3)
+    target_on_hand: int | None = None
+    current_on_hand: int | None = None  # faqat PENDING uchun — "maqsad X (hozir Y)"
     version: int
 
 

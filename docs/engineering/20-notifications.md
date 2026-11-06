@@ -5,6 +5,10 @@
 > **Biznes:** M17, BL-060…062, FSM-12, DEC-104, DEC-113.
 > **Kim o'qiydi:** backend, founder (matnlarni tahrirlash), frontend (dashboard bildirishnomalari).
 
+> **5a holati (2026-10-26):** xodim qismi qurilgan — bitta `platform.notifications` jadvali (har qabul qiluvchiga qator, DEC-139 2-qaror), xodim matnlari kodda (`app/platform/notifications/templates.py`, versiya `staff-2026-10-v1`), panel (bildirishnomalar markazi, realtime signal) va platforma boti (bir martalik kod bilan ulash, FSM-12 yetkazish, tinch soat). Xaridorga xabar va `shop_message_templates` — 5b. Batafsil: [progress/M05a](progress/M05a-jobs-notifications.md).
+>
+> **5b holati (2026-10-26):** xaridor matnlari kodda — `app/platform/notifications/customer_templates.py` (`customer.order_confirmed`, `customer.order_ready_pickup`, `customer.order_completed`, `customer.order_cancelled`, `customer.handoff_after_hours`; uz / ru / en; majburiy va ruxsat etilgan o'zgaruvchilar). Shop o'z matnini saqlaydi — `platform.shop_message_templates` (versiyali, audit bilan; `/shop/message-templates`). Yuborishni `messaging` bajaradi (`order_status_notify`): buyurtma suhbatga bog'langan va xaridorga yetib borsa — bitta xabar (`intent_key = order:{id}:{status}`), xaridor tilida; yozuv — `messaging.messages` (`origin = SYSTEM`), `platform.notifications` da xaridor qatori yozilmaydi (rejadan farq, progress/M05b 5-qaror). Taqiqlangan iboralar tekshiruvi ("to'landi", chegirma va'dasi) hali yo'q — 7-modul bilan. **Shablon xavfsizligi (QA 5b H1):** shop matnida faqat `{nom}` ko'rinishidagi ma'lum o'zgaruvchi; yolg'iz qavs (`invalid_braces`), `{0}`, `{a.b}`, `{a!r}`, `{a:>9}` (`invalid_placeholder`) — 422; `{{` / `}}` — oddiy qavs. Matn `str.format` bilan emas, o'z almashtiruvchimiz bilan to'ldiriladi, natija 1500 belgigacha; render xatosi bo'lsa — standart matn (o'sha tilda) va ogohlantirish logi (matnsiz). Xaridorga eslatma (ish vaqtidan tashqari) — "eng yaxshi urinish": xato bo'lsa ham kiruvchi xabar saqlanadi. Buyurtma xabari tili: buyurtmaning `customer_locale` → suhbat tili → uz. `customer.order_ready_pickup` da `{phone_line}` — filial telefoni bo'lmasa bo'sh ("Tel: ." chiqmaydi). Yangi xodim shablonlari: `staff.handoff` (HIGH), `staff.handoff_reminder`, `staff.message_failed`; vazifa turlari: `HANDOFF`, `MESSAGE_FAILED`, `CHANNEL_DEGRADED`.
+
 ## 1. Muammo
 
 1. Buyurtma tasdiqlanganda xaridorga xabar, operatorga vazifa, 24 soatdan keyin eslatma kerak. Agar har domen xabarni o'zi yozsa — matnlar, tillar va takrorlardan himoya tarqoq bo'ladi.
@@ -171,18 +175,29 @@ Qolgan kalitlarning ru/en matnlari seed faylida (`app/db/seed/platform_seed.py`)
 
 ## 9. Xodim vazifalari
 
-`platform.staff_tasks` — "kimdir biror narsa qilishi kerak" degan yozuvlar: tasdiq kutayotgan buyurtma, yuborilmagan xabar, band qilishni ko'rib chiqish. Vazifa `aggregate_type/id` ga bog'langan; aggregate holati o'zgarganda vazifani yaratgan domen `notifications.resolve_tasks(aggregate)` ni chaqiradi. Dedup — xuddi intent kabi.
+`platform.staff_tasks` — "kimdir biror narsa qilishi kerak" degan yozuvlar: tasdiq kutayotgan buyurtma, yuborilmagan xabar, band qilishni ko'rib chiqish. Vazifa `aggregate_type/id` ga bog'langan; aggregate holati o'zgarganda vazifani yaratgan domen `notifications.resolve_tasks(aggregate)` ni chaqiradi. Dedup — xuddi intent kabi. 5a da: `TaskService.open(...)` (`dedup_key`) va `TaskService.resolve(subject_type, subject_id, types)`; turlar — `ORDER_CONFIRM_REMINDER`, `RESERVATION_REVIEW`, `ADJUSTMENT_APPROVAL`, `STOCK_RECONCILE_MISMATCH`, `EXCHANGE_RATE_STALE` (qolganlari 5b/5c bilan).
+
+**Kim bajaradi** (QA 5a F8). `assignee_role` — kimga ko'rinishi va kim nazorat qilishini bildiradi; vazifani **olish va yopish** esa tur bo'yicha:
+- `ORDER_CONFIRM_REMINDER` — ega, menejer, operator (operator buyurtmani o'zi tasdiqlaydi);
+- `RESERVATION_REVIEW`, `ADJUSTMENT_APPROVAL`, `DISCOUNT_APPROVAL`, `STOCK_RECONCILE_MISMATCH`, `EXCHANGE_RATE_STALE` — ega va menejer;
+- ro'yxatda yo'q tur — `assignee_role` bo'yicha (ega hammasiga, menejer egadan boshqa hammasiga).
+
+Vazifani berish — `staff.task.assign` (ega, menejer); qabul qiluvchi faol, filiali mos va roli turga mos bo'lishi shart (aks holda `422 membership_id/invalid_choice`). So'rovni yuborgan xodim (`params.requested_by`) o'z tasdiq vazifasini ololmaydi va yopolmaydi. "Eskirgan kurs" vazifasi bitta eskirish davriga bitta (kalit — oxirgi kurs vaqti) va faqat **yangi** kurs kiritilganda yopiladi: orqaga sanalgan (o'zi eskirgan) kurs yopmaydi (QA 5a F5).
+
+**Xodim sozlamasi** (`PUT /shop/me/notification-settings`): noma'lum maydon — 422; `quiet_from` ≠ `quiet_to`; vaqt offset'siz (shop vaqti); `muted_types` — faqat ma'lum shablon kalitlari va HIGH bo'lmaganlari (HIGH doim yetadi). Birinchi saqlash parallel kelsa — bittasi 200, qolganlari `409 VERSION_CONFLICT` (QA 5a F2, F9).
 
 ## 10. API
 
 | Surface | Endpoint | Ruxsat |
 |---|---|---|
-| `shop` | `GET /api/v1/shop/notifications` (cursor) | autentifikatsiya |
-| `shop` | `POST /api/v1/shop/notifications/{id}/read` | autentifikatsiya |
-| `shop` | `GET /api/v1/shop/tasks`, `POST /api/v1/shop/tasks/{id}/done` | autentifikatsiya, rol bo'yicha |
-| `shop` | `GET/PUT /api/v1/shop/settings/message-templates/{key}` | `shops.settings.edit` |
-| `shop` | `PUT /api/v1/shop/me/notification-settings` | o'zi |
-| WS | `notification.created`, `task.created` (`08-cache-and-realtime.md`) | — |
+| `shop` | `GET /api/v1/shop/notifications` (cursor, `unread`), `GET …/unread-count` | o'ziniki |
+| `shop` | `POST /api/v1/shop/notifications/{id}/read`, `POST …/read-all` | o'ziniki |
+| `shop` | `GET /api/v1/shop/tasks`, `POST /api/v1/shop/tasks/{id}/done`, `POST …/{id}/assign` | `staff.task.view`, rol va filial bo'yicha |
+| `shop` | `GET/PUT /api/v1/shop/settings/message-templates/{key}` (5b) | `shops.settings.edit` |
+| `shop` | `GET/PUT /api/v1/shop/me/notification-settings` | o'zi |
+| `shop` | `GET/POST/DELETE /api/v1/shop/me/telegram-link` — platforma botiga ulanish | o'zi |
+| `webhooks` | `POST /api/v1/webhooks/platform-telegram` — `/start <kod>` | sir sarlavhasi |
+| WS | `notification.created`, `task.created`, `task.closed` (`08-cache-and-realtime.md` §6) | — |
 
 ## 11. Kuzatuv
 

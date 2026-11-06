@@ -58,7 +58,7 @@ cos:v1:global:storefront:slug=techzone                      # slug → shop_id
 **4-modulda qurilgani** (`app/shared/cache/`: `Cache` — Redis yoki xotira, `keys.py` — kalit quruvchi; storefront kalitlari — `app/domains/storefront/common.py`):
 - `cos:v1:global:storefront:<hash(slug)>` → shop_id (600 s); shop holati esa har so'rovda bazadan;
 - `cos:v1:shop:{id}:storefront:site`, `…:pages` (300 s) — sayt yoki sahifa saqlanganda darhol `DEL`;
-- `…:storefront:products:list:<hash(v, cat, q, sort, limit, cursor)>`, `…:product:<hash(v, id)>`, `…:categories:<hash(v)>` (60 s + 0–10 s jitter); `v` — `…:storefront:index_version` (sayt saqlanganda `INCR`; katalog va ombor event'lari bilan — S0-06);
+- `…:storefront:products:list:<hash(v, cat, q, sort, limit, cursor)>`, `…:product:<hash(v, id)>`, `…:categories:<hash(v)>` (60 s + 0–10 s jitter); `v` — `…:storefront:index_version` (sayt saqlanganda `INCR`; katalog va ombor event'lari bilan — `storefront.cache_invalidate` inline tinglovchisi, 5a);
 - mahsulot kaliti slug emas, **id** bo'yicha (storefront.md §5); mahsulot sahifasi keshdan berilsa ham holati har safar tekshiriladi;
 - stampede himoyasi (§4.4) hali yo'q — pilot hajmida kerak emas, yuklama oshganda qo'shiladi;
 - kesh ishlamasa (Redis uzildi) javob baribir DB'dan to'g'ri chiqadi — xato logga yoziladi, foydalanuvchiga chiqmaydi;
@@ -83,10 +83,11 @@ cos:v1:global:storefront:slug=techzone                      # slug → shop_id
 
 ### 4.3 Invalidatsiya
 
-Ro'yxat kalitlari ko'p (filtr × sahifa × til) — har birini o'chirish o'rniga **versiya hisoblagichi**:
+Ro'yxat kalitlari ko'p (filtr × sahifa × til) — har birini o'chirish o'rniga **versiya hisoblagichi** (5a da qurilgan — `app/domains/storefront/subscribers.py`):
 ```
 storefront subscriber (inline, 05 §5.1):
-  on catalog.price.changed / commerce.stock.changed / ...:
+  on catalog.product.published|hidden|archived / catalog.price.changed / catalog.exchange_rate.updated
+     / commerce.stock.changed:
       INCR cos:v1:shop:{shop_id}:storefront:index_version
 ro'yxat kaliti = ...:products:list:v={index_version}:...
 ```
@@ -128,7 +129,7 @@ Sozlama `storefront.public_products` proyeksiyasida (`available_qty` faqat `EXAC
 | `/api/v1/storefront/{slug}/chat/*` (sayt chati) | sessiya + IP | 20 xabar/daq | 429; xabar saqlanmaydi |
 | `/api/v1/webhooks/telegram/{bot_id}` | bot | 50/s (Telegram o'zi limitlaydi) | 429 emas — qabul qilinadi, lekin AI navbati throttle |
 | `/api/v1/webhooks/meta` | sahifa | 50/s | xuddi shunday |
-| `/api/v1/shop/*` | xodim | 300/daq | 429 |
+| `/api/v1/shop/*` | xodim + shop (token imzosidan, bazasiz — 5a da qurildi) | 300/daq | 429 |
 | `POST /api/v1/auth/login` | IP + login | 5/15 daq, keyin eksponensial blok | 429, audit |
 | `/api/v1/platform/*` | admin | 60/daq | 429 |
 
@@ -158,18 +159,25 @@ Operator va menejer dashboard'da quyidagilarni darhol ko'rishi kerak: yangi xaba
 
 ### 6.2 Ulanish va auth (ADR-023)
 
+**5a da qurilgani** (`app/platform/realtime/`, progress/M05a §4.6):
+
 ```
-1. Dashboard (JWT bilan):  POST /api/v1/shop/realtime/ticket  → {"ticket": "...", "expires_in": 30}
-2. Brauzer:                 wss://api.<platforma>.uz/ws/v1/inbox?ticket=...
-3. Server:                  ticket Redis db2 dan olinadi va o'chiriladi (bir martalik, 30 s);
-                            principal, shop_id, rollar, filiallar DB'dan qayta tekshiriladi
-4. Ulanish obunalari:       shop:{shop_id}:staff:{principal_id}
-                            shop:{shop_id}:branch:{branch_id}   (ruxsat etilgan filiallar)
-                            shop:{shop_id}:managers             (menejer/ega bo'lsa)
+1. Dashboard (JWT bilan):  POST /api/v1/auth/ws-ticket  → {"ticket": "...", "expires_in": 30, "path": "/api/v1/ws"}
+2. Brauzer:                 wss://api.<platforma>.uz/api/v1/ws?ticket=...
+3. Server:                  ticket Redis db2 dan olinadi va o'chiriladi (GETDEL, bir martalik, 30 s; bazada — xeshi);
+                            sessiya, a'zolik, rol va filiallar DB'dan qayta tekshiriladi
+4. Obuna:                   cos:v1:rt:m:{membership_id} — har xodimga bitta kanal
 ```
+- Kimga signal ketishini **yuborayotgan tomon** bazadan hal qiladi (`realtime_fanout` tinglovchisi: biriktirilgan operator, rol + filial bo'yicha xodimlar) — keng shop yoki rol kanali yo'q, demak ruxsatsiz xodimga signal yetmaydi.
+- Shop paneli uchun; platforma paneli realtime'i keyin.
 - JWT URL'da yuborilmaydi — faqat qisqa ticket.
-- Access token yangilanganda yoki rol o'zgarganda (`platform.staff.access_revoked`) server ulanishni yopadi (`4401`), klient yangi ticket oladi.
-- Har 30 s ping; javob bo'lmasa ulanish yopiladi.
+- Har heartbeat'da (standart 25 s, `REALTIME_HEARTBEAT_SECONDS`) server sessiya va a'zolikni bazadan qayta tekshiradi: sessiya bekor qilingan, xodim o'chirilgan → `4401`; shop yopilgan → `4403`. Klient yangi ticket oladi.
+- Har heartbeat'da `{"type": "ping"}`; klient javob bermasa ham bo'ladi (TCP uzilsa ulanish yopiladi).
+- Cheklovlar (QA 5a F11, I1):
+  - ticket — xodimga 30/daq (`429` + `Retry-After`);
+  - bir xodimda bir vaqtda ko'pi bilan 5 ulanish (Redis ZSET `cos:v1:rt:sockets:{membership_id}`, ball — oxirgi heartbeat; 3 heartbeat davomida jim ulanish hisobga olinmaydi). Oshsa **yangi** ulanish `4429` bilan yopiladi — eski tablar ishlayveradi, klient uzoqroq (60 s+) kutib qayta urinadi;
+  - `Origin` sarlavhasi bo'lsa — `CORS_ORIGINS` dagi panel manzillaridan biri bo'lishi shart, aks holda handshake rad etiladi (`1008`). Sarlavhasiz (brauzer emas) mijozga ruxsat: ticket baribir Bearer token bilan olinadi;
+  - uvicorn'ning `"WebSocket /api/v1/ws?…" [accepted]` xabari query'siz yoziladi (`RedactQueryFilter`, 26 §4).
 
 ### 6.3 Ko'p nusxada tarqatish (Redis pub/sub relay)
 
@@ -177,35 +185,37 @@ Operator va menejer dashboard'da quyidagilarni darhol ko'rishi kerak: yangi xaba
 Domen service / subscriber ──(COMMIT'dan keyin)──▶ realtime.publish(channel, message)
         │
         ▼
-Redis PUBLISH cos:v1:rt:shop:{shop_id}:staff:{id}
+Redis INCR cos:v1:rt:seq:{membership_id} → PUBLISH cos:v1:rt:m:{membership_id}
         │
         ▼
 Har API nusxasidagi pubsub_relay ──▶ shu nusxadagi mos ulanishlarga yuboradi
 ```
 - `realtime.publish` faqat COMMIT'dan keyin chaqiriladi (yoki outbox subscriber ichidan) — bekor qilingan tranzaksiya signal yubormaydi.
-- Pub/sub yo'qotishi mumkin — shuning uchun har xabarda `sequence` bor va klient bo'shliqni REST'dan to'ldiradi.
+- Pub/sub yo'qotishi mumkin — shuning uchun har xabarda `seq` bor (xodim bo'yicha Redis'da oshadi) va klient bo'shliqni ko'rsa ro'yxatlarni REST'dan qayta yuklaydi (DEC-139, 3-qaror).
 - **Hech qachon** shop bo'yicha keng kanalga ruxsatsiz ma'lumot yuborilmaydi: operator faqat o'ziga biriktirilgan suhbat va buyurtmalar signalini oladi (`../business/04`: "O'ziniki").
 
 ### 6.4 Xabar formati
 
 ```json
 {
-  "type": "conversation.message_received",
+  "type": "order.changed",
   "shop_id": "0192a0b2-...",
-  "resource": {"kind": "conversation", "id": "0192f3...", "version": 18},
-  "sequence": 10452,
-  "summary": {"channel": "TELEGRAM", "unread": 3},
+  "resource": {"kind": "order", "id": "0192f3...", "version": 18},
+  "seq": 10452,
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
 }
 ```
+Ulanganda birinchi xabar — `{"type": "hello", "seq": <joriy>, "heartbeat_seconds": 25}`, keyin har heartbeat'da `{"type": "ping"}`.
 - Xabar matni va xaridor shaxsiy ma'lumoti WS orqali **yuborilmaydi** — klient `GET /api/v1/shop/conversations/{id}/messages?after=…` bilan oladi.
-- Turlar: `conversation.message_received`, `conversation.assigned`, `conversation.handed_off`, `order.drafted`, `order.status_changed`, `task.created`, `channel.status_changed`, `ai.quota_warning`.
+- 5a dagi turlar: `notification.created`, `task.created`, `task.closed`, `order.changed` (har `commerce.order.*` event'i), `stock.changed` (`resource.branch_id` bilan). 5b da qurilgani: `message.created` (`resource.kind = message`, `id` — xabar, `conversation_id`) va `conversation.changed` (har `messaging.conversation.*` event'i); qabul qiluvchilar — mas'ul, oldingi mas'ul, ega va menejer, biriktirilmagan yoki operator kutayotgan suhbatda — operatorlar ham. Rejadagi `conversation.message_received/assigned/handed_off` alohida turlari o'rniga shu ikkitasi (klient baribir REST'dan qayta o'qiydi). Keyin `channel.status_changed`, `ai.quota_warning`.
 
 ### 6.5 Qayta ulanish
 
-Klient oxirgi `sequence` ni saqlaydi; qayta ulanganda `GET /api/v1/shop/realtime/changes?since_sequence=…` (yoki ro'yxatlarni qayta yuklaydi). WS yagona haqiqat manbai emas — signal yo'qolsa ham ma'lumot yo'qolmaydi.
+Klient oxirgi `seq` ni saqlaydi; `hello` dagi yoki keyingi xabardagi `seq` kutilgandan katta bo'lsa (bo'shliq) — ochiq ro'yxatlarni (vazifalar, bildirishnomalar, buyurtmalar) REST'dan qayta yuklaydi. `realtime/changes` endpoint'i va jadvali yo'q (DEC-139, 3-qaror). WS yagona haqiqat manbai emas — signal yo'qolsa ham ma'lumot yo'qolmaydi.
 
 ### 6.6 Storefront chati (xaridor)
+
+**5b da qurilgani — polling** (DEC-137 ga qo'shimcha, progress/M05b 1-qaror): vidjet `GET …/chat/messages?after_seq=` ni har `poll_interval_seconds` (4 s) da so'raydi; token sayt ilovasi orqali `X-Chat-Session` header'ida uzatiladi. SSE — trafik oshsa keyin. Quyidagi matn — dastlabki reja.
 
 Sayt chati vidjeti uchun **SSE** (`GET /api/v1/storefront/{slug}/chat/sessions/{session_id}/events`) — anonim sessiya tokeni bilan, xabar yuborish oddiy `POST …/chat/messages`; SSE uzilsa `GET …/chat/messages?after=` polling. Nega SSE: anonim mehmon uchun ticket kerak emas, bir tomonlama oqim yetarli, nginx orqali oddiy; xabarlar `messaging` da boshqa kanallar kabi (`13`). Xaridor WS'i alohida, xodim kanallariga hech qanday aloqasi yo'q.
 

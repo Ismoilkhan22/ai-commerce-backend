@@ -12,12 +12,20 @@ Qisman natija yo'q (12 §2.7). Keyingi o'tishlar ham shu tartibda qulflaydi: buy
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.commerce import permissions as perm
 from app.domains.commerce.common import RESERVATION_REVIEW_HOURS, STALE_RATE_HOURS, field, load_branch
+from app.domains.commerce.events import (
+    CANCEL_REASON_CODES,
+    EXCEPTION_REASON_CODE,
+    ORDER_EVENTS,
+    order_event,
+    reservation_event,
+)
 from app.domains.commerce.inventory.services.stock_service import Movement, StockService, shortage
 from app.domains.commerce.orders import access
 from app.domains.commerce.orders.models.orm import Order, OrderLine, OrderNote, Reservation
@@ -27,6 +35,7 @@ from app.domains.commerce.orders.services.pricing import apply_snapshot, discoun
 from app.domains.commerce.orders.services.views import OPEN_RESERVATIONS, REVIEWABLE, OrderViews
 from app.domains.commerce.state_machine import ORDER, RESERVATION
 from app.platform.audit.services.audit_service import AuditService
+from app.platform.notifications.services.tasks import ORDER_CONFIRM_REMINDER, RESERVATION_REVIEW, TaskService
 from app.platform.shops.services.sales_gate import ensure_shop_can_sell
 from app.platform.use.services.use_service import UseService
 from app.shared.clock import utcnow
@@ -76,6 +85,7 @@ class OrderLifecycleService:
         self.stock = stock
         self.catalog = catalog
         self.views = views
+        self.tasks = TaskService()
 
     # ================================================================== qoralama → tasdiq kutilmoqda
     async def submit(
@@ -151,9 +161,17 @@ class OrderLifecycleService:
         order.confirmed_at, order.confirmed_by = now, actor.membership_id
         if order.assigned_membership_id is None:  # biriktirilmagan bo'lsa — tasdiqlagan mas'ul bo'ladi
             order.assigned_membership_id = actor.membership_id
-        # TODO(S0-06): outbox — commerce.order.confirmed, commerce.reservation.created;
-        # xaridorga xabar — S4-06
-        return await self._finish(db, actor, order, rule.command, rule.from_status, None)
+        await reservation_event(db, actor, order, reservations, "created")
+        # xaridorga "tasdiqlandi" xabari — S4-06 (5b, xaridor kanallari bilan)
+        return await self._finish(
+            db,
+            actor,
+            order,
+            rule.command,
+            rule.from_status,
+            None,
+            event_extra={"reservation_ids": [r.id for r in reservations]},
+        )
 
     async def refresh_prices(
         self, db: AsyncSession, actor: ActorContext, order_id: UUID, expected_version: int, note: str | None
@@ -237,7 +255,8 @@ class OrderLifecycleService:
                 actor=actor,
                 entity_version=order.version,
             )
-            # TODO(S0-06): outbox — commerce.order.ready_for_pickup → xaridorga xabar (S4-06)
+            # xaridorga "olib ketishga tayyor" xabari — S4-06 (5b) shu event'ni tinglaydi
+            await order_event(db, actor, order, ORDER_EVENTS["MARK_READY"], ready_at=order.ready_at)
         return await self.orders.detail(db, actor, order)
 
     async def complete(
@@ -333,6 +352,15 @@ class OrderLifecycleService:
                 actor=actor,
                 entity_version=order.version,
                 reason=reason,
+            )
+            # Qaror qabul qilindi — joriy oyna vazifasi yopiladi; yangi muddatda rejali ish yangisini ochadi
+            await self.tasks.resolve(
+                db,
+                shop_id=order.shop_id,
+                actor=actor,
+                subject_type=ORDER,
+                subject_id=order.id,
+                types=[RESERVATION_REVIEW],
             )
             return await self.orders.detail(db, actor, order)
         rule = self.use.validate_transition(ORDER, order.status, "CANCELLED", "EXPIRE", actor)
@@ -473,6 +501,9 @@ class OrderLifecycleService:
             movements.append(Movement(r.branch_id, r.sku_id, "RELEASE", "RESERVATION", r.id, **held))
             r.status, r.closed_at = target, now
         await self.stock.apply(db, actor, movements, balances)
+        await reservation_event(
+            db, actor, order, reservations, "expired" if command == "EXPIRE" else "released"
+        )
 
     @staticmethod
     def _mark_cancelled(order: Order, actor: ActorContext, reason: str | None) -> None:
@@ -493,6 +524,8 @@ class OrderLifecycleService:
         command: str,
         from_status: str,
         reason: str | None,
+        *,
+        event_extra: dict[str, Any] | None = None,
     ) -> OrderOut:
         await db.flush()
         rule = self.use.registry.find(ORDER, from_status, command)
@@ -508,4 +541,35 @@ class OrderLifecycleService:
             reason=reason,
             diff={"status": {"old": from_status, "new": order.status}},
         )
+        event = ORDER_EVENTS.get(command)
+        if event is not None:  # erkin matnli sabab event'ga tushmaydi (PII bo'lishi mumkin) — faqat kod
+            extra: dict[str, Any] = dict(event_extra or {})
+            if command in CANCEL_REASON_CODES:
+                extra["reason_code"] = CANCEL_REASON_CODES[command]
+            elif command == "RAISE_EXCEPTION":
+                extra["reason_code"] = EXCEPTION_REASON_CODE
+            elif command == "COMPLETE":  # hisobot va kafolat uchun (05 §8.2)
+                extra["lines"] = [
+                    {
+                        "sku_id": line.sku_id,
+                        "qty": line.qty,
+                        "unit_price_minor": line.unit_price_uzs_minor,
+                        "line_total_minor": line.line_total_minor,
+                    }
+                    for line in await self.views.lines(db, order)
+                ]
+            await order_event(db, actor, order, event, from_status=from_status, **extra)
+        await self._resolve_tasks(db, actor, order)
         return await self.orders.detail(db, actor, order)
+
+    async def _resolve_tasks(self, db: AsyncSession, actor: ActorContext, order: Order) -> None:
+        """Sabab yo'qolgan vazifalar o'zi yopiladi: tasdiqlansa — tasdiq eslatmasi; yakunlansa — hammasi."""
+        if order.status in access.TERMINAL:
+            types = None
+        elif order.status != "PENDING_CONFIRMATION":
+            types = [ORDER_CONFIRM_REMINDER]
+        else:
+            return
+        await self.tasks.resolve(
+            db, shop_id=order.shop_id, actor=actor, subject_type=ORDER, subject_id=order.id, types=types
+        )

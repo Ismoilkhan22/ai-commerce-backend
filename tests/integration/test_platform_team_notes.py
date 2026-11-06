@@ -403,6 +403,43 @@ def test_dev_seed_builds_demo_data_and_is_idempotent(seed_urls: PgUrls) -> None:
     }
     pages = _sql(seed_urls.admin, "SELECT count(*) AS n FROM storefront.pages WHERE is_published")
     assert pages[0]["n"] == 15
+    # 5a: rejali ishlar bir marta — 24 soatlik eslatma, 72 soatlik band, eskirgan kurs;
+    # qayta seed — yangisi yo'q
+    tasks = {
+        r["type"]: r["n"]
+        for r in _sql(seed_urls.admin, "SELECT type, count(*) AS n FROM platform.staff_tasks GROUP BY type")
+    }
+    # kutayotgan tuzatish so'rovi (savdo demosi) ham vazifa bo'ldi — so'rov paytida ochiladi
+    assert tasks == {
+        "ORDER_CONFIRM_REMINDER": 1,
+        "RESERVATION_REVIEW": 1,
+        "EXCHANGE_RATE_STALE": 1,
+        "ADJUSTMENT_APPROVAL": 1,
+        "HANDOFF": 4,  # 5b demo suhbatlari: biri ochiq, uchtasini xodim oldi
+    }
+    assert (first.staff_tasks, second.staff_tasks) == (3, 0)
+    # 5b: sayt chati (3 ta ochiq sayt) + NoutbukUz'ning soxta boti; har holatdagi suhbat, biri buyurtmali
+    assert (first.messaging_channels, first.messaging_conversations) == (4, 4)
+    assert (second.messaging_channels, second.messaging_conversations) == (0, 0)
+    conversations = {
+        r["status"]: r["n"]
+        for r in _sql(
+            seed_urls.admin, "SELECT status, count(*) AS n FROM messaging.conversations GROUP BY status"
+        )
+    }
+    assert conversations == {"HUMAN_NEEDED": 1, "WAITING_CUSTOMER": 1, "RESOLVED": 2}
+    linked = _sql(
+        seed_urls.admin, "SELECT count(*) AS n FROM commerce.orders WHERE conversation_id IS NOT NULL"
+    )
+    assert linked[0]["n"] == 1
+    fake = _sql(
+        seed_urls.admin,
+        "SELECT token_enc, settings->>'fake' AS fake FROM messaging.channel_accounts "
+        "WHERE channel = 'TELEGRAM'",
+    )
+    assert [(r["token_enc"], r["fake"]) for r in fake] == [(None, "true")]
+    notified = _sql(seed_urls.admin, "SELECT count(*) AS n FROM platform.notifications")
+    assert notified[0]["n"] > 0
 
     shops = {
         r["slug"]: r

@@ -22,7 +22,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.shared.db.base import Base
 from app.shared.db.mixins import IdMixin
 
-FILE_PURPOSES = ("PRODUCT_IMAGE", "STOCK_EVIDENCE", "IMPORT_FILE", "EXPORT_FILE", "SITE_LOGO")
+FILE_PURPOSES = (
+    "PRODUCT_IMAGE",
+    "STOCK_EVIDENCE",
+    "IMPORT_FILE",
+    "EXPORT_FILE",
+    "SITE_LOGO",
+    "CHAT_ATTACHMENT",  # 5b: suhbat rasmi (xaridor yuborgan yoki operator biriktirgan), yopiq
+)
 
 
 class StoredFile(IdMixin, Base):

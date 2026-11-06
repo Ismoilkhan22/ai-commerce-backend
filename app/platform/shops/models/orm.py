@@ -84,6 +84,7 @@ class ShopPolicy(VersionMixin, Base):
             name="discount_limits",
         ),
         CheckConstraint("quote_ttl_hours > 0 AND low_stock_threshold >= 0", name="positive_values"),
+        CheckConstraint("handoff_reminder_minutes BETWEEN 1 AND 1440", name="handoff_reminder_minutes"),
         {"schema": "platform"},
     )
 
@@ -100,6 +101,9 @@ class ShopPolicy(VersionMixin, Base):
     low_stock_threshold: Mapped[int] = mapped_column(Integer, server_default="2")
     # Shop yetkazib beradimi: o'chiq bo'lsa sayt formasida faqat "olib ketish" (storefront.md §8)
     delivery_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # Operator kutayotgan suhbat eslatmasi va ish vaqti (DEC-139, 5-qaror; 5b — inbox ishlatadi)
+    handoff_reminder_minutes: Mapped[int] = mapped_column(Integer, server_default="15")
+    inbox_hours: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # bo'sh — doim ish vaqti
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.commerce.common import field, load_branch
+from app.domains.commerce.events import order_event
 from app.domains.commerce.orders.models.orm import Order, OrderLine
 from app.domains.commerce.orders.schemas import OrderLineIn
 from app.domains.commerce.orders.services.order_service import OrderService, next_order_number
@@ -40,6 +41,7 @@ from app.domains.commerce.orders.storefront_schemas import (
 )
 from app.domains.commerce.state_machine import ORDER
 from app.platform.audit.services.audit_service import AuditService
+from app.platform.notifications.services.notifications import NotificationService
 from app.platform.shops.models.orm import Branch, ShopPolicy
 from app.platform.shops.services.sales_gate import ensure_shop_can_sell
 from app.platform.use.services.use_service import UseService
@@ -115,6 +117,7 @@ class StorefrontOrderService:
         self.orders = orders
         self.catalog = catalog
         self.stock = stock
+        self.notifications = NotificationService()
 
     # ================================================================== buyurtma so'rovi
     async def request(
@@ -164,12 +167,27 @@ class StorefrontOrderService:
             entity_version=order.version,
             diff={"lines": len(data.lines), "source": "STOREFRONT"},
         )
+        await order_event(db, actor, order, "commerce.order.drafted")  # boshqa manbalardagidek (05 §8.2)
         # Darhol "Tasdiq kutilmoqda" — operatorga navbat (FSM-08: xaridor saytda yubordi)
         rule = self.use.validate_transition(ORDER, "DRAFT", "PENDING_CONFIRMATION", "SUBMIT", actor)
         order.status = rule.to_status
         order.submitted_at = now  # 24 soatlik eslatma shundan (DEC-104)
         await db.flush()
         await self.use.log_transition(db, entity_id=order.id, rule=rule, actor=actor)
+        await order_event(db, actor, order, "commerce.order.submitted", from_status="DRAFT")
+        await self.notifications.notify_staff(  # navbatdagi buyurtma — operatorlar va menejerlar (filial)
+            db,
+            shop_id=shop_id,
+            actor=actor,
+            template_key="staff.new_order",
+            aggregate_type=ORDER,
+            aggregate_id=order.id,
+            aggregate_version=order.version,
+            variables={"order_number": order.number},
+            roles=("SALES", "MANAGER", "OWNER"),
+            branch_id=order.branch_id,
+            dedup_scope="new",
+        )
         return CreatedRequest(order.id, await self._out(db, order, token))
 
     async def reissue(self, db: AsyncSession, shop_id: UUID, order_id: UUID) -> OrderRequestOut:

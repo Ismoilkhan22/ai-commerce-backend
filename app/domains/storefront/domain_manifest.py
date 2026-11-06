@@ -9,6 +9,7 @@ from app.domains.storefront.api.public_routes import router as public_router
 from app.domains.storefront.api.routes import router as panel_router
 from app.domains.storefront.permissions import STOREFRONT_PERMISSIONS, STOREFRONT_ROLE_GRANTS
 from app.domains.storefront.state_machine import SITE_RULES
+from app.domains.storefront.subscribers import invalidate_site_cache
 from app.shared.types.manifest import DomainManifest
 
 DOMAIN_MANIFEST = DomainManifest(
@@ -18,4 +19,5 @@ DOMAIN_MANIFEST = DomainManifest(
     state_machine_rules=SITE_RULES,
     permissions=STOREFRONT_PERMISSIONS,
     role_grants=STOREFRONT_ROLE_GRANTS,
+    event_subscribers=[invalidate_site_cache],  # sayt keshi event bilan (08 §4.3)
 )

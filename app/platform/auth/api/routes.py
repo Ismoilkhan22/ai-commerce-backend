@@ -140,6 +140,7 @@ async def me(ctx: AnyContext) -> MeOut:
         permissions=sorted(actor.permissions),
         shop=MeShop(id=shop.id, slug=shop.slug, name=shop.name, status=shop.status) if shop else None,
         branch_ids=sorted(actor.branch_ids) if actor.branch_ids is not None else None,
+        membership_id=actor.membership_id,
     )
 
 

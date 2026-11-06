@@ -74,6 +74,9 @@ class MeOut(BaseModel):
     permissions: list[str]
     shop: MeShop | None
     branch_ids: list[UUID] | None
+    membership_id: UUID | None = (
+        None  # shop panelida — joriy a'zolik (vazifa "menga" filtri); platformada yo'q
+    )
 
 
 class SessionOut(BaseModel):

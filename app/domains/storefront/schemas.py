@@ -187,6 +187,7 @@ class PublicSite(BaseModel):
     pickup_branch_count: int | None = None
     consent: PublicConsent | None = None
     legal: PublicLegal | None = None
+    chat_enabled: bool | None = None  # sayt chati yoqilgan (5b) — sayt chat tugmasini shunga qarab ko'rsatadi
 
 
 class PublicCategoryOut(BaseModel):

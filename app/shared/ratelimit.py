@@ -21,8 +21,11 @@ class RateLimiter(Protocol):
 
 
 class RedisRateLimiter:
-    def __init__(self, redis: Redis) -> None:
+    """`scale` — limitlar ko'paytmasi (faqat local/test, `RATE_LIMIT_SCALE`)."""
+
+    def __init__(self, redis: Redis, scale: int = 1) -> None:
         self.redis = redis
+        self._scale = scale
 
     async def hit(self, key: str, limit: int, window_seconds: int) -> int:
         window = int(time.time() // window_seconds)
@@ -30,16 +33,13 @@ class RedisRateLimiter:
         count = await self.redis.incr(redis_key)
         if count == 1:
             await self.redis.expire(redis_key, window_seconds)
-        if count > limit:
+        if count > limit * self._scale:
             return window_seconds - int(time.time() % window_seconds)
         return 0
 
 
 class MemoryRateLimiter:
-    """Bitta jarayon uchun. Faqat testlar va lokal ishlab chiqish.
-
-    `scale` limitlarni ko'paytiradi: e2e'da hamma brauzer bitta IP'dan kiradi.
-    """
+    """Bitta jarayon uchun. Faqat testlar va lokal ishlab chiqish. `scale` — `RedisRateLimiter` dagidek."""
 
     def __init__(self, scale: int = 1) -> None:
         self._counts: dict[str, int] = {}

@@ -117,6 +117,7 @@ async def list_orders(
         str | None, Query(max_length=100, description="Raqam (#1042), telefon yoki xaridor ismi")
     ] = None,
     needs_review: Annotated[bool, Query(description='"Ko\'rib chiqish kerak" — 24/72 soat')] = False,
+    number: Annotated[int | None, Query(ge=1, le=2_147_483_647, description="Aniq buyurtma raqami")] = None,
     sort: OrderSort = "-created_at",
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     cursor: Annotated[str | None, Query(max_length=500)] = None,
@@ -133,6 +134,7 @@ async def list_orders(
         sort=sort,
         limit=limit,
         cursor=cursor,
+        number=number,
     )
 
 

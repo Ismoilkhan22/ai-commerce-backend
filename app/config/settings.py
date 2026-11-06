@@ -8,7 +8,7 @@ from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -66,8 +66,23 @@ class Settings(BaseSettings):
     # Redis: db0 kesh va rate limit (08). Testlarda "memory".
     redis_url: str = "redis://localhost:6380/0"
     rate_limit_backend: Literal["redis", "memory"] = "redis"
-    # Faqat "memory" uchun: limitlar shu songa ko'paytiriladi (e2e'da hamma so'rov bitta IP'dan)
-    rate_limit_memory_scale: int = Field(default=1, ge=1, le=100)
+    # Limitlar shu songa ko'paytiriladi (Redis va xotira — ikkalasida). Faqat local/test: e2e'da hamma brauzer
+    # bitta IP'dan kiradi. Staging/production'da 1 dan katta bo'lsa — ishga tushmaydi (QA 5a, (c)).
+    # Eski nomi RATE_LIMIT_MEMORY_SCALE ham o'qiladi
+    rate_limit_scale: int = Field(
+        default=1, ge=1, le=100, validation_alias=AliasChoices("rate_limit_scale", "rate_limit_memory_scale")
+    )
+    # Fon ishlari navbati (arq) — db1; realtime (WS ticket, pub/sub) — db2 (06 §4.1, 08 §3).
+    # rate_limit_backend="memory" bo'lsa realtime ham xotirada (testlar, bitta jarayon)
+    arq_redis_url: str = "redis://localhost:6380/1"
+    realtime_redis_url: str = "redis://localhost:6380/2"
+    realtime_heartbeat_seconds: float = Field(default=25.0, gt=0, le=120)
+
+    # Platforma boti — xodimga Telegram xabari (DEC-129). Token yo'q — xabar yuborilmaydi (faqat log);
+    # webhook siri yo'q — /webhooks/platform-telegram o'chiq (404)
+    platform_telegram_bot_token: SecretStr | None = None
+    platform_telegram_bot_username: str | None = None
+    platform_telegram_webhook_secret: SecretStr | None = None
 
     # Auth (ADR-023, 10 §5)
     jwt_secret: SecretStr = SecretStr(_DEV_JWT_SECRET)
@@ -105,6 +120,15 @@ class Settings(BaseSettings):
     pii_hmac_key: SecretStr = SecretStr(_DEV_PII_HMAC_KEY)  # telefon bo'yicha qidirish (base64)
     idempotency_hash_key: SecretStr = SecretStr(_DEV_IDEMPOTENCY_HASH_KEY)
 
+    # Kanallar (5b). Telegram webhook manzili — API'ning ochiq manzili (prod: https://api.platforma.uz).
+    # Rejim: bo'sh — lokalda polling (ochiq manzil yo'q, worker getUpdates qiladi), boshqa muhitlarda webhook
+    messaging_webhook_base_url: str = "http://localhost:8000"
+    telegram_mode: Literal["webhook", "polling"] | None = None
+    # Instagram Direct — Meta ruxsati kelguncha o'chiq (DEC-116a, flag channel.instagram_dm)
+    feature_channel_instagram_dm: bool = False
+    instagram_app_secret: SecretStr | None = None
+    instagram_verify_token: SecretStr | None = None
+
     # Mijoz IP'si (rate limit): X-Forwarded-For faqat shu manzillardan kelsa hisobga olinadi (IP yoki CIDR).
     # Lokalda — o'z kompyuteri (sayt serveri va brauzer shu yerda; XFF'ni soxtalash lokalda ataylab mumkin).
     # Prod'da — Nginx va shop sayti serverining ichki manzili (22 §8)
@@ -113,6 +137,12 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def effective_telegram_mode(self) -> str:
+        if self.telegram_mode is not None:
+            return self.telegram_mode
+        return "polling" if self.app_env == "local" else "webhook"
 
     @model_validator(mode="after")
     def _no_local_defaults_outside_dev(self) -> Self:
@@ -128,7 +158,16 @@ class Settings(BaseSettings):
                 )
             if not self.cookie_secure:
                 raise ValueError(f"cookie_secure {self.app_env} muhitida o'chirilmaydi")
-            for name in ("app_public_url", "platform_app_public_url", "public_files_url"):
+            if self.rate_limit_scale != 1:
+                raise ValueError(
+                    f"rate_limit_scale {self.app_env} muhitida faqat 1 (limitlar kamaytirilmaydi)"
+                )
+            for name in (
+                "app_public_url",
+                "platform_app_public_url",
+                "public_files_url",
+                "messaging_webhook_base_url",
+            ):
                 if (make_url_host(getattr(self, name)) or "") in _LOCAL_HOSTS:
                     raise ValueError(
                         f"{name} {self.app_env} muhitida lokal manzil bo'lmasin (havolalar ishlamaydi)"

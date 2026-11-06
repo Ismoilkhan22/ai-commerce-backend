@@ -2,7 +2,7 @@
 SCHEMAS := platform audit catalog commerce messaging sales_ai storefront support reporting
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: install up down bootstrap run lint format typecheck imports test check migrate seed
+.PHONY: install up down bootstrap run worker outbox-worker task-worker scheduler lint format typecheck imports test check migrate seed
 
 install:
 	uv sync
@@ -17,6 +17,20 @@ down:
 # (TRUSTED_PROXIES, app/shared/client_ip.py) — shuning uchun --no-proxy-headers
 run:
 	uv run uvicorn app.main:app --port 8000 --reload --no-access-log --no-proxy-headers
+
+# Fon ishlari (06 §2, 5a): lokalda uchalasi bitta jarayonda — outbox_worker + task_worker (arq) + scheduler.
+# Production'da alohida: outbox-worker, task-worker, scheduler (22 §5)
+worker:
+	uv run python -m app.workers.dev
+
+outbox-worker:
+	uv run python -m app.workers.outbox_worker
+
+task-worker:
+	uv run arq app.workers.task_worker.WorkerSettings
+
+scheduler:
+	uv run python -m app.workers.scheduler
 
 # Rollar (app_migrator, app_runtime) + schemalar + huquqlar (07 §10)
 bootstrap:

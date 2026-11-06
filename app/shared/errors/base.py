@@ -126,6 +126,14 @@ class FileInUseError(ConflictError):
     abstract = False
 
 
+class OrderLinkedElsewhereError(ConflictError):
+    """Buyurtma boshqa suhbatga bog'langan: jim ko'chirilmaydi — holat xabari boshqa xaridorga ketmasin
+    (QA 5b M3). Qayta bog'lash — aniq `relink: true` va buyurtma versiyasi bilan."""
+
+    code = "ORDER_LINKED_ELSEWHERE"
+    abstract = False
+
+
 class ShopHasOpenOrdersError(ConflictError):
     """Shopni yopib bo'lmaydi: ochiq buyurtmalar bor — avval yakunlanadi yoki bekor qilinadi (TC-023)."""
 
@@ -137,6 +145,22 @@ class SiteNotAvailableError(ConflictError):
     """Shop sayti xaridorga hozir ochiq emas: `details.state` — COMING_SOON yoki PAUSED (storefront.md §0)."""
 
     code = "SITE_NOT_AVAILABLE"
+    abstract = False
+
+
+class ImportAlreadyRunningError(ConflictError):
+    """Shopda bitta faol import: sinov, yozish yoki qoldiq bosqichidagisi tugamaguncha yangisi boshlanmaydi
+    (18 §3, 4-qoida)."""
+
+    code = "IMPORT_ALREADY_RUNNING"
+    abstract = False
+
+
+class ImportBusyError(ConflictError):
+    """Import fon bosqichi aynan shu daqiqada yozuvni yangilayapti (QA F5): qulf kutilmaydi, darhol 409 —
+    bir zumdan keyin qayta urinish mumkin."""
+
+    code = "IMPORT_BUSY"
     abstract = False
 
 

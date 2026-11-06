@@ -1,6 +1,6 @@
 """catalog ruxsatlari va rollar (10 §6.2, business/04, DEC-131, DEC-133).
 
-Import (`catalog.import.*`) — 5-modul, PC moslik (`catalog.compatibility.check`) — 6-modul bilan qo'shiladi.
+PC moslik (`catalog.compatibility.check`) — 6-modul bilan qo'shiladi.
 """
 
 from __future__ import annotations
@@ -18,11 +18,15 @@ MANAGE = VIEW | frozenset(
     }
 )
 
-CATALOG_PERMISSIONS = sorted(MANAGE | {"catalog.product.archive"})
+# Import (5c, 18 §13): ega va menejer — to'liq; omborchi — faqat qoldiq importi (STOCK_ONLY, DEC-140,
+# 2-qaror) — service `catalog.product.edit` va `commerce.stock.receive` bo'yicha cheklaydi
+IMPORT = "catalog.import.run"
+
+CATALOG_PERMISSIONS = sorted(MANAGE | {"catalog.product.archive", IMPORT})
 
 CATALOG_ROLE_GRANTS: Mapping[str, frozenset[str]] = {
-    "OWNER": MANAGE | {"catalog.product.archive"},  # arxivlash — faqat ega (DEC-133)
-    "MANAGER": MANAGE,
+    "OWNER": MANAGE | {"catalog.product.archive", IMPORT},  # arxivlash — faqat ega (DEC-133)
+    "MANAGER": MANAGE | {IMPORT},
     "SALES": VIEW,
-    "WAREHOUSE": VIEW,
+    "WAREHOUSE": VIEW | {IMPORT},
 }

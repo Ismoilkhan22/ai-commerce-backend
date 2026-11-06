@@ -31,6 +31,7 @@ from app.domains.commerce.common import (
     member_names,
     read_cursor,
 )
+from app.domains.commerce.events import stock_changed
 from app.domains.commerce.inventory.models.orm import StockAdjustment, StockBalance, StockLedger, StockReceipt
 from app.domains.commerce.inventory.schemas import (
     AdjustmentIn,
@@ -51,6 +52,8 @@ from app.domains.commerce.inventory.schemas import (
 )
 from app.domains.commerce.schemas import member_ref
 from app.platform.audit.services.audit_service import AuditService
+from app.platform.notifications.services.notifications import NotificationService
+from app.platform.notifications.services.tasks import ADJUSTMENT_APPROVAL, REQUESTER_PARAM, TaskService
 from app.platform.storage.services.file_service import FileService
 from app.shared.clock import utcnow
 from app.shared.contracts.catalog import CatalogQueryPort, SkuSnapshot
@@ -108,6 +111,8 @@ class StockService:
         self.audit = audit
         self.files = files
         self.catalog = catalog
+        self.tasks = TaskService()
+        self.notifications = NotificationService()
 
     # ================================================================== yadro
     async def lock_balances(
@@ -199,7 +204,8 @@ class StockService:
         await db.flush()
         db.add_all(entries)
         await db.flush()
-        # TODO(S0-06): outbox — `commerce.stock.changed` (har SKU; sayt keshi, AI qidiruvi)
+        # Sayt keshi, AI qidiruvi va panel signali (05 §8.2) — absolyut qiymatlar bilan
+        await stock_changed(db, actor, entries, balances)
         return entries
 
     # ================================================================== qoldiq va daftar
@@ -395,9 +401,8 @@ class StockService:
 
     async def reconcile(self, db: AsyncSession, shop_id: UUID) -> list[dict[str, Any]]:
         """Daftar yig'indisi qoldiq bilan teng ekanini tekshiradi (12 §6.1). Farqlar ro'yxati (bo'sh —
-        hammasi joyida).
-
-        TODO(S0-06): har kecha rejali ish sifatida, farq bo'lsa — alert (5-modul).
+        hammasi joyida). Har kecha `stock_reconcile` rejali ishi chaqiradi: farq bo'lsa — vazifa va alert,
+        qoldiq avtomatik tuzatilmaydi (DEC-138, 5-qaror).
         """
         sums = (
             select(
@@ -435,7 +440,9 @@ class StockService:
         return mismatches
 
     # ================================================================== kirim
-    async def create_receipt(self, db: AsyncSession, actor: ActorContext, data: ReceiptIn) -> ReceiptOut:
+    async def create_receipt(
+        self, db: AsyncSession, actor: ActorContext, data: ReceiptIn, *, import_batch_id: UUID | None = None
+    ) -> ReceiptOut:
         assert actor.shop_id is not None
         await load_branch(db, actor, data.branch_id)
         quantities: dict[UUID, int] = {}
@@ -448,6 +455,7 @@ class StockService:
             branch_id=data.branch_id,
             note=data.note or None,
             received_by=actor.membership_id,
+            import_batch_id=import_batch_id,  # katalog importidan (5c)
         )
         db.add(receipt)
         await db.flush()
@@ -574,9 +582,16 @@ class StockService:
 
     # ================================================================== tuzatish
     async def create_adjustment(
-        self, db: AsyncSession, actor: ActorContext, data: AdjustmentIn
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        data: AdjustmentIn,
+        *,
+        import_batch_id: UUID | None = None,
+        target_on_hand: int | None = None,
     ) -> AdjustmentOut:
-        """Omborchi — so'rov (PENDING); ega/menejer (`adjust_approve`) — darhol qo'llanadi (DEC-134)."""
+        """Omborchi — so'rov (PENDING); ega/menejer (`adjust_approve`) — darhol qo'llanadi (DEC-134).
+        `target_on_hand` — import tuzatishi: farq tasdiq paytida joriy qoldiqdan qayta hisoblanadi (QA F3)."""
         assert actor.shop_id is not None
         await load_branch(db, actor, data.branch_id)
         if data.kind == "ADJUSTMENT" and data.delta == 0:
@@ -606,6 +621,8 @@ class StockService:
             evidence_file_id=data.evidence_file_id,
             status="PENDING",
             requested_by=actor.membership_id,
+            import_batch_id=import_batch_id,  # katalog importi farqi (5c, DEC-140)
+            target_on_hand=target_on_hand,
         )
         db.add(adjustment)
         await db.flush()
@@ -614,6 +631,7 @@ class StockService:
             action = "commerce.stock.adjusted"
         else:
             action = "commerce.stock.adjustment_requested"
+            await self._request_approval(db, actor, adjustment)
         await self.audit.record(
             db,
             action=action,
@@ -636,20 +654,35 @@ class StockService:
     ) -> AdjustmentOut:
         adjustment = await self._pending(db, actor, adjustment_id, expected_version, "APPROVE")
         assert actor.shop_id is not None
+        balances = await self.lock_balances(db, actor.shop_id, [(adjustment.branch_id, adjustment.sku_id)])
+        balance = balances.get((adjustment.branch_id, adjustment.sku_id))
+        unchanged = False
+        if adjustment.target_on_hand is not None:
+            # Import tuzatishi: maqsad — absolyut qoldiq; farq HOZIRGI qoldiqdan (QA F3). So'rovdan keyin
+            # sotuv yoki kirim bo'lgan bo'lsa ham natija fayldagi raqamga teng bo'ladi.
+            delta = adjustment.target_on_hand - (balance.on_hand if balance else 0)
+            unchanged = delta == 0
+            if not unchanged:
+                adjustment.delta = delta
         # So'rovdan keyin mahsulot arxivlangan bo'lishi mumkin: oshiruvchi tuzatish endi qo'llanmaydi
         snapshots = await self.catalog.get_skus(db, actor.shop_id, [adjustment.sku_id])
         self._ensure_known(
             snapshots,
             [adjustment.sku_id],
             None,
-            allow_archived=self._decreases(adjustment.kind, adjustment.delta),
+            allow_archived=unchanged or self._decreases(adjustment.kind, adjustment.delta),
         )
-        balances = await self.lock_balances(db, actor.shop_id, [(adjustment.branch_id, adjustment.sku_id)])
-        # Qayta tekshiruv: so'rovdan keyin qoldiq o'zgargan bo'lishi mumkin (TC-CON-12)
-        self._check_adjustment(
-            balances.get((adjustment.branch_id, adjustment.sku_id)), adjustment.kind, adjustment.delta
-        )
-        await self._apply_adjustment(db, actor, adjustment, balances, note)
+        if unchanged:  # qoldiq allaqachon maqsadda — daftarga yozuv yo'q, tuzatish yopiladi
+            current = balance.on_hand if balance else 0
+            adjustment.status, adjustment.decided_by = "APPROVED", actor.membership_id
+            adjustment.decided_at, adjustment.decision_note = utcnow(), note
+            adjustment.on_hand_before = adjustment.on_hand_after = current
+            await db.flush()
+        else:
+            # Qayta tekshiruv: so'rovdan keyin qoldiq o'zgargan bo'lishi mumkin (TC-CON-12)
+            self._check_adjustment(balance, adjustment.kind, adjustment.delta)
+            await self._apply_adjustment(db, actor, adjustment, balances, note)
+        await self._close_approval(db, actor, adjustment)
         await self.audit.record(
             db,
             action="commerce.stock.adjustment_approved",
@@ -662,6 +695,44 @@ class StockService:
         )
         return await self._adjustment_out(db, actor, adjustment)
 
+    async def supersede_import_adjustments(
+        self, db: AsyncSession, actor: ActorContext, branch_id: UUID, sku_id: UUID, note: str
+    ) -> int:
+        """Shu SKU+filial uchun kutilayotgan ESKI import tuzatishlari rad etiladi (QA F3): yangi import ularni
+        almashtiradi, tasdiqlovchi bir xil ikki so'rovni ko'rmaydi va farqlar ustma-ust qo'shilmaydi."""
+        assert actor.shop_id is not None
+        stale = list(
+            (
+                await db.execute(
+                    select(StockAdjustment)
+                    .where(
+                        StockAdjustment.shop_id == actor.shop_id,
+                        StockAdjustment.branch_id == branch_id,
+                        StockAdjustment.sku_id == sku_id,
+                        StockAdjustment.status == "PENDING",
+                        StockAdjustment.import_batch_id.is_not(None),
+                    )
+                    .with_for_update()
+                )
+            ).scalars()
+        )
+        for adjustment in stale:
+            adjustment.status, adjustment.decided_by = "REJECTED", actor.membership_id
+            adjustment.decided_at, adjustment.decision_note = utcnow(), note
+            await db.flush()
+            await self._close_approval(db, actor, adjustment)
+            await self.audit.record(
+                db,
+                action="commerce.stock.adjustment_superseded",
+                entity_type=ADJUSTMENT,
+                entity_id=adjustment.id,
+                actor=actor,
+                entity_version=adjustment.version,
+                reason=note,
+                diff={"status": {"old": "PENDING", "new": "REJECTED"}},
+            )
+        return len(stale)
+
     async def reject_adjustment(
         self, db: AsyncSession, actor: ActorContext, adjustment_id: UUID, expected_version: int, note: str
     ) -> AdjustmentOut:
@@ -671,6 +742,7 @@ class StockService:
         adjustment.decided_at = utcnow()
         adjustment.decision_note = note
         await db.flush()
+        await self._close_approval(db, actor, adjustment)
         await self.audit.record(
             db,
             action="commerce.stock.adjustment_rejected",
@@ -753,6 +825,45 @@ class StockService:
             raise ValidationError("Unknown SKU", fields=unknown)
         if archived and not allow_archived:
             raise ProductNotAvailableError("Product is archived", lines=archived)
+
+    async def _request_approval(
+        self, db: AsyncSession, actor: ActorContext, adjustment: StockAdjustment
+    ) -> None:
+        """Omborchi so'radi — menejer va egaga vazifa va xabar (DEC-134). Hal qilinsa vazifa o'zi yopiladi."""
+        assert actor.shop_id is not None
+        await self.tasks.open(
+            db,
+            shop_id=actor.shop_id,
+            actor=actor,
+            type=ADJUSTMENT_APPROVAL,
+            subject_type=ADJUSTMENT,
+            subject_id=adjustment.id,
+            dedup_key=f"adjustment_approval:{adjustment.id}",
+            assignee_role="MANAGER",
+            branch_id=adjustment.branch_id,
+            params={"kind": adjustment.kind, "delta": adjustment.delta, REQUESTER_PARAM: actor.membership_id},
+        )
+        await self.notifications.notify_staff(
+            db,
+            shop_id=actor.shop_id,
+            actor=actor,
+            template_key="staff.adjustment_approval",
+            aggregate_type=ADJUSTMENT,
+            aggregate_id=adjustment.id,
+            aggregate_version=adjustment.version,
+            variables={"kind": adjustment.kind, "delta": adjustment.delta},
+            roles=("OWNER", "MANAGER"),
+            branch_id=adjustment.branch_id,
+            exclude=[actor.membership_id],
+        )
+
+    async def _close_approval(
+        self, db: AsyncSession, actor: ActorContext, adjustment: StockAdjustment
+    ) -> None:
+        assert actor.shop_id is not None
+        await self.tasks.resolve(
+            db, shop_id=actor.shop_id, actor=actor, subject_type=ADJUSTMENT, subject_id=adjustment.id
+        )
 
     @staticmethod
     def _decreases(kind: str, delta: int) -> bool:
@@ -887,6 +998,20 @@ class StockService:
         files = await self.files.by_ids(
             db, actor.shop_id, [r.evidence_file_id for r in rows if r.evidence_file_id]
         )
+        pending = [(r.branch_id, r.sku_id) for r in rows if r.status == "PENDING"]
+        current: dict[Key, int] = {}
+        if pending:  # tasdiqlovchi uchun "maqsad X (hozir Y)" (QA F3)
+            current = {
+                (b, s): on_hand
+                for b, s, on_hand in (
+                    await db.execute(
+                        select(StockBalance.branch_id, StockBalance.sku_id, StockBalance.on_hand).where(
+                            StockBalance.shop_id == actor.shop_id,
+                            tuple_(StockBalance.branch_id, StockBalance.sku_id).in_(pending),
+                        )
+                    )
+                ).all()
+            }
         result = []
         for r in rows:
             snap = skus.get(r.sku_id)
@@ -917,6 +1042,10 @@ class StockService:
                     decision_note=r.decision_note,
                     on_hand_before=r.on_hand_before,
                     on_hand_after=r.on_hand_after,
+                    target_on_hand=r.target_on_hand,
+                    current_on_hand=(
+                        current.get((r.branch_id, r.sku_id), 0) if r.status == "PENDING" else None
+                    ),
                     version=r.version,
                 )
             )

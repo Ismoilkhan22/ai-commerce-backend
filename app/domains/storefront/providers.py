@@ -20,6 +20,7 @@ from app.platform.use.services.use_service import UseService
 from app.shared.cache import Cache
 from app.shared.contracts.catalog import CatalogQueryPort
 from app.shared.contracts.commerce import StockQueryPort
+from app.shared.contracts.messaging import ChatAvailabilityPort
 
 
 @dataclass(frozen=True)
@@ -39,13 +40,14 @@ def build_storefront_services(
     *,
     secret: str,
     site_url_template: str,
+    chat: ChatAvailabilityPort | None = None,
 ) -> StorefrontServices:
     preview = PreviewSigner(secret)
     gate = SiteGate(cache, preview)
     return StorefrontServices(
         gate=gate,
         sites=SiteService(use, audit, files, cache, preview, site_url_template),
-        public=PublicService(catalog, stock, files, cache, gate, site_url_template),
+        public=PublicService(catalog, stock, files, cache, gate, site_url_template, chat),
     )
 
 

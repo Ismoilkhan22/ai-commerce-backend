@@ -1,0 +1,216 @@
+// =====================================================================
+// AI Commerce OS — katalog importi (CSV/XLSX): catalog schemasiga qo‘shimcha + commerce natija jadvali (5-modul, S1-06)
+// Holat: TAKLIF 2026-10-26 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar ro'yxati: catalog_import.md oxirida. Tasdiqlangan catalog.dbml (DEC-133) o‘zgartirilmaydi —
+//        bu jadvallar unga QO‘SHILADI.
+// Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
+// Izohlar: db/catalog_import.md
+// Manba hujjatlar: engineering/18 (katalog importi), 05 §8.1–§8.2, 06 §4.2, 07 §4.3, 10 §4, 26 §5;
+//                  business/02 M04–M06; business/03 BL-011…BL-015, BL-019, BL-022; DEC-011, DEC-121, DEC-134, DEC-136
+// =====================================================================
+
+Project ai_commerce_os_catalog_import {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Oqim (18 §2):** fayl → moslash → sinov (dry-run, hech narsa yozilmaydi) → ko‘rib chiqish → tasdiq →
+  commit (arq: catalog_import, 500 qatorlik bo‘laklar) → catalog.import.completed →
+  commerce qoldiq qatorlarini o‘zi qo‘llaydi → commerce.import_stock.applied → import COMPLETED.
+
+  **Qoldiqning yagona yozuvchisi — commerce (BL-019, BL-022):** catalog qoldiq jadvaliga tegmaydi, faqat
+  import_stock_rows staging’ga yozadi.
+
+  **Saqlash:** import_rows va import_stock_rows — 30 kun; asl fayl — platform.stored_files (IMPORT_FILE, private), 30 kun.
+  '''
+}
+
+Enum catalog.import_status {
+  UPLOADED [note: 'Fayl yuklandi, ustunlar aniqlandi']
+  MAPPED [note: 'Ustunlar moslandi, siyosat tanlandi']
+  VALIDATING [note: 'Sinov (dry-run) ishlayapti']
+  VALIDATED [note: 'Sinov tugadi — ko‘rib chiqish va tasdiq kutilmoqda']
+  COMMITTING [note: 'Mahsulot va narxlar yozilmoqda']
+  STOCK_PENDING [note: 'Katalog qismi tugadi, qoldiqni commerce qo‘llamoqda']
+  COMPLETED
+  FAILED [note: 'Xato — error_code, qayta urinish mumkin bo‘lgan joydan']
+  EXPIRED [note: 'VALIDATED holatda 24 soat tasdiqlanmadi yoki bekor qilindi']
+}
+
+Enum catalog.import_conflict_policy {
+  CREATE_ONLY [note: 'Faqat yangi sku_code; mavjudlari o‘tkazib yuboriladi']
+  UPDATE_EXISTING [note: 'Standart: mavjud SKU yangilanadi, narx — yangi price_version']
+  UPDATE_PRICE_ONLY [note: 'Faqat narx va valyuta']
+}
+
+Enum catalog.import_file_format {
+  XLSX
+  CSV
+}
+
+Enum catalog.import_row_action {
+  CREATE
+  UPDATE
+  SKIP
+  ERROR
+}
+
+Enum catalog.import_row_result {
+  CREATED
+  UPDATED
+  SKIPPED
+  ERROR
+}
+
+Enum catalog.import_spec_match {
+  MPN [note: 'MPN aniq mos — AUTO_MPN']
+  MODEL [note: 'Model nomi aniq mos — AUTO_MODEL']
+  MULTIPLE [note: 'Bir nechta nomzod — foydalanuvchi tanlaydi']
+  NONE [note: 'Kutubxonada yo‘q — "yangi model so‘rovi"']
+  NOT_APPLICABLE [note: 'PC qismi emas']
+}
+
+Enum commerce.import_stock_result {
+  APPLIED [note: 'Kirim yoki tuzatish qo‘llandi']
+  NO_CHANGE [note: 'Farq 0']
+  PENDING_APPROVAL [note: 'Omborchi importi — tuzatish so‘rovi menejer/ega tasdig‘ini kutmoqda (DEC-134)']
+  ERROR
+}
+
+// ---------------------------------------------------------------------
+// catalog — import jarayoni
+// ---------------------------------------------------------------------
+
+Table catalog.import_batches {
+  id uuid [pk]
+  shop_id uuid [not null]
+  file_id uuid [not null, note: 'platform.stored_files.id — purpose IMPORT_FILE, private']
+  original_filename text [not null, note: 'Tozalangan nom (bidi belgilarsiz)']
+  file_format catalog.import_file_format [not null]
+  sheet_name text [note: 'XLSX varag‘i']
+  status catalog.import_status [not null, default: 'UPLOADED']
+  conflict_policy catalog.import_conflict_policy [not null, default: 'UPDATE_EXISTING']
+  mapping jsonb [note: 'Fayl ustuni → maydon (sku_code, title, price, quantity, ...)']
+  mapping_id uuid [note: 'Saqlangan shablondan olingan bo‘lsa']
+  detected_columns jsonb [note: 'Sarlavhalar va moslash takliflari']
+  default_branch_id uuid [note: 'platform.branches.id — branch ustuni bo‘lmasa qoldiq shu filialga']
+  has_stock_rows boolean [not null, default: false, note: 'quantity ustuni bor va commit qiluvchida qoldiq huquqi bor']
+  total_rows int [not null, default: 0]
+  processed_rows int [not null, default: 0, note: 'Progress va to‘xtagan joydan davom etish']
+  stats jsonb [not null, default: '{}', note: 'created, updated, skipped, errors, stock_applied, stock_pending, stock_errors']
+  error_code text [note: 'FAILED sababi — matnsiz kod']
+  heartbeat_at timestamptz [note: 'Worker tirikligi — 10 daqiqa jim bo‘lsa rekonsilyatsiya qayta qo‘yadi (06 §6)']
+  created_by uuid [not null, note: 'platform.memberships.id']
+  committed_by uuid [note: 'Tasdiqlagan xodim']
+  validated_at timestamptz
+  committed_at timestamptz
+  completed_at timestamptz
+  expires_at timestamptz [note: 'VALIDATED + 24 soat']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, created_at)
+    shop_id [unique, note: 'Partial: WHERE status IN (VALIDATING, COMMITTING, STOCK_PENDING) — shopda bitta faol import (409 IMPORT_ALREADY_RUNNING)']
+  }
+  Note: 'Bitta import jarayoni (18 §10 holatlari). Audit’da har o‘zgargan SKU import_batch_id bilan. RLS (FORCE).'
+}
+
+Table catalog.import_mappings {
+  id uuid [pk]
+  shop_id uuid [not null]
+  name text [not null, note: '"Asosiy prays-list"']
+  mapping jsonb [not null]
+  conflict_policy catalog.import_conflict_policy [not null, default: 'UPDATE_EXISTING']
+  created_by uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, name) [unique]
+  }
+  Note: 'Shopning saqlangan ustun moslash shabloni — keyingi importda avtomatik taklif. RLS (FORCE).'
+}
+
+Table catalog.import_rows {
+  shop_id uuid [not null]
+  batch_id uuid [not null]
+  row_number int [not null, note: 'Fayldagi qator raqami (sarlavhadan keyin 2 dan)']
+  sku_code_normalized text [note: 'Registrsiz, bo‘sh joysiz — fayl ichidagi takrorni topish uchun']
+  row_values jsonb [not null, note: 'Normallashtirilgan qiymatlar: title, category, price_minor, currency, quantity, ...']
+  action catalog.import_row_action [not null, note: 'Sinov natijasi']
+  errors jsonb [not null, default: '[]', note: '[{field, code}] — REQUIRED, INVALID_NUMBER, UNSAFE_VALUE, ... (18 §11)']
+  spec_match catalog.import_spec_match [not null, default: 'NOT_APPLICABLE']
+  spec_id uuid [note: 'Tanlangan yoki topilgan kutubxona modeli']
+  selected boolean [not null, default: true, note: 'Foydalanuvchi commit’dan chiqarib qo‘yishi mumkin']
+  result catalog.import_row_result [note: 'Commit natijasi']
+  product_id uuid
+  sku_id uuid
+  image_results jsonb [note: 'Rasm URL’lari natijasi: [{url_hash, status, error_code}] — URL’ning o‘zi row_values ichida']
+
+  indexes {
+    (shop_id, batch_id, row_number) [pk]
+    (shop_id, batch_id, sku_code_normalized)
+    (shop_id, batch_id, action)
+  }
+  Note: 'Sinov va commit natijasi har qator uchun. Xatolar CSV’si shu jadvaldan. 30 kun saqlanadi. RLS (FORCE).'
+}
+
+Table catalog.import_stock_rows {
+  shop_id uuid [not null]
+  batch_id uuid [not null]
+  sku_id uuid [not null]
+  branch_id uuid [not null, note: 'platform.branches.id']
+  quantity int [not null, note: 'CHECK >= 0 — fayldagi absolyut qoldiq']
+  row_number int [not null, note: 'Xato hisobotini qatorga bog‘lash uchun']
+
+  indexes {
+    (shop_id, batch_id, sku_id, branch_id) [pk, note: 'Bir importda bir SKU bir filialda bir marta']
+  }
+  Note: '''
+  Staging: catalog yozadi, commerce `CatalogQueryPort.get_import_stock_rows()` bilan 500 tadan o‘qiydi (18 §7).
+  30 kun saqlanadi. RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// commerce — qoldiq natijasi
+// ---------------------------------------------------------------------
+
+Table commerce.import_stock_results {
+  shop_id uuid [not null]
+  batch_id uuid [not null, note: 'catalog.import_batches.id — FK’siz (boshqa schema)']
+  sku_id uuid [not null]
+  branch_id uuid [not null]
+  result commerce.import_stock_result [not null]
+  error_code text [note: 'STOCK_BELOW_COMMITTED, PRODUCT_NOT_AVAILABLE, ...']
+  receipt_id uuid [note: 'commerce.stock_receipts.id — yangi SKU uchun kirim']
+  adjustment_id uuid [note: 'commerce.stock_adjustments.id — mavjud SKU farqi']
+  applied_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, batch_id, sku_id, branch_id) [pk, note: 'Idempotency: event qayta kelsa qator qayta qo‘llanmaydi (TC-IMP-09)']
+  }
+  Note: '''
+  Har staging qatori uchun commerce natijasi. catalog `CommerceQueryPort.get_import_stock_results()` bilan o‘qiydi.
+  Qoldiq faqat oddiy hujjatlar orqali o‘zgaradi: yangi SKU → kirim (stock_receipts), mavjud → tuzatish (stock_adjustments).
+  RLS (FORCE).
+  '''
+}
+
+Ref: catalog.import_rows.(shop_id, batch_id) > catalog.import_batches.(shop_id, id) [delete: cascade]
+Ref: catalog.import_stock_rows.(shop_id, batch_id) > catalog.import_batches.(shop_id, id) [delete: cascade]
+Ref: catalog.import_batches.(shop_id, mapping_id) > catalog.import_mappings.(shop_id, id)
+
+TableGroup import_jarayoni {
+  catalog.import_batches
+  catalog.import_mappings
+  catalog.import_rows
+  catalog.import_stock_rows
+}
+
+TableGroup qoldiq_natijasi {
+  commerce.import_stock_results
+}

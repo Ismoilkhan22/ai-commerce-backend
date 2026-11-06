@@ -1,0 +1,152 @@
+// =====================================================================
+// AI Commerce OS — fon ishlari: outbox, event qabul qilish, dead-letter, rejali ishlar jurnali (5-modul, S0-06)
+// Holat: TAKLIF 2026-10-26 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar ro'yxati: jobs.md oxirida.
+// Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
+// Izohlar: db/jobs.md
+// Manba hujjatlar: engineering/05 (event va outbox), 06 (fon vazifalari, rejali ishlar), 07 §5, §10, 09, 10 §4,
+//                  12 §9, 22; engineering/27 S0-06, TD-01, TD-02; ADR-033
+// Hajm: outbox_events va consumer_receipts — HAR domen schemasida bir xil (diagrammada bittasi — platform’dagi),
+//       platform.dead_letters, platform.job_runs. Arq navbatlari Redis’da (db1) — bazada jadval yo‘q.
+// =====================================================================
+
+Project ai_commerce_os_jobs {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Asosiy qoida (ADR-033):** service hech qachon to‘g‘ridan-to‘g‘ri arq’ga vazifa qo‘ymaydi. Biznes o‘zgarishi va
+  outbox qatori — bitta tranzaksiyada. outbox_worker qatorni oladi va har subscriber uchun arq vazifasi qo‘yadi.
+  COMMIT bilan navbat orasida server o‘chsa ham hech narsa yo‘qolmaydi.
+
+  **Qaysi schemalarda:** platform, catalog, commerce, messaging, storefront (5-modul); sales_ai, support,
+  reporting — o‘z modullari bilan. Har schemada aynan bir xil ikki jadval: outbox_events, consumer_receipts.
+  Diagrammada faqat platform’dagisi ko‘rsatilgan.
+
+  **PII yo‘q:** envelope’da faqat ID va minimal fakt (05 §3.1). Test: tests/architecture/test_event_payloads.py.
+  '''
+}
+
+Enum platform.outbox_status {
+  PENDING [note: 'Navbatga qo‘yilmagan yoki Redis xatosidan keyin qayta urinish kutilmoqda']
+  PUBLISHED [note: 'Har subscriber uchun arq vazifasi qo‘yildi — 14 kundan keyin o‘chiriladi']
+  DEAD [note: 'Dasturiy xato: noma’lum event_type yoki buzilgan envelope. Redis xatosi hech qachon DEAD qilmaydi']
+}
+
+Enum platform.dead_letter_status {
+  OPEN [note: 'Ko‘rib chiqilmagan — alert']
+  REPLAYED [note: 'Platforma admini qayta yubordi (consumer_receipts tufayli bajarilgan ish takrorlanmaydi)']
+  IGNORED [note: 'Ataylab qayta yuborilmaydi — sabab bilan']
+}
+
+Enum platform.job_run_status {
+  RUNNING
+  OK
+  FAILED
+  SKIPPED [note: 'Boshqa nusxa job advisory lock’ni ushlab turgan edi']
+}
+
+// ---------------------------------------------------------------------
+// Outbox va event qabul qilish (har domen schemasida bir xil)
+// ---------------------------------------------------------------------
+
+Table platform.outbox_events {
+  event_id uuid [pk, note: 'UUIDv7 — envelope.event_id, dedup kaliti']
+  event_type text [not null, note: '<domain>.<entity>.<action>, masalan commerce.order.confirmed']
+  shop_id uuid [note: 'Platforma darajasidagi kam event’larda NULL']
+  aggregate_type text [not null]
+  aggregate_id uuid [not null]
+  aggregate_version bigint [not null, note: 'Tartib uchun — consumer kichik versiyani e’tiborsiz qoldiradi']
+  envelope jsonb [not null, note: 'K-08 envelope: actor, traceparent, correlation_id, causation_id, payload (PII’siz)']
+  status platform.outbox_status [not null, default: 'PENDING']
+  attempts int [not null, default: 0]
+  next_attempt_at timestamptz [not null, default: `now()`, note: 'Redis xatosida: now() + min(2^attempts s, 5 daq)']
+  last_error text [note: 'Xato turi va qisqa matn — PII’siz']
+  occurred_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+  published_at timestamptz
+
+  indexes {
+    (next_attempt_at, event_id) [note: 'Partial: WHERE status = PENDING — outbox_worker FOR UPDATE SKIP LOCKED bilan oladi']
+    (aggregate_type, aggregate_id, aggregate_version)
+    published_at [note: 'Partial: WHERE status = PUBLISHED — 14 kunlik tozalash']
+  }
+  Note: '''
+  Transactional outbox (05 §4). Biznes o‘zgarishi bilan bitta schema ichida, bitta tranzaksiyada yoziladi
+  (`write_outbox(db, event)`). RLS yo‘q: faqat ilova va worker yozadi/o‘qiydi, shoplararo poll qilinadi;
+  ichida PII yo‘q.
+  '''
+}
+
+Table platform.consumer_receipts {
+  consumer text [not null, note: 'O‘zgarmas subscriber nomi, masalan storefront.on_product_hidden']
+  event_id uuid [not null]
+  applied_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (consumer, event_id) [pk, note: 'Event ikki marta kelsa — ikkinchisi ON CONFLICT DO NOTHING bilan o‘tkaziladi (TC-022)']
+    applied_at [note: '7 kunlik tozalash']
+  }
+  Note: 'Subscriber idempotentligi (05 §6). Consumer’ning o‘z schemasida, o‘z o‘zgarishi bilan bitta tranzaksiyada.'
+}
+
+// ---------------------------------------------------------------------
+// Muvaffaqiyatsiz vazifalar va rejali ishlar
+// ---------------------------------------------------------------------
+
+Table platform.dead_letters {
+  id uuid [pk]
+  event_id uuid [not null]
+  source_schema text [not null, note: 'Event qaysi schema outbox’idan']
+  event_type text [not null]
+  consumer text [not null]
+  shop_id uuid
+  attempts int [not null]
+  last_error text [not null, note: 'Xato turi va qisqa matn — PII’siz']
+  first_failed_at timestamptz [not null]
+  last_failed_at timestamptz [not null]
+  status platform.dead_letter_status [not null, default: 'OPEN']
+  resolved_by uuid [note: 'platform.platform_staff.id']
+  resolved_at timestamptz
+  resolution_note text
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (event_id, consumer) [unique, note: 'Bitta event + consumer — bitta yozuv']
+    (status, created_at)
+    (shop_id, created_at)
+  }
+  Note: '''
+  dispatch_event 8 urinishdan keyin shu yerga tushadi (05 §7). Platforma paneli: ro‘yxat va qayta yuborish
+  (platform.dead_letter.replay, audit). Shop xodimlariga ko‘rinmaydi.
+  '''
+}
+
+Table platform.job_runs {
+  id uuid [pk]
+  job_name text [not null, note: 'order_confirm_reminder, reservation_review, stock_reconcile, idempotency_cleanup, ...']
+  status platform.job_run_status [not null]
+  started_at timestamptz [not null]
+  finished_at timestamptz
+  processed int [not null, default: 0, note: 'Nechta obyekt ko‘rildi']
+  affected int [not null, default: 0, note: 'Nechta vazifa/eslatma yaratildi yoki qator o‘chirildi']
+  details jsonb [not null, default: '{}', note: 'Faqat sonlar va kodlar (masalan, rekonsilyatsiya farqlari soni) — PII yo‘q']
+  error text
+
+  indexes {
+    (job_name, started_at)
+    started_at [note: '30 kundan keyin tozalanadi']
+  }
+  Note: '''
+  Rejali ishlar jurnali: oxirgi muvaffaqiyatli ishga tushish, xatolar. Monitoring (Grafana) hali yo‘q —
+  platforma paneli va alert shu jadvaldan "ish 3 baravar kechikdi"ni ko‘radi (06 §8). Shoplararo, RLS yo‘q.
+  '''
+}
+
+TableGroup outbox {
+  platform.outbox_events
+  platform.consumer_receipts
+}
+
+TableGroup ishlar_nazorati {
+  platform.dead_letters
+  platform.job_runs
+}

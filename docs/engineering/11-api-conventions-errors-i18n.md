@@ -157,6 +157,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `LAST_OWNER_REQUIRED` | 409 | Oxirgi egani o'chirish yoki rolini olish (UAT-M02) | yo'q |
 | `LAST_ADMIN_REQUIRED` | 409 | Oxirgi faol platforma adminini o'chirish yoki rolini olish (business/15 §5) | yo'q |
 | `FILE_IN_USE` | 409 | Fayl allaqachon boshqa mahsulot rasmi — bitta fayl bitta mahsulotda (`details.product_id`) | yo'q (faylni qayta yuklash) |
+| `ORDER_LINKED_ELSEWHERE` | 409 | Buyurtma boshqa suhbatga bog'langan — jim ko'chirilmaydi (`details.order_version`); ko'chirish `relink: true` + `expected_version` bilan (QA 5b M3) | yo'q (tasdiqlab qayta yuborish) |
 | `SHOP_HAS_OPEN_ORDERS` | 409 | Shopni yopib bo'lmaydi: tasdiq kutayotgan, tasdiqlangan, tayyorlanayotgan yoki muammoli buyurtmalar bor — avval yakunlanadi yoki bekor qilinadi (FSM-01, TC-023) | yo'q |
 | `SITE_NOT_AVAILABLE` | 409 | Shop sayti xaridorga hozir ochiq emas: "tez orada" (sayt qoralama yoki shop faollashtirilmagan) yoki "vaqtincha ishlamayapti" (sayt yoki shop to'xtatilgan). Bunday shop yo'q yoki yopilgan — `NOT_FOUND` (storefront.md §0) | yo'q |
 | `SPEAKER_CONFLICT` | 409 | Suhbatni boshqa operator olgan yoki `speaker_version` eskirgan (TC-009) | yangilab qayta |
@@ -165,7 +166,9 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Ruxsat etilmagan fayl turi | yo'q |
 | `RULE_BLOCK` | 422 | PC moslik `BLOCK` yoki biznes qoida buzildi | yo'q |
 | `DISCOUNT_LIMIT_EXCEEDED` | 422 | Rol limitidan katta chegirma (DEC-110) | yo'q (tasdiq so'raladi) |
-| `IMPORT_FILE_INVALID` | 422 | Import fayli o'qilmadi (format, kodlash, ustunlar) — [18](18-catalog-import.md) | yo'q |
+| `IMPORT_FILE_INVALID` | 422 | Import fayli o'qilmadi (format, kodlash, ustunlar) — [18](18-catalog-import.md); `details.reason`: `EMPTY`, `NO_HEADER`, `NOT_TABLE`, `MACRO`, `ZIP_BOMB`, `TOO_MANY_ROWS`, `TOO_LARGE`, `UNSUPPORTED_ENCODING` (yuklashdagi arzon tekshiruv). Fonda o'qishda chiqqan sabab (`TIMEOUT` va shu ro'yxat) — 422 emas, import `FAILED`, `error_code` da (5c QA F1) | yo'q |
+| `IMPORT_ALREADY_RUNNING` | 409 | Shopda boshqa faol import bor (sinov, yozish yoki qoldiq bosqichida) — tugashini kuting (18 §3) | yo'q |
+| `IMPORT_BUSY` | 409 | Import fon bosqichi aynan shu daqiqada yozuvni yangilayapti — qulf kutilmaydi (`NOWAIT`), bir zumdan keyin qayta urinish (5c QA F5) | ha |
 | `RATE_LIMITED` | 429 | Limit oshdi; `Retry-After` bilan | ha, `Retry-After` dan keyin |
 | `AI_QUOTA_EXCEEDED` | 429 | Shop AI limiti tugadi (BL-067, BL-069) — AI o'chadi, savdo ishlaydi | keyingi davr / paket |
 | `INTERNAL_ERROR` | 500 | Kutilmagan xato | ha, bir marta (idempotent so'rovlar) |
@@ -177,7 +180,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 
 | Code | `details` |
 |---|---|
-| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak, invalid, same_as_current, out_of_scope` (`out_of_scope` — buyurtma filiali almashganda mas'ul xodim yangi filialda ishlamaydi, `params.membership_id`; `too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi; `invalid` — qiymat tekshiruvdan o'tmadi, masalan joriy parol noto'g'ri; `same_as_current` — yangi parol joriysi bilan bir xil). Qat'iy chegara (`> 0`): butun sonda `min` — eng kichik **ruxsat etilgan** qiymat (`{"min": 1}`), kasrda — chegaraning o'zi va `"exclusive": true`. NUL belgisi (`\u0000`) yoki `NaN`/`Infinity` bor maydon — `invalid_format` (so'rov darajasida ushlanadi; yo'lda NUL — 404) |
+| `VALIDATION_FAILED` | `{"fields": [{"field": "lines[0].quantity", "code": "min_value", "params": {"min": 1}}]}`; `code`: `required, min_value, max_value, min_length, max_length, invalid_format, invalid_choice, not_unique, too_weak, invalid, same_as_current, out_of_scope, invalid_range` (`invalid_range` — oraliq bo'sh, masalan ish vaqti `09:00–09:00`; `out_of_scope` — buyurtma filiali almashganda mas'ul xodim yangi filialda ishlamaydi, `params.membership_id`; `too_weak` — parol juda oddiy yoki telefon raqamini o'z ichiga oladi; `invalid` — qiymat tekshiruvdan o'tmadi, masalan joriy parol noto'g'ri; `same_as_current` — yangi parol joriysi bilan bir xil). Qat'iy chegara (`> 0`): butun sonda `min` — eng kichik **ruxsat etilgan** qiymat (`{"min": 1}`), kasrda — chegaraning o'zi va `"exclusive": true`. NUL belgisi (`\u0000`) yoki `NaN`/`Infinity` bor maydon — `invalid_format` (so'rov darajasida ushlanadi; yo'lda NUL — 404) |
 | `VERSION_CONFLICT` | `{"current_version": 5, "your_version": 4}` |
 | `INVALID_STATE_TRANSITION` | `{"entity": "commerce.order", "from": "DRAFT", "command": "COMPLETE"}` |
 | `INSUFFICIENT_AVAILABLE_STOCK` | `{"lines": [{"sku_id", "branch_id", "requested", "available", "reserved"}]}` — `reserved > 0` bo'lsa mahsulot buyurtmaga band (BL-109: "online buyurtma uchun band qilingan") |
@@ -380,8 +383,9 @@ Prefiks `/api/v1/<surface>`. **Idem** — `Idempotency-Key` majburiy. **IfM** �
 | `POST /auth/password-reset/confirm` | Tiklash havolasi bilan yangi parol | Barcha sessiyalar bekor; `404` + `reason` xuddi yuqoridagidek |
 | `POST /auth/platform-invites/{token}/accept` | Platforma jamoasiga taklif: parol o'rnatiladi, platforma paneliga kiriladi (`audience: platform`, cookie `cos_refresh_platform`) | Havola `PLATFORM_APP_PUBLIC_URL/invite/...`; `404` + `reason` xuddi yuqoridagidek |
 | `POST /auth/platform-password-reset/confirm` | Platforma jamoasi a'zosining yangi paroli | Barcha sessiyalar bekor; `404` + `reason` |
+| `POST /auth/ws-ticket` | Shop paneli WebSocket'i uchun bir martalik ticket (30 s) → `{ticket, expires_in, path: "/api/v1/ws"}`; keyin `WS /api/v1/ws?ticket=…` ([08](08-cache-and-realtime.md) §6, 5a) | Bearer; `Cache-Control: no-store` |
 
-Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS provayder kerak; hozir havolani ega yoki platforma admini beradi), `POST /auth/switch-shop` (bir odam — bitta shop, DEC-131), `POST /auth/ws-ticket` (realtime moduli bilan qo'shiladi).
+Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS provayder kerak; hozir havolani ega yoki platforma admini beradi), `POST /auth/switch-shop` (bir odam — bitta shop, DEC-131).
 
 ### 9.2 `shop` surface — platform modullari
 
@@ -399,7 +403,11 @@ Stage 1 da **yo'q**: `POST /auth/password-reset` (xodim o'zi so'rashi — SMS pr
 | `POST /shop/members/{id}/password-reset` | `staff.member.password_reset` | Idem; har chaqiruv yangi havola (24 soat) |
 | `PUT /shop/members/{id}/roles` | `staff.member.edit_roles` | IfM |
 | `POST /shop/members/{id}/disable` | `staff.member.disable` | Idem |
-| `GET /shop/tasks`, `POST /shop/tasks/{id}/complete` | `staff.task.view` | — / Idem |
+| `GET /shop/tasks?status=OPEN&type=&cursor=&limit=` — vazifalar (5a): ega va menejer filial doirasidagi hammasini, operator va omborchi o'ziniki va o'z roliniki; har qatorda `link {route, id}` | `staff.task.view` | — |
+| `POST /shop/tasks/{id}/done`, `POST /shop/tasks/{id}/assign` (`{membership_id}`, faqat ega/menejer) | `staff.task.view` | Idem + IfM |
+| `GET /shop/notifications?unread=&cursor=&limit=`, `GET /shop/notifications/unread-count`, `POST /shop/notifications/{id}/read`, `POST /shop/notifications/read-all` — xodimning o'z bildirishnomalari (5a) | har shop xodimi (faqat o'ziniki) | — (o'qish tabiatan idempotent) |
+| `GET /shop/me/notification-settings`, `PUT /shop/me/notification-settings` — tinch soat, bot, o'chirilgan turlar | har shop xodimi (o'ziniki) | — / IfM (birinchi — `"v0"`) |
+| `GET /shop/me/telegram-link`, `POST /shop/me/telegram-link` (201, bir martalik kod + `deep_link`), `DELETE /shop/me/telegram-link` — platforma botiga ulanish (DEC-129) | har shop xodimi (o'ziniki) | — |
 | `GET /shop/audit-entries`, `POST /shop/audit-exports` (202) | `audit.entry.view` / `audit.entry.export` | — / Idem |
 | `GET /shop/billing/usage` | `billing.plan.view` | — |
 | `GET /shop/jobs/{job_id}` | Ishni boshlagan foydalanuvchi yoki ega | — |
@@ -468,15 +476,21 @@ Buyurtma javobida xaridor telefoni va manzili bor — takroriy so'rov himoyasi f
 
 | Metod va yo'l | Ruxsat | Idem / IfM |
 |---|---|---|
-| `GET /shop/channels` | `messaging.channel.view` | — |
-| `POST /shop/channels/telegram` (bot token) | `messaging.channel.connect` | Idem |
-| `POST /shop/channels/instagram/oauth-start`, `GET /shop/channels/instagram/oauth-callback` | `messaging.channel.connect` | — |
-| `POST /shop/channels/{id}/disconnect` | `messaging.channel.connect` | Idem |
-| `GET /shop/conversations`, `GET /shop/conversations/{id}`, `GET …/{id}/messages` | `messaging.conversation.view` | — |
-| `POST /shop/conversations/{id}/messages` (javob) | `messaging.conversation.reply` | Idem + `speaker_version` |
-| `POST /shop/conversations/{id}/takeover`, `POST …/{id}/resume-ai` | `messaging.conversation.takeover` | Idem + IfM |
-| `POST /shop/conversations/{id}/assign` | `messaging.conversation.assign` | Idem |
-| `POST /shop/conversations/{id}/resolve` | `messaging.conversation.resolve` | Idem |
+| `GET /shop/channels`, `GET /shop/channels/{id}` | `messaging.channel.view` | — |
+| `POST /shop/channels/telegram` `{token}` — `getMe`, webhook (yoki lokalda polling); token javobda va takror so'rov yozuvida yo'q | `messaging.channel.connect` | Idem |
+| `POST /shop/channels/webchat` — sayt chatini yoqish (bor bo'lsa o'shani qaytaradi) | `messaging.channel.connect` | — |
+| `POST /shop/channels/instagram` `{access_token}` — faqat `FEATURE_CHANNEL_INSTAGRAM_DM` yoqilganda (aks holda 404); OAuth — keyin | `messaging.channel.connect` | — |
+| `POST /shop/channels/{id}/disconnect` | `messaging.channel.connect` | IfM |
+| `GET /shop/conversations?status=A,B&channel=&assigned=me\|unassigned\|<membership_id>&unread=&tag=&q=&cursor=&limit=`, `GET …/counts`, `GET …/{id}` (ETag), `GET …/{id}/messages?before_seq=\|after_seq=&limit=` | `messaging.conversation.view` | — |
+| `POST /shop/conversations/{id}/messages` `{body \| attachment_file_id}` → 201 | `messaging.conversation.reply` (+ `takeover`, suhbat hali uniki bo'lmasa) | Idem |
+| `POST /shop/conversations/{id}/take` | `messaging.conversation.takeover` | IfM |
+| `POST /shop/conversations/{id}/assign` `{membership_id}` (o'tkazish ham shu) | `messaging.conversation.assign` | IfM |
+| `POST /shop/conversations/{id}/resolve`, `POST …/{id}/reopen` | `messaging.conversation.resolve` | IfM |
+| `POST /shop/conversations/{id}/read` `{seq}` (versiya oshmaydi), `PUT …/{id}/tags` (IfM), `GET/POST …/{id}/notes` | `messaging.conversation.view` / `reply` | — |
+| `GET /shop/conversations/{id}/orders`, `POST …/{id}/orders` (qoralama → 201, `Location`), `POST …/{id}/orders/link` `{order_id, relink?, expected_version?}` (boshqa suhbatdagi buyurtma — 409 `ORDER_LINKED_ELSEWHERE`) | `messaging.conversation.view` / `commerce.order.create_draft` | Idem (qoralama va bog'lash) |
+| `GET /shop/message-templates`, `PUT …/{template_key}/{locale}` `{body}`, `DELETE …/{template_key}/{locale}` (standartga qaytarish) | `shops.settings.view` / `shops.settings.edit` | — |
+
+**5b holati (2026-10-26):** yuqoridagi jadval qurilgan endpointlar ([progress/M05b](progress/M05b-messaging.md)). Rejadan farqlar: `…/takeover` → `…/take`; `resume-ai` — 6-modul (AI) bilan; javobda `speaker_version` talab qilinmaydi (operator javobi fencing'ni o'zi bajaradi: suhbatni oladi); Instagram OAuth o'rniga flag ostidagi `POST`. Xato kodlari: kanal yo'q yoki uzilgan — `CHANNEL_UNAVAILABLE`; bot tokeni noto'g'ri — `422 token/invalid`, boshqa shopda ulangan — `422 token/already_connected`; Telegram javob bermadi — `PROVIDER_UNAVAILABLE`; shablonda o'zgaruvchi yetishmaydi yoki noma'lum — `422 body/missing_variables`, `body/unknown_variables`; yolg'iz qavs — `body/invalid_braces`; `{0}`, `{a.b}`, `{a!r}`, `{a:>9}` — `body/invalid_placeholder` (QA 5b H1). Buyurtmalar ro'yxatida aniq raqam — `GET /shop/orders?number=1042`. Dev/test: `900000001:TEST…` ko'rinishidagi Telegram tokeni — soxta bot (tarmoqsiz, `is_fake: true`), faqat `APP_ENV=local|test`.
 
 ### 9.6 `sales_ai`
 
@@ -508,7 +522,7 @@ Ommaviy o'qish: IP + shop bo'yicha 120/daq (IP — `X-Forwarded-For` faqat ishon
 | `POST /storefront/{slug}/order-requests` | commerce | Savatcha → buyurtma so'rovi: darhol `PENDING_CONFIRMATION`, biriktirilmagan, band qilinmaydi, to'lovsiz (DEC-115, DEC-100b). Majburiy: `consent_version` (joriy versiya), olib ketishda `branch_id` (ochiq olib ketish joyi), yetkazishda `delivery_address` (`delivery_enabled` bo'lsa). Idem (`Idempotency-Key` = `orders.source_request_id`): takror — o'sha buyurtma, yangi `tracking_token`. Javob 201: `number`, `status: RECEIVED`, `tracking_token`, `tracking_path`, qatorlarda `available_in_branch`. Chegara: IP + shop + telefon — 10 daqiqada 5, IP + shop — 20 |
 | `GET /storefront/{slug}/orders/{tracking_token}` | commerce | Faqat o'z buyurtmasi: raqam, xaridorga ko'rinadigan holat (`RECEIVED`, `CONFIRMED`, `PREPARING`, `READY`, `COMPLETED`, `CANCELLED`), qatorlar, summa, olib ketish filiali. Telefon, manzil, izoh yo'q. Bazada tokenning faqat SHA-256 xeshi; noto'g'ri token — 404. 30/daq per IP |
 | `GET /storefront/{slug}/quotes/{token}`, `POST …/quotes/{token}/accept`, `POST …/quotes/{token}/reject` | commerce | Taklif havolasi (FSM-06 `SENT → ACCEPTED/REJECTED`). Idem |
-| `POST /storefront/{slug}/chat/sessions`, `POST …/chat/messages`, `GET …/chat/messages?after=`, `GET …/chat/sessions/{session_id}/events` (SSE) | messaging | Saytdagi chat; real vaqt — SSE ([08](08-cache-and-realtime.md) §6.6, [13](13-integrations-and-channels.md)) |
+| `POST /storefront/{slug}/chat/sessions` → `{token, expires_at, poll_interval_seconds}`, `GET …/chat/messages?after_seq=`, `POST …/chat/messages` `{client_message_id, body}`, `POST …/chat/contact` `{name?, phone?, consent: true}` → 204 (ism yoki telefon majburiy; `notice_version` yoziladi) | messaging | Saytdagi chat (5b): faqat LIVE sayt; token header'da — `X-Chat-Session` (sayt ilovasi httpOnly cookie'dan uzatadi); mehmon tili — `X-Customer-Locale` (yoki `Accept-Language`); rasmli xabarda `image_url` (imzoli, 5 daq); javoblar polling bilan (4 s), SSE — keyin ([08](08-cache-and-realtime.md) §6.6). Chegaralar: sessiya 10/soat per IP, o'qish 120/daq per IP + sessiya, yozish 20/daq per IP va 10/daq per sessiya; boshqa shop sessiyasi — 404. `GET /storefront/{slug}/site` da `chat_enabled` |
 
 ### 9.9 `support` va `reporting`
 
@@ -528,6 +542,7 @@ Ommaviy o'qish: IP + shop bo'yicha 120/daq (IP — `X-Forwarded-For` faqat ishon
 | Metod va yo'l | Izoh |
 |---|---|
 | `POST /webhooks/telegram/{account_ref}` | `X-Telegram-Bot-Api-Secret-Token` tekshiriladi |
+| `POST /webhooks/platform-telegram` | Platforma boti (xodimlar): faqat `/start <kod>` — ulash. `X-Telegram-Bot-Api-Secret-Token` = `PLATFORM_TELEGRAM_WEBHOOK_SECRET` (doimiy vaqtda); sozlanmagan bo'lsa `404`. Javob doim `200 {"ok": true}` (5a) |
 | `GET /webhooks/meta` (verify), `POST /webhooks/meta` | `X-Hub-Signature-256`; sahifa/akkaunt ID → `channel_accounts` |
 | `POST /platform/shops` | `platform.shop.create`; shop + ega taklifi bitta tranzaksiyada, javobda ega havolasi. Idem. Tizim nomlari (`login`, `admin`, `api`, `www`, ...) slug sifatida band — `not_unique` |
 | `GET /platform/dashboard` | `platform.shop.view_meta` — bosh sahifa ([business/15](../business/15_PLATFORM_ADMIN_PANEL.md) §1): `counts_by_status`, `review_queue` (eng uzoq kutayotgan birinchi, `waiting_days`), `pending_owners` (`invite_state`: `expired` / `expiring` <24 soat / `valid`), `pilots` (`day`, `days_left`, `ending_soon` ≤7 kun), `new_shops_7d/30d`, `recent_activity` (oxirgi 10 ta platforma amali, `auth.*` siz) |
@@ -549,7 +564,9 @@ Ommaviy o'qish: IP + shop bo'yicha 120/daq (IP — `X-Forwarded-For` faqat ishon
 | `POST /platform/hardware-specs` (qoralama + 1-taklif), `POST …/{id}/versions` (o'zgarish taklifi), `POST …/{id}/versions/{n}/approve` / `reject`, `POST …/{id}/retire`, `POST /platform/hardware-spec-requests/{id}/resolve` / `reject` | `platform.spec.edit`. O'z taklifini tasdiqlab bo'lmaydi — `SELF_APPROVAL_NOT_ALLOWED` (17 §10). Hal qilishda SKU hozir ham faol va turi model turi bilan bir xil bo'lishi shart (navbatda `sku_spec_category`). Ro'yxatlar hozircha `offset` bilan (§4.1 dan chetlanish, M02). Idem |
 | `GET /platform/catalog/categories`, `GET …/{code}`, `POST …`, `PATCH …/{code}` | ko'rish — har platforma xodimi; yozish — `platform.category.edit` (DEC-133) |
 | `POST /platform/support-grants` | Break-glass so'rovi ([10](10-security-tenancy-rbac.md) §9) |
-| `POST /platform/outbox/{schema}/{event_id}/replay` | `platform.outbox.replay` |
+| `GET /platform/dead-letters?status=OPEN&limit=` | `platform.dead_letter.view` — bajarib bo'lmagan fon ishlari (05 §7): event turi, tinglovchi, urinishlar, xato turi (matnsiz); `open_count` (5a) |
+| `POST /platform/dead-letters/{id}/replay`, `POST /platform/dead-letters/{id}/ignore` (`{note}` 3–500) | `platform.dead_letter.replay` — faqat `OPEN` dan; audit. Qayta yuborishni `outbox_reconcile` rejali ishi bajaradi (5 daqiqa ichida) |
+| `GET /platform/jobs` | `platform.dead_letter.view` — har rejali ishning oxirgi holati, oxirgi muvaffaqiyati, xatosi va `details` (`platform.job_runs`) |
 | `POST /platform/kill-switches` (`channel`, `ai`, `shop`) | `platform.channel.kill` / `platform.ai.kill` ([25](25-operations-runbooks.md)) |
 
 **DEFERRED:** to'lov (`/shop/payments/*`) va yetkazish (`/shop/shipments/*`) yo'llari Stage 1 da yo'q; feature flag bilan qo'shilsa ham yoqilmaguncha `501 FEATURE_NOT_AVAILABLE`.

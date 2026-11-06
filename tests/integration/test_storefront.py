@@ -92,7 +92,7 @@ def test_public_responses_expose_only_allowlisted_fields(world: World) -> None:
     site_body = _ok(site.get("/site"))
     assert _keys(site_body) == {
         "state", "preview", "shop", "theme", "logo_url", "tagline", "seo_description", "contacts", "pages",
-        "delivery_enabled", "stock_display", "pickup_branch_count", "consent", "legal",
+        "delivery_enabled", "stock_display", "pickup_branch_count", "consent", "legal", "chat_enabled",
     }  # fmt: skip
     assert site_body["state"] == "LIVE" and site_body["contacts"]["phone"] == "+998712000000"
     assert _keys(site_body["shop"]) == {"name", "slug", "url"}

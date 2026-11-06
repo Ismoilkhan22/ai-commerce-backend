@@ -55,6 +55,7 @@ from app.shared.errors.base import (
     SelfApprovalError,
     ValidationError,
 )
+from app.shared.events.outbox import write_outbox
 from app.shared.types.actor import ActorContext
 
 SPEC = "catalog.hardware_spec"
@@ -274,6 +275,19 @@ class SpecLibraryService:
             entity_id=spec.id,
             actor=actor,
             diff={"version": {"new": number}},
+        )
+        # Kutubxona platformaniki (shop_id yo'q): tinglovchi har shopda bog'lanmagan SKU'larni
+        # qayta tekshiradi
+        await write_outbox(
+            db,
+            schema="catalog",
+            event_type="catalog.hardware_spec.updated",
+            actor=actor,
+            shop_id=None,
+            aggregate_type=SPEC,
+            aggregate_id=spec.id,
+            aggregate_version=number,
+            payload={"spec_id": spec.id, "spec_version": number, "category": spec.category},
         )
         return await self.get(db, spec.id)
 

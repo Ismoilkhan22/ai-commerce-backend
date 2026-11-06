@@ -26,6 +26,7 @@ from app.domains.catalog.pricing.schemas import (
 from app.domains.catalog.products.models.orm import Product, Sku
 from app.domains.catalog.products.schemas import PriceIn, PriceOut
 from app.platform.audit.services.audit_service import AuditService
+from app.platform.notifications.services.tasks import TaskService
 from app.shared.clock import utcnow
 from app.shared.errors.base import (
     InvalidTransitionError,
@@ -33,11 +34,13 @@ from app.shared.errors.base import (
     ValidationError,
     VersionConflictError,
 )
+from app.shared.events.outbox import write_outbox
 from app.shared.http import check_version
 from app.shared.money import Currency, to_uzs_minor
 from app.shared.types.actor import ActorContext
 
 RATE_MAX_AGE = timedelta(days=3)  # catalog.md §7: kurs 3 kundan eski bo'lsa — "eskirgan"
+RATES_SUBJECT = "catalog.exchange_rates"  # "kurs eskirgan" vazifasining mavzusi (subject_id — shop)
 RATE_FUTURE_TOLERANCE = timedelta(minutes=5)
 RATE_HISTORY_LIMIT = 30
 PRICE_HISTORY_LIMIT = 100
@@ -87,6 +90,7 @@ def rate_out(rate: ExchangeRate, now: datetime) -> ExchangeRateOut:
 class PricingService:
     def __init__(self, audit: AuditService) -> None:
         self.audit = audit
+        self.tasks = TaskService()
 
     # ------------------------------------------------------------------ o'qish
     async def active_prices(
@@ -217,8 +221,22 @@ class PricingService:
             reason=version.reason,
             diff={"changed": changed},
         )
-        # TODO(S0-06): outbox — `catalog.price.changed` event'i (05-events). Outbox jadvali fon ishlari
-        # bilan qo'shiladi; ungacha sayt va AI narxni to'g'ridan catalog'dan o'qiydi.
+        await write_outbox(  # sayt keshi, AI qidiruvi, hisobot (05 §8.1): yuqori versiya g'olib
+            db,
+            schema="catalog",
+            event_type="catalog.price.changed",
+            actor=actor,
+            shop_id=sku.shop_id,
+            aggregate_type=SKU,
+            aggregate_id=sku.id,
+            aggregate_version=current.version,
+            payload={
+                "sku_id": sku.id,
+                "price_version_id": version.id,
+                "price": {"amount_minor": version.amount_minor, "currency": version.currency},
+                "currency_source": version.currency,
+            },
+        )
         return ActivePrice(current, version)
 
     async def add_rate(self, db: AsyncSession, actor: ActorContext, data: ExchangeRateIn) -> ExchangeRateOut:
@@ -245,7 +263,31 @@ class PricingService:
             entity_id=rate.id,
             actor=actor,
         )
-        # TODO(S0-06): outbox — `catalog.exchange_rate.changed` (dollar narxlari so'mda qayta hisoblanadi)
+        assert actor.shop_id is not None
+        await write_outbox(  # dollar narxlari so'mda qayta hisoblanadi — sayt keshi tozalanadi
+            db,
+            schema="catalog",
+            event_type="catalog.exchange_rate.updated",
+            actor=actor,
+            shop_id=actor.shop_id,
+            aggregate_type="catalog.exchange_rate",
+            aggregate_id=rate.id,
+            aggregate_version=1,
+            payload={
+                "rate_id": rate.id,
+                "base": rate.base,
+                "quote": rate.quote,
+                "rate_micro": int(rate.rate * 1_000_000),
+                "effective_at": rate.effective_at,
+                "source": rate.source,
+            },
+        )
+        # Yangi YANGI kurs — "kurs eskirgan" vazifasi o'zi yopiladi. Orqaga sanalgan (o'zi eskirgan) kurs
+        # yopmaydi: shop baribir eskirgan kurs bilan qoladi (QA 5a F5, BL-018)
+        if rate.effective_at >= now - RATE_MAX_AGE:
+            await self.tasks.resolve(
+                db, shop_id=actor.shop_id, actor=actor, subject_type=RATES_SUBJECT, subject_id=actor.shop_id
+            )
         return rate_out(rate, now)
 
     async def _sku(self, db: AsyncSession, actor: ActorContext, sku_id: UUID) -> Sku:

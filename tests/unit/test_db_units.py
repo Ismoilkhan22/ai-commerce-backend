@@ -39,6 +39,7 @@ PUBLIC_URLS = {
     "app_public_url": "https://app.example.uz",
     "platform_app_public_url": "https://admin.example.uz",
     "public_files_url": "https://cdn.example.uz/files",
+    "messaging_webhook_base_url": "https://api.example.uz",  # Telegram webhook manzili (5b)
 }
 # Production'da lokal PII kalitlari rad etiladi (26 §9) — testlarda alohida kalitlar
 PROD_PII = {

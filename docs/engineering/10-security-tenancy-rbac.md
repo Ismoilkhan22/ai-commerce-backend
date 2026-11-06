@@ -49,7 +49,7 @@ class ActorContext:
 |---|---|
 | `shop` | Access JWT (`sub` = principal, `sid` = session, `shop` = joriy shop) → DB'dan `memberships` (status `ACTIVE`), rollar, filiallar. JWT'dagi `shop` — faqat ishora; a'zolik DB'da tekshiriladi |
 | `storefront` | URL `slug` → `platform.shops` (status `ACTIVE`); xaridor — anonim yoki signed sessiya/token (bitta resursga) |
-| `webhooks` | URL `account_ref` → `messaging.channel_accounts.shop_id`; imzo tekshiriladi |
+| `webhooks` | URL `account_ref` → `messaging.channel_accounts.shop_id`; imzo tekshiriladi. 5b: `channel_accounts` RLS'ining identity varianti — `shop_id`, yoki `app.channel_account_ref` (Telegram), yoki `app.channel_external_ref` = `INSTAGRAM:<id>`; maxfiy so'z sha256 xeshi bilan doimiy vaqtda solishtiriladi, noto'g'ri — 404 |
 | `worker` | Payload'dagi `shop_id` **ishonchli emas** — worker resursni (suhbat, buyurtma) DB'dan o'qib, `shop_id` ni undan oladi va solishtiradi (TC-ISO-07) |
 | `platform` | Platforma xodimi JWT + platform roli; shop ma'lumotiga faqat break-glass grant bilan (§9) |
 
@@ -84,7 +84,7 @@ RLS — ikkinchi qavat. Birinchi qavat — repository'dagi `WHERE shop_id = :sho
    ```
    Kontekst `set_identity_context(...)` bilan, xuddi shu `set_config(..., true)` orqali o'rnatiladi. Sozlamasiz — baribir 0 qator (testda tekshirilgan).
 5. Ommaviy o'qish (storefront) private jadvallarga kirmaydi. Stage 1 da (DEC-135) — `CatalogQueryPort` / `StockQueryPort` ning ommaviy metodlari orqali: READ ONLY tranzaksiya, shop konteksti, faqat ruxsat etilgan maydonlar (TC-SEC-09). `storefront.public_products` proyeksiyasi — fon ishlari bilan (5-modul).
-6. Platforma uchun "bypass" roli yo'q. Shoplararo rejali ishlar (`scheduler`) — `SECURITY DEFINER` funksiyalar orqali faqat "qaysi shopda ish bor" ro'yxati, keyin har shop uchun alohida tranzaksiya va `set_config` ([07](07-data-layer.md) §10).
+6. Platforma uchun "bypass" roli yo'q. Shoplararo rejali ishlar (`scheduler`) — shoplar ro'yxati RLS'siz `platform.shops` dan, keyin har shop uchun alohida tranzaksiya va `set_config` ([07](07-data-layer.md) §10). FORCE RLS jadval egasini ham cheklaydi, shuning uchun SECURITY DEFINER SELECT shoplararo o'qishga yordam bermaydi; SECURITY DEFINER faqat partitsiya DDL uchun (`platform.ensure_monthly_partitions`, TD-01, 5a).
 
 **RLS yoqiladigan jadvallar (S0 oxiri, spike o'tsa):**
 
@@ -94,7 +94,7 @@ RLS — ikkinchi qavat. Birinchi qavat — repository'dagi `WHERE shop_id = :sho
 | `messaging` | `conversations`, `messages`, `customer_identities`, `handoffs` |
 | `sales_ai` | `knowledge_items`, `prompt_versions`, `ai_sessions`, `ai_turns`, `ai_tool_executions`, `conversation_summaries` |
 | `support` | `support_cases` |
-| `platform` | `memberships`, `sessions`, `notifications`, `staff_tasks`, `stored_files` |
+| `platform` | `memberships`, `sessions`, `notifications`, `staff_tasks`, `staff_notification_settings` (5a), `stored_files`. RLS'siz: `outbox_events`, `consumer_receipts`, `dead_letters`, `job_runs` (shoplararo, PII'siz), `staff_telegram_links`, `telegram_link_codes` (odam bo'yicha identity jadval — `principals` kabi, faqat service orqali) |
 | `catalog` | `price_versions`, `current_prices`, `exchange_rates` (tannarx qo'shilganda — o'sha ham) |
 | `storefront` | `sites`, `pages` (4-modul): ichidagi ma'lumot ochiq, lekin RLS qo'shimcha himoya — sayt o'qishi baribir shop kontekstini o'rnatadi, panel boshqa shop sozlamasiga tegolmaydi |
 
@@ -125,7 +125,7 @@ Qolgan jadvallar (katalog) — app-layer filtri + composite FK; keyin kerak bo'l
 | Parol o'zgarsa | Joriydan boshqa barcha sessiyalar bekor |
 | Bir nechta tab | Refresh token har ishlatilganda almashadi, shuning uchun ikki tab bir vaqtda yangilasa, ikkinchisi "qayta ishlatish" bo'lib qoladi va butun oila bekor bo'ladi. Frontend tablar orasida qulf (Web Locks API) bilan bir vaqtda faqat bitta refresh yuboradi ([21](21-frontend.md) §5) |
 | Domenlar | `app.<platforma>.uz` (dashboard) va `api.<platforma>.uz` — bitta site (cookie uchun) |
-| WebSocket | `POST /api/v1/auth/ws-ticket` → 30 s amal qiladigan bir martalik ticket; `/ws?ticket=...` ([08](08-cache-and-realtime.md)). Realtime moduli bilan qo'shiladi (1-modulda yo'q) |
+| WebSocket | `POST /api/v1/auth/ws-ticket` → 30 s amal qiladigan bir martalik ticket (Redis'da xeshi); `/api/v1/ws?ticket=...` ([08](08-cache-and-realtime.md) §6). Har heartbeat'da sessiya va a'zolik bazadan qayta tekshiriladi (5a) |
 | Muhim amallar | Shopni yopish, egani almashtirish, eksport — qayta parol (step-up), keyinroq 2FA |
 
 ### 5.2 Surface'lar bo'yicha
@@ -169,6 +169,7 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `audit.entry.export` | ✓ (step-up) | — | — | — | — | — | — | — | — | M20, "xavfli amallar qo'shimcha tasdiq" |
 | `billing.plan.view` | ✓ | — | — | — | — | — | — | — | — | Tarif (menejer qila olmaydi) |
 | `staff.task.view` | ✓ | ✓ | own | own | own | own | — | — | — | Xodim vazifalari (M17) |
+| `staff.task.assign` | ✓ | ✓ | — | — | — | — | — | — | — | Vazifani xodimga berish; qabul qiluvchi vazifa roliga mos bo'lishi shart, so'rov egasi o'z tasdiq vazifasini ololmaydi va yopolmaydi (QA 5a F8) |
 
 ### 6.2 `catalog`
 
@@ -185,6 +186,8 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `catalog.exchange_rate.edit` | ✓ | ✓ | — | — | — | — | — | — | — | Narx (DEC-121) |
 | `catalog.spec.link` | ✓ | ✓ | — | — | — | ✓ | — | — | — | Katalog (DEC-120) |
 | `catalog.compatibility.check` | ✓ | ✓ | ✓ | — | — | ✓ | — | — | ✓ | PC taklif qoralamasi |
+
+> **5c (2026-10-26):** amalda bitta ruxsat `catalog.import.run` — ega, menejer va **omborchi** (omborchi faqat `STOCK_ONLY`: mavjud SKU qoldig'i; katalog siyosatlari `catalog.product.edit` talab qiladi, qoldiq — `commerce.stock.receive`). `catalog.import.commit` alohida kod sifatida qo'shilmadi — tasdiq ham `catalog.import.run` + yuqoridagi tekshiruvlar. **QA (5c):** import fayli so'rov ichida o'qilmaydi (DoS himoyasi: arzon tekshiruv, o'qish worker'da vaqt chegarasi bilan); xatolar CSV'sida sarlavha qatori ham formula prefiksi bilan; import tuzatishi tasdiqda absolyut maqsadga keltiriladi, so'rov egasi eski so'rovlarni ustma-ust yig'a olmaydi.
 
 ### 6.3 `commerce`
 
@@ -226,6 +229,9 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `messaging.conversation.assign` | ✓ | ✓ | — | — | — | — | — | — | — | Suhbatni operatorga biriktirish |
 | `messaging.conversation.resolve` | ✓ | ✓ | own | — | — | — | — | — | — | Suhbatni yopish |
 | `messaging.handoff.request` | ✓ | ✓ | ✓ | — | — | — | — | — | ✓ | Operatorni chaqirish |
+
+
+**5b holati (2026-10-26):** kodda — `app/domains/messaging/permissions.py`. Operator (SALES) uchun `own` — o'ziga biriktirilgan va biriktirilmagan suhbatlar; boshqa operatorniki — `403` + `details.reason = other_operator` (buyurtmalardagi bilan bir xil, panel "Ruxsat yo'q" ko'rsatadi; boshqa shop suhbati — `404`; QA 5b L3); omborchi suhbatlarni umuman ko'rmaydi. Mas'ul xodim ismi suhbat javobida (`assignee_name`) — operator `/shop/members` ni chaqirmaydi. `assign` (o'tkazish ham) — ega va menejer; `channel.connect` — faqat ega. Suhbatdan buyurtma qoralamasi — qo'shimcha `commerce.order.create_draft`. Xaridor matnlari: ko'rish `shops.settings.view`, o'zgartirish `shops.settings.edit`.
 
 ### 6.5 `sales_ai`
 
@@ -271,7 +277,8 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 | `platform.spec.edit` (kutubxonaga kiritish, boshqaning taklifini tasdiqlash, shop so'rovini hal qilish; DEC-120) | ✓ | — | ✓ |
 | `platform.category.edit` (toifalar ro'yxati, DEC-133) | ✓ | — | — |
 | `platform.support.grant_request` (break-glass so'rovi, §9) | ✓ | ✓ | — |
-| `platform.outbox.replay`, `platform.channel.kill`, `platform.ai.kill` | ✓ | — | — |
+| `platform.dead_letter.view`, `platform.dead_letter.replay` (bajarilmagan fon ishlari, ish jurnali, qayta yuborish — 5a; avvalgi nomi `platform.outbox.replay`) | ✓ | — | — |
+| `platform.channel.kill`, `platform.ai.kill` | ✓ | — | — |
 
 ### 6.8 Ruxsat qoidalari
 

@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import Settings
+from app.dependencies import get_import_stock_results, get_import_stock_source
 from app.domains.catalog.domain_manifest import DOMAIN_MANIFEST as CATALOG_MANIFEST
 from app.domains.catalog.pricing.schemas import ExchangeRateIn
 from app.domains.catalog.products.models.orm import Product, Sku
@@ -98,8 +99,12 @@ def _services(settings: Settings) -> tuple[CommerceServices, CatalogServices, Pe
     catalog = CatalogQueryPortImpl()
     # Seed saytdan buyurtma bermaydi — sayt holati porti faqat imzo uchun kerak
     site = SiteGate(MemoryCache(), PreviewSigner(settings.jwt_secret.get_secret_value()))
-    commerce = build_commerce_services(use, audit, files, catalog, StockQueryPortImpl(catalog), site)
-    return commerce, build_catalog_services(use, audit, files), PermissionRegistry.from_manifests(manifests)
+    permissions = PermissionRegistry.from_manifests(manifests)
+    commerce = build_commerce_services(
+        use, audit, files, catalog, StockQueryPortImpl(catalog), site, get_import_stock_source(), permissions
+    )
+    catalog_services = build_catalog_services(use, audit, files, permissions, get_import_stock_results())
+    return commerce, catalog_services, permissions
 
 
 async def _context(db: AsyncSession, permissions: PermissionRegistry, slug: str) -> _Ctx | None:

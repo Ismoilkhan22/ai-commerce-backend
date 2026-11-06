@@ -34,6 +34,7 @@ from app.domains.commerce.common import (
     member_names,
     read_cursor,
 )
+from app.domains.commerce.events import ORDER_EVENTS, order_event
 from app.domains.commerce.orders import access
 from app.domains.commerce.orders.models.orm import Order, OrderLine, OrderNote, Reservation
 from app.domains.commerce.orders.schemas import (
@@ -67,6 +68,7 @@ from app.shared.errors.base import (
     ForbiddenError,
     InvalidTransitionError,
     NotFoundError,
+    OrderLinkedElsewhereError,
     ProductNotAvailableError,
     ValidationError,
 )
@@ -164,6 +166,7 @@ class OrderService:
         sort: OrderSort,
         limit: int,
         cursor: str | None,
+        number: int | None = None,
     ) -> OrderList:
         assert actor.shop_id is not None
         policy = await load_policy(db, actor.shop_id)
@@ -180,6 +183,8 @@ class OrderService:
             query = query.where(Order.assigned_membership_id.is_(None))
         elif assigned:
             query = query.where(Order.assigned_membership_id == self._uuid_param(assigned, "assigned"))
+        if number is not None:  # aniq raqam (suhbatga bog'lash oynasi, 5b)
+            query = query.where(Order.number == number)
         if q and q.strip():
             query = query.where(self._search(q.strip()))
         if needs_review:
@@ -267,7 +272,17 @@ class OrderService:
         )
 
     # ================================================================== qoralama
-    async def create(self, db: AsyncSession, actor: ActorContext, data: OrderCreate) -> OrderOut:
+    async def create(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        data: OrderCreate,
+        *,
+        conversation_id: UUID | None = None,
+        customer_ref: UUID | None = None,
+    ) -> OrderOut:
+        """`conversation_id` — suhbatdan ochilgan qoralama (5b, ConversationOrdersPort): holat xabarlari
+        xaridorga shu suhbat kanali orqali ketadi."""
         assert actor.shop_id is not None
         await ensure_shop_can_sell(db, actor.shop_id)  # to'xtatilgan shopda yangi buyurtma yo'q (TC-023)
         if data.branch_id is not None:
@@ -284,6 +299,8 @@ class OrderService:
             number=number,
             status="DRAFT",
             source="STAFF",
+            conversation_id=conversation_id,
+            customer_ref=customer_ref,
             branch_id=data.branch_id,
             assigned_membership_id=actor.membership_id,  # yaratgan xodim mas'ul; menejer almashtiradi
             fulfillment_method=data.fulfillment_method,
@@ -308,6 +325,7 @@ class OrderService:
             entity_version=order.version,
             diff={"lines": len(data.lines), "source": "STAFF"},
         )
+        await order_event(db, actor, order, "commerce.order.drafted")
         return await self.detail(db, actor, order)
 
     async def update(
@@ -653,9 +671,77 @@ class OrderService:
             entity_version=order.version,
             diff={"method": method},
         )
+        await order_event(
+            db, actor, order, ORDER_EVENTS["MARK_PAID"], method=method, marked_by=actor.membership_id
+        )
         return await self.detail(db, actor, order)
 
     # ================================================================== yordamchilar
+    async def link_conversation(
+        self,
+        db: AsyncSession,
+        actor: ActorContext,
+        order_id: UUID,
+        conversation_id: UUID,
+        customer_ref: UUID,
+        *,
+        relink: bool = False,
+        expected_version: int | None = None,
+    ) -> tuple[Order, UUID | None]:
+        """Mavjud buyurtmani suhbatga bog'lash (5b): keyingi holat xabarlari xaridorga shu suhbat orqali.
+        Yakunlangan yoki bekor qilingan buyurtma bog'lanmaydi — unga xabar ketmaydi.
+
+        Boshqa suhbatga bog'langan buyurtma jim ko'chirilmaydi (QA 5b M3): `ORDER_LINKED_ELSEWHERE`.
+        Ko'chirish — `relink=True` va buyurtma versiyasi (If-Match ma'nosida).
+        Natija: (buyurtma, eski suhbat)."""
+        order = await self.load(db, actor, order_id, for_update=True)
+        access.ensure_own(actor, order)
+        if order.status in ("COMPLETED", "CANCELLED"):
+            raise InvalidTransitionError(
+                "Order is closed", entity=ORDER, **{"from": order.status}, command="LINK_CONVERSATION"
+            )
+        previous = order.conversation_id
+        if previous == conversation_id:
+            return order, None
+        if previous is not None:
+            if not relink:
+                raise OrderLinkedElsewhereError(
+                    "Order is linked to another conversation", order_version=order.version
+                )
+            if expected_version is None:
+                raise ValidationError(
+                    "Order version required", fields=[field("expected_version", "required")]
+                )
+            check_version(order.version, expected_version)
+        order.conversation_id, order.customer_ref = conversation_id, customer_ref
+        await db.flush()
+        await self.audit.record(
+            db,
+            action="commerce.order.conversation_linked",
+            entity_type=ORDER,
+            entity_id=order.id,
+            actor=actor,
+            entity_version=order.version,
+            diff={
+                "conversation_id": {
+                    "old": str(previous) if previous else None,
+                    "new": str(conversation_id),
+                }
+            },
+        )
+        return order, previous
+
+    async def for_conversation(
+        self, db: AsyncSession, actor: ActorContext, conversation_id: UUID
+    ) -> list[Order]:
+        rows = await db.execute(
+            select(Order)
+            .where(Order.shop_id == actor.shop_id, Order.conversation_id == conversation_id)
+            .order_by(Order.created_at.desc())
+            .limit(20)
+        )
+        return [o for o in rows.scalars() if access.hidden_reason(actor, o) is None]
+
     async def load(
         self, db: AsyncSession, actor: ActorContext, order_id: UUID, *, for_update: bool = False
     ) -> Order:
@@ -787,6 +873,7 @@ class OrderService:
             entity_version=order.version,
             diff={"assigned_membership_id": order.assigned_membership_id},
         )
+        await order_event(db, actor, order, "commerce.order.assigned")  # yangi mas'ulga panel signali
 
     @staticmethod
     def _uuid_param(value: str, name: str) -> UUID:

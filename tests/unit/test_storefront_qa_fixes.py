@@ -145,6 +145,7 @@ def test_idempotency_hash_key_must_be_set_outside_dev() -> None:
         "app_public_url": "https://app.example.uz",
         "platform_app_public_url": "https://admin.example.uz",
         "public_files_url": "https://files.example.uz",
+        "messaging_webhook_base_url": "https://api.example.uz",
         "pii_encryption_keys": "k1:" + "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=",
         "pii_active_key_id": "k1",
         "pii_hmac_key": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDY=",

@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.settings import Settings
 from app.db.seed.catalog_seed import run_catalog_seed
 from app.db.seed.commerce_seed import run_commerce_seed
+from app.db.seed.messaging_seed import run_messaging_seed
+from app.db.seed.notifications_seed import run_notifications_seed
 from app.db.seed.storefront_seed import run_storefront_seed
 from app.dependencies import get_order_query
 from app.platform.audit.services.audit_service import AuditService
@@ -196,6 +198,9 @@ class SeedReport:
     commerce_receipts: int = 0
     storefront_sites: int = 0
     storefront_live: int = 0
+    messaging_channels: int = 0
+    messaging_conversations: int = 0
+    staff_tasks: int = 0
 
 
 @dataclass(frozen=True)
@@ -454,6 +459,10 @@ async def run_seed(settings: Settings) -> SeedReport:
     report.commerce_orders, report.commerce_receipts = commerce.orders, commerce.receipts
     storefront = await run_storefront_seed(settings)
     report.storefront_sites, report.storefront_live = storefront.sites, storefront.live
+    messaging = await run_messaging_seed(settings)  # sayt chati, soxta Telegram bot, demo suhbatlar
+    report.messaging_channels, report.messaging_conversations = messaging.channels, messaging.conversations
+    notifications = await run_notifications_seed(settings)  # rejali ishlar bir marta: vazifa va xabarlar
+    report.staff_tasks = notifications.tasks
     return report
 
 
@@ -464,6 +473,8 @@ def main() -> None:
         f"katalog: mahsulotlar {report.catalog_products}, kutubxona modellari {report.catalog_specs}; "
         f"savdo: kirimlar {report.commerce_receipts}, buyurtmalar {report.commerce_orders}; "
         f"saytlar {report.storefront_sites} (ochiq {report.storefront_live}); "
+        f"kanallar {report.messaging_channels}, suhbatlar {report.messaging_conversations}; "
+        f"xodim vazifalari {report.staff_tasks}; "
         f"o'tkazib yuborildi: {len(report.skipped_shops)}",
         "",
         "Platforma paneli (http://localhost:3001):",

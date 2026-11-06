@@ -18,6 +18,7 @@ from sqlalchemy import case as sql_case
 from sqlalchemy import tuple_ as sql_tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.catalog.imports.models.orm import ImportStockRow as StagedRow
 from app.domains.catalog.pricing.models.orm import CurrentPrice, PriceVersion
 from app.domains.catalog.pricing.services.pricing_service import RATE_MAX_AGE, PricingService, uzs_amount
 from app.domains.catalog.products.models.orm import Category, Product, ProductMedia, Sku
@@ -32,6 +33,7 @@ from app.shared.contracts.catalog import (
     PublicVariant,
     SkuSnapshot,
 )
+from app.shared.contracts.imports import ImportStockRow
 from app.shared.errors.base import ValidationError
 from app.shared.pagination import decode_cursor, encode_cursor
 from app.shared.text import NUL
@@ -386,3 +388,21 @@ class CatalogQueryPortImpl:
             .where(Product.id == product_id, Product.status == "PUBLISHED")
         )
         return {sku_id: int(uzs) for sku_id, uzs in rows}
+
+
+class ImportStockSourceImpl:
+    """Katalog importining qoldiq "kutish zali" — commerce faqat shu orqali o'qiydi (18 §7)."""
+
+    async def stock_rows(
+        self,
+        db: AsyncSession,
+        shop_id: UUID,
+        batch_id: UUID,
+        after: tuple[UUID, UUID] | None,
+        limit: int,
+    ) -> list[ImportStockRow]:
+        query = select(StagedRow).where(StagedRow.shop_id == shop_id, StagedRow.batch_id == batch_id)
+        if after is not None:
+            query = query.where(sql_tuple(StagedRow.branch_id, StagedRow.sku_id) > sql_tuple(*after))
+        rows = await db.execute(query.order_by(StagedRow.branch_id, StagedRow.sku_id).limit(limit))
+        return [ImportStockRow(r.sku_id, r.branch_id, r.quantity, r.row_number) for r in rows.scalars()]

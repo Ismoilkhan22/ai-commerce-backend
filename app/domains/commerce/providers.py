@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
+from app.domains.commerce.inventory.services.import_stock import ImportStockService
 from app.domains.commerce.inventory.services.stock_service import StockService
 from app.domains.commerce.orders.services.lifecycle_service import OrderLifecycleService
 from app.domains.commerce.orders.services.order_service import OrderService
@@ -18,10 +19,12 @@ from app.domains.commerce.orders.services.storefront_service import StorefrontOr
 from app.domains.commerce.orders.services.views import OrderViews
 from app.domains.commerce.quick_sales.services.quick_sale_service import QuickSaleService
 from app.platform.audit.services.audit_service import AuditService
+from app.platform.staff.permissions import PermissionRegistry
 from app.platform.storage.services.file_service import FileService
 from app.platform.use.services.use_service import UseService
 from app.shared.contracts.catalog import CatalogQueryPort
 from app.shared.contracts.commerce import StockQueryPort
+from app.shared.contracts.imports import ImportStockSource
 from app.shared.contracts.storefront import SitePort
 
 
@@ -34,6 +37,7 @@ class CommerceServices:
     privacy: OrderPrivacyService
     storefront: StorefrontOrderService
     site: SitePort
+    import_stock: ImportStockService
 
 
 def build_commerce_services(
@@ -43,6 +47,8 @@ def build_commerce_services(
     catalog: CatalogQueryPort,
     stock_query: StockQueryPort,
     site: SitePort,
+    import_source: ImportStockSource,
+    permissions: PermissionRegistry,
 ) -> CommerceServices:
     stock = StockService(audit, files, catalog)
     views = OrderViews()
@@ -55,6 +61,7 @@ def build_commerce_services(
         privacy=OrderPrivacyService(audit),
         storefront=StorefrontOrderService(use, audit, orders, catalog, stock_query),
         site=site,
+        import_stock=ImportStockService(stock, catalog, import_source, permissions),
     )
 
 

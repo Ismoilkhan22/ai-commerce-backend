@@ -17,7 +17,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 STOREFRONT_PREFIX = "/api/v1/storefront/"
 ALLOW_METHODS = "GET, POST"
-ALLOW_HEADERS = "Content-Type, Idempotency-Key, Accept-Language, X-Storefront-Preview, X-Request-ID"
+ALLOW_HEADERS = (
+    "Content-Type, Idempotency-Key, Accept-Language, X-Storefront-Preview, X-Request-ID, X-Chat-Session"
+)
 EXPOSE_HEADERS = "Retry-After, X-Request-ID"
 MAX_AGE = "600"
 

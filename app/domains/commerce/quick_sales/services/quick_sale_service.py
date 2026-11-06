@@ -44,6 +44,7 @@ from app.shared.errors.base import (
     ProductNotAvailableError,
     ValidationError,
 )
+from app.shared.events.outbox import write_outbox
 from app.shared.money import MAX_SAFE_MINOR
 from app.shared.types.actor import ActorContext
 
@@ -147,6 +148,23 @@ class QuickSaleService:
             entity_id=sale.id,
             actor=actor,
             diff={"lines": len(lines), "units": sum(quantities.values())},
+        )
+        await write_outbox(  # hisobotda offline sotuv alohida (DEC-123)
+            db,
+            schema="commerce",
+            event_type="commerce.quick_sale.recorded",
+            actor=actor,
+            shop_id=actor.shop_id,
+            aggregate_type=ENTITY,
+            aggregate_id=sale.id,
+            aggregate_version=1,
+            payload={
+                "sale_id": sale.id,
+                "branch_id": data.branch_id,
+                "total_minor": total,
+                "currency": "UZS",
+                "lines": [{"sku_id": line.sku_id, "qty": line.qty} for line in lines],
+            },
         )
         return (await self._out(db, actor, [sale]))[0]
 

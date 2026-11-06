@@ -37,6 +37,34 @@ from app.shared.types.actor import ActorContext
 ENTITY = "platform.stored_file"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_LOGO_BYTES = 2 * 1024 * 1024  # storefront.md §8
+MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 18 §4
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+DOCUMENT_TYPES = frozenset({XLSX_MIME, "text/csv"})
+_DOCUMENT_EXTENSIONS = {XLSX_MIME: ".xlsx", "text/csv": ".csv"}
+
+
+def _document_mime(data: bytes) -> str | None:
+    """Jadval fayli: ZIP (XLSX), BOM'li UTF-16 matn yoki NUL'siz matn (UTF-8 yoki Windows-1251) — CSV."""
+    if data[:4] == b"PK\x03\x04":
+        return XLSX_MIME
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):  # UTF-16 BOM — Excel "Unicode text" (5c QA F17)
+        try:
+            data[: 65536 - 65536 % 2].decode("utf-16", errors="strict")
+        except UnicodeDecodeError:
+            return None
+        return "text/csv"
+    if b"\x00" in data[:65536]:
+        return None
+    sample = data[:65536]
+    for encoding in ("utf-8", "cp1251"):
+        try:
+            sample.decode(encoding)
+            return "text/csv"
+        except UnicodeDecodeError:
+            continue
+    return None
+
+
 # Boshqaruv belgilari; ko'rinmas va yo'nalish almashtiruvchi belgilar — `strip_invisible` (shared/text.py):
 # "rasm\u202egnp.exe" ekranda "rasmexe.png" bo'lib ko'rinmasin
 _NAME_UNSAFE = re.compile(r"[\x00-\x1f\x7f]")
@@ -56,6 +84,10 @@ PURPOSES: dict[str, PurposeRule] = {
     "PRODUCT_IMAGE": PurposeRule("catalog.product.edit", True, MAX_IMAGE_BYTES, IMAGE_TYPES),
     "STOCK_EVIDENCE": PurposeRule("commerce.stock.adjust_request", False, MAX_IMAGE_BYTES, IMAGE_TYPES),
     "SITE_LOGO": PurposeRule("storefront.site.edit", True, MAX_LOGO_BYTES, IMAGE_TYPES),
+    # Suhbat rasmi (5b): operator biriktiradi; xaridor yuborgani worker orqali (`store_system`)
+    "CHAT_ATTACHMENT": PurposeRule("messaging.conversation.reply", False, MAX_IMAGE_BYTES, IMAGE_TYPES),
+    # Katalog importi (5c): XLSX yoki CSV, 10 MB (18 §4). Jadval ekanini import moduli to'liq tekshiradi
+    "IMPORT_FILE": PurposeRule("catalog.import.run", False, MAX_IMPORT_BYTES, DOCUMENT_TYPES),
 }
 
 
@@ -115,23 +147,81 @@ class FileService:
         rule = purpose_rule(purpose)
         if rule.permission not in actor.permissions:
             raise ForbiddenError("Permission denied", permission=rule.permission)
+        assert actor.shop_id is not None
+        row = await self._store(db, actor.shop_id, purpose, rule, data, original_name, actor.membership_id)
+        await self.audit.record(
+            db, action="storage.file.uploaded", entity_type=ENTITY, entity_id=row.id, actor=actor
+        )
+        return self.to_out(row)
+
+    async def store_system(
+        self, db: AsyncSession, shop_id: UUID, purpose: str, data: bytes, original_name: str | None
+    ) -> StoredFile:
+        """Tizim yuklashi (xaridor Telegram'da yuborgan rasm, 5b): ruxsat tekshiruvi yo'q, qolgani — hajm,
+        tur (fayl ichidan) va tasodifiy kalit — `upload` bilan bir xil. Audit yozilmaydi: xodim amali emas."""
+        return await self._store(db, shop_id, purpose, purpose_rule(purpose), data, original_name, None)
+
+    async def store_document(
+        self,
+        db: AsyncSession,
+        shop_id: UUID,
+        purpose: str,
+        data: bytes,
+        *,
+        mime_type: str,
+        extension: str,
+        original_name: str | None,
+        uploaded_by: UUID | None,
+    ) -> StoredFile:
+        """Import fayli va hisobot (IMPORT_FILE, EXPORT_FILE — 5c): doim yopiq. Turi va hajmi chaqiruvchi
+        modulda tekshiriladi (jadval fayli rasm emas); yo'lda nom yo'q, tasodifiy qism bor."""
+        if purpose not in ("IMPORT_FILE", "EXPORT_FILE"):
+            raise ValueError(f"store_document: {purpose}")
+        file_id = uuid7()
+        key = f"shops/{shop_id}/{purpose.lower()}/{file_id}-{secrets.token_urlsafe(9)}{extension}"
+        await self.storage.put(key, data, mime_type)
+        row = StoredFile(
+            id=file_id,
+            shop_id=shop_id,
+            purpose=purpose,
+            object_key=key,
+            is_public=False,
+            mime_type=mime_type,
+            size_bytes=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+            original_name=_clean_name(original_name),
+            uploaded_by=uploaded_by,
+        )
+        db.add(row)
+        await db.flush()
+        await db.refresh(row)
+        return row
+
+    async def _store(
+        self,
+        db: AsyncSession,
+        shop_id: UUID,
+        purpose: str,
+        rule: PurposeRule,
+        data: bytes,
+        original_name: str | None,
+        uploaded_by: UUID | None,
+    ) -> StoredFile:
         if not data:
             raise ValidationError("Empty file", fields=[{"field": "file", "code": "required", "params": {}}])
         if len(data) > rule.max_bytes:
             raise PayloadTooLargeError("File too large", max_bytes=rule.max_bytes)
-        mime = sniff_mime(data)
+        mime = _document_mime(data) if rule.mime_types == DOCUMENT_TYPES else sniff_mime(data)
         if mime is None or mime not in rule.mime_types:
             raise UnsupportedMediaTypeError("File type not allowed", allowed=sorted(rule.mime_types))
-        assert actor.shop_id is not None
         file_id = uuid7()
         # Yo'lda fayl nomi yo'q va tasodifiy qism bor — manzilni taxmin qilib bo'lmaydi
-        key = (
-            f"shops/{actor.shop_id}/{purpose.lower()}/{file_id}-{secrets.token_urlsafe(9)}{EXTENSIONS[mime]}"
-        )
+        extension = EXTENSIONS.get(mime) or _DOCUMENT_EXTENSIONS[mime]
+        key = f"shops/{shop_id}/{purpose.lower()}/{file_id}-{secrets.token_urlsafe(9)}{extension}"
         await self.storage.put(key, data, mime)
         row = StoredFile(
             id=file_id,
-            shop_id=actor.shop_id,
+            shop_id=shop_id,
             purpose=purpose,
             object_key=key,
             is_public=rule.public,
@@ -139,15 +229,16 @@ class FileService:
             size_bytes=len(data),
             sha256=hashlib.sha256(data).hexdigest(),
             original_name=_clean_name(original_name),
-            uploaded_by=actor.membership_id,
+            uploaded_by=uploaded_by,
         )
         db.add(row)
         await db.flush()
         await db.refresh(row)
-        await self.audit.record(
-            db, action="storage.file.uploaded", entity_type=ENTITY, entity_id=row.id, actor=actor
-        )
-        return self.to_out(row)
+        return row
+
+    async def read_bytes(self, row: StoredFile) -> bytes | None:
+        """Fayl baytlari (suhbatga biriktirilgan rasmni kanalga yuborish uchun, 5b)."""
+        return await self.storage.get(row.object_key)
 
     # ------------------------------------------------------------------ o'qish
     async def get(self, db: AsyncSession, actor: ActorContext, file_id: UUID) -> StoredFileOut:

@@ -1,0 +1,260 @@
+// =====================================================================
+// AI Commerce OS — platform/notifications: xabarnomalar, xodim vazifalari, xodim Telegram ulanishi (5-modul, S2-06)
+// Holat: TAKLIF 2026-10-26 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar ro'yxati: notifications.md oxirida.
+// Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
+// Izohlar: db/notifications.md
+// Manba hujjatlar: business/02 M17; business/03 BL-060…BL-062; business/05 FSM-12, 4-qism;
+//                  engineering/05 §8.6, 06 §5.2, 07 §4.1, 08 §6, 10 §4, 20; DEC-104, DEC-129
+// Hajm: platform schemasidagi yangi jadvallar. Realtime (WebSocket) uchun jadval yo‘q — Redis (08 §6).
+// =====================================================================
+
+Project ai_commerce_os_notifications {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Trigger — domenda, yetkazish — platformada (20 §2).** Domen o‘z tranzaksiyasida
+  `notifications.request(...)` chaqiradi → shu yerda qator + outbox. Xaridorga xabar `messaging` orqali
+  (platform.notification.customer_delivery_requested), xodimga — panel (realtime) va platformaning Telegram boti.
+
+  **Bir hodisa — bitta xabar (BL-060):** dedup_key unikal. Event 3 marta kelsa ham xabar bitta.
+  **Hech narsa avtomatik bekor qilinmaydi:** eslatma va vazifa faqat odamni chaqiradi (business/05, 4-qism).
+  '''
+}
+
+Enum platform.notification_recipient_type {
+  CUSTOMER [note: 'Xaridor — o‘z suhbati kanali orqali (messaging)']
+  STAFF [note: 'Xodim — panel + bog‘langan bo‘lsa platforma boti']
+}
+
+Enum platform.notification_status {
+  PENDING [note: 'Yaratildi (FSM-12)']
+  SCHEDULED [note: 'Navbatda yoki tinch soat tugashini kutmoqda; xatodan keyin qayta urinish shu holatda']
+  SENT [note: 'Yetkazildi']
+  FAILED [note: '5 marta xato — xodimga vazifa (BL-062)']
+  SUPPRESSED [note: 'Yuborilmaydi: Instagram oynasi yopiq, xaridor bloklagan, xodim botni bog‘lamagan, rad etgan']
+}
+
+Enum platform.notification_priority {
+  HIGH [note: 'Tinch soatga qaramaydi']
+  NORMAL
+  LOW [note: 'Kunlik guruhlanadi (masalan, kam qolgan mahsulotlar)']
+}
+
+Enum platform.task_status {
+  OPEN
+  DONE [note: 'Xodim bajarildi deb belgiladi']
+  RESOLVED [note: 'Sabab yo‘qoldi — domen resolve_tasks chaqirdi (masalan, buyurtma tasdiqlandi)']
+  CANCELLED
+}
+
+// ---------------------------------------------------------------------
+// Shablonlar
+// ---------------------------------------------------------------------
+
+Table platform.shop_message_templates {
+  id uuid [pk]
+  shop_id uuid [not null]
+  template_key text [not null, note: 'Faqat customer.* kalitlar (20 §5): customer.order_confirmed, ...']
+  locale text [not null, note: 'uz | ru | en (uz-Cyrl — keyin)']
+  version int [not null, note: 'Har tahrir — yangi versiya, audit']
+  body text [not null, note: '≤ 1000 belgi; majburiy o‘zgaruvchilar saqlangani tekshiriladi (TC-NOT-03)']
+  is_active boolean [not null, default: true, note: 'Shu kalit+til uchun bittasi faol']
+  created_by uuid [not null, note: 'platform.memberships.id — ega (shops.settings.edit)']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, template_key, locale, version) [unique]
+    (shop_id, template_key, locale) [unique, note: 'Partial: WHERE is_active — bitta faol matn']
+  }
+  Note: '''
+  Shop o‘zgartirgan xaridor matnlari. Platforma standart matnlari bazada EMAS — kodda (tarjima fayllari,
+  versiyasi bilan), PR’da ko‘rib chiqiladi. Tanlash: shop matni (xaridor tilida) → standart (xaridor tilida) → standart (uz).
+  RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Xabarnomalar va vazifalar
+// ---------------------------------------------------------------------
+
+Table platform.notifications {
+  id uuid [pk]
+  shop_id uuid [not null]
+  template_key text [not null, note: 'customer.order_confirmed, staff.new_order, ...']
+  template_version text [not null, note: 'Qaysi matn versiyasi ishlatildi (shop override id yoki standart versiya)']
+  locale text [not null]
+  recipient_type platform.notification_recipient_type [not null]
+  recipient_membership_id uuid [note: 'STAFF — platform.memberships.id (rol bo‘yicha so‘ralsa — har xodimga alohida qator)']
+  conversation_id uuid [note: 'CUSTOMER — messaging.conversations.id']
+  priority platform.notification_priority [not null, default: 'NORMAL']
+  aggregate_type text [not null, note: 'commerce.order, messaging.conversation, ...']
+  aggregate_id uuid [not null]
+  aggregate_version bigint [not null]
+  variables jsonb [not null, default: '{}', note: 'Formatlangan qiymatlar (order_number, total, items_summary) — telefon va manzil YO‘Q']
+  title text [note: 'STAFF — panel uchun tayyor matn sarlavhasi']
+  body text [note: 'Tayyor matn (render qilingan). Xaridor matni messaging.messages ga ham tushadi']
+  dedup_key text [not null, note: 'template_key:aggregate_type:aggregate_id:aggregate_version:recipient']
+  status platform.notification_status [not null, default: 'PENDING', note: 'FSM-12 — tashqi yetkazish (xaridor kanali yoki platforma boti)']
+  attempts int [not null, default: 0]
+  last_error_code text
+  scheduled_at timestamptz [note: 'Tinch soatdan keyin yuborish vaqti']
+  sent_at timestamptz
+  failed_at timestamptz
+  suppressed_reason text [note: 'WINDOW_CLOSED | CUSTOMER_BLOCKED | NOT_LINKED | MUTED']
+  read_at timestamptz [note: 'STAFF — panelda o‘qilgan vaqt']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, dedup_key) [unique, note: 'Bir hodisa — bitta xabar (BL-060, TC-NOT-01)']
+    (shop_id, recipient_membership_id, created_at) [note: 'Xodim bildirishnomalar markazi']
+    (shop_id, recipient_membership_id) [note: 'Partial: WHERE read_at IS NULL — o‘qilmaganlar soni']
+    (status, scheduled_at) [note: 'Partial: WHERE status = SCHEDULED — rekonsilyatsiya (06 §6)']
+  }
+  Note: '''
+  Har qabul qiluvchiga bitta qator. Xodim uchun panel (in-app) doim bor; status — platforma botiga yetkazish.
+  Xaridor uchun status — messaging’dan qaytgan natija (mark_result). O‘tishlar platform/use orqali.
+  90 kundan keyin o‘chiriladi (taklif). RLS (FORCE).
+  '''
+}
+
+Table platform.staff_tasks {
+  id uuid [pk]
+  shop_id uuid [not null]
+  type text [not null, note: 'ORDER_CONFIRM_REMINDER | RESERVATION_REVIEW | HANDOFF | DISCOUNT_APPROVAL | ADJUSTMENT_APPROVAL | NOTIFICATION_FAILED | INSTAGRAM_WINDOW_CLOSED | CHANNEL_DEGRADED | STOCK_LOW | IMPORT_REVIEW']
+  subject_type text [not null, note: 'commerce.order, commerce.reservation, messaging.conversation, ...']
+  subject_id uuid [not null]
+  branch_id uuid [note: 'Filial doirasidagi xodimlar faqat o‘z filiali vazifalarini ko‘radi']
+  assignee_membership_id uuid [note: 'Aniq xodim (biriktirilgan operator)']
+  assignee_role text [note: 'Yoki rol: MANAGER | OWNER | SALES | WAREHOUSE — shu roldagilar ko‘radi']
+  priority platform.notification_priority [not null, default: 'NORMAL']
+  params jsonb [not null, default: '{}', note: 'Ekranda ko‘rsatish uchun: order_number, hours — PII yo‘q']
+  due_at timestamptz
+  dedup_key text [not null, note: '<job>:<entity_id>:<window>, masalan order_reminder:{order_id}:24h']
+  status platform.task_status [not null, default: 'OPEN']
+  resolved_by uuid [note: 'platform.memberships.id (DONE da)']
+  resolved_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, dedup_key) [unique, note: 'Rejali ish ikki marta ishlasa ham bitta vazifa (06 §5.1)']
+    (shop_id, status, assignee_membership_id)
+    (shop_id, status, assignee_role, branch_id)
+    (shop_id, subject_type, subject_id) [note: 'resolve_tasks(aggregate) — sabab yo‘qolganda yopish']
+  }
+  Note: '''
+  "Kimdir biror narsa qilishi kerak" (20 §9). Domen yaratadi va o‘zi yopadi: buyurtma tasdiqlansa eslatma
+  vazifasi RESOLVED bo‘ladi. 3-moduldagi "Ko‘rib chiqish kerak" ro‘yxati shu vazifalarga o‘tadi. RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Xodim sozlamalari va platforma botiga ulanish
+// ---------------------------------------------------------------------
+
+Table platform.staff_notification_settings {
+  membership_id uuid [pk, note: 'platform.memberships.id']
+  shop_id uuid [not null]
+  quiet_from time [note: 'Tinch soat boshi (shop vaqti) — NULL = yo‘q']
+  quiet_to time
+  telegram_enabled boolean [not null, default: true, note: 'Platforma boti orqali ham olsinmi']
+  muted_types text[] [not null, default: '{}', note: 'O‘chirilgan LOW/NORMAL turlar; HIGH o‘chirilmaydi']
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, membership_id) [unique]
+  }
+  Note: 'Xodimning o‘z sozlamasi (PUT /shop/me/notification-settings). Yozuv yo‘q — standart qiymatlar.'
+}
+
+Table platform.staff_telegram_links {
+  principal_id uuid [pk, note: 'platform.principals.id — odam, shop emas (bitta bot hamma shop uchun)']
+  telegram_user_id bigint [not null]
+  telegram_chat_id bigint [not null, note: 'Shaxsiy chat — xabar shu yerga']
+  linked_at timestamptz [not null, default: `now()`]
+  unlinked_at timestamptz [note: 'Xodim uzdi yoki botni blokladi (403) — yuborish to‘xtaydi']
+  last_error_code text
+
+  indexes {
+    telegram_user_id [unique, note: 'Partial: WHERE unlinked_at IS NULL — bitta Telegram akkaunt bitta odamga']
+  }
+  Note: '''
+  Xodimning platforma botiga ulanishi (20 §2, DEC-129). Bot tokeni — muhit sozlamasi (bitta, platformaniki),
+  bazada emas. Identity jadval: RLS — "o‘zim" varianti (principal_id = app.principal_id).
+  '''
+}
+
+Table platform.telegram_link_codes {
+  id uuid [pk]
+  principal_id uuid [not null]
+  code_hash text [not null, note: 'Bir martalik kod SHA-256 xeshi; kod o‘zi faqat panelda bir marta ko‘rsatiladi']
+  expires_at timestamptz [not null, note: '10 daqiqa']
+  used_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    code_hash [unique]
+    (principal_id, created_at)
+  }
+  Note: 'Panel kodi → botga /start <kod>. Ishlatilgan yoki eskirgan kod qayta ishlamaydi. Kunlik tozalanadi.'
+}
+
+// ---------------------------------------------------------------------
+// Bog‘lanishlar (shu schemadagi jadvallarga)
+// ---------------------------------------------------------------------
+
+Ref: platform.staff_tasks.shop_id > platform.shops.id [delete: restrict]
+Ref: platform.notifications.shop_id > platform.shops.id [delete: restrict]
+Ref: platform.shop_message_templates.shop_id > platform.shops.id [delete: restrict]
+Ref: platform.staff_notification_settings.(shop_id, membership_id) > platform.memberships.(shop_id, id) [delete: cascade]
+Ref: platform.notifications.(shop_id, recipient_membership_id) > platform.memberships.(shop_id, id)
+Ref: platform.staff_tasks.(shop_id, assignee_membership_id) > platform.memberships.(shop_id, id)
+Ref: platform.staff_tasks.(shop_id, branch_id) > platform.branches.(shop_id, id)
+Ref: platform.staff_telegram_links.principal_id > platform.principals.id [delete: cascade]
+Ref: platform.telegram_link_codes.principal_id > platform.principals.id [delete: cascade]
+
+// Diagramma uchun minimal "tashqi" jadvallar (to‘liq — platform.dbml)
+Table platform.shops {
+  id uuid [pk]
+  Note: 'To‘liq tavsif — platform.dbml'
+}
+Table platform.memberships {
+  id uuid [pk]
+  shop_id uuid [not null]
+  indexes {
+    (shop_id, id) [unique]
+  }
+  Note: 'To‘liq tavsif — platform.dbml'
+}
+Table platform.branches {
+  id uuid [pk]
+  shop_id uuid [not null]
+  indexes {
+    (shop_id, id) [unique]
+  }
+  Note: 'To‘liq tavsif — platform.dbml'
+}
+Table platform.principals {
+  id uuid [pk]
+  Note: 'To‘liq tavsif — platform.dbml'
+}
+
+TableGroup xabarnomalar {
+  platform.shop_message_templates
+  platform.notifications
+  platform.staff_notification_settings
+}
+
+TableGroup vazifalar {
+  platform.staff_tasks
+}
+
+TableGroup platforma_boti {
+  platform.staff_telegram_links
+  platform.telegram_link_codes
+}

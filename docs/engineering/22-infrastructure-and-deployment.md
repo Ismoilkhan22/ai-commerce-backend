@@ -200,7 +200,7 @@ Redis — haqiqat manbai emas (ADR-006, ADR-033). Yo'qolganda: kesh qayta to'lad
   chapga nima yozsa ham hisobga olinmaydi). Lokalda ro'yxat `127.0.0.1`, `::1` — XFF'ni soxtalash lokalda
   ataylab mumkin, prod'da emas. Bir nechta XFF qatori bitta zanjirga birlashtiriladi (QA M04 B1). Sayt
   serverining o'zi xaridor IP'sisiz chaqirsa — alohida `sf-ssr:{slug}` chelagi (`STOREFRONT_SSR_READ_LIMIT_PER_MINUTE`,
-  `08` §5). Sayt ilovasida `STOREFRONT_TRUSTED_PROXY_HOPS=1` (nginx ortida).
+  `08` §5). Sayt ilovasida `STOREFRONT_TRUSTED_PROXY_HOPS=1` (nginx ortida) — **production'da majburiy**: aks holda hamma mehmon so'rovi sayt serveri IP'si bilan keladi va sayt chati/o'qish chegaralari (sessiya 10/soat, o'qish 120/daq) hamma mehmonga bitta bo'lib qoladi (QA 5b kuzatuv). Sayt CSP'sida `'unsafe-eval'` faqat dev rejimda (Next HMR); production build'da yo'q.
 - **Shop sayti va sarlavhalar.** Absolyut havolalar `STOREFRONT_PUBLIC_URL` dan (backend) — nginx'ning `Host` va
   `X-Forwarded-Proto` qiymatiga tayanmaydi. CSP sayt ilovasining o'zida (`10` §11); CDN ishlatilsa — uning manzili
   `STOREFRONT_ASSET_ORIGINS` ga.

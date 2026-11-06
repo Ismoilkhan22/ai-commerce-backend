@@ -15,9 +15,11 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -127,6 +129,15 @@ class StockReceipt(IdMixin, ShopScopedMixin, Base):
         UniqueConstraint("shop_id", "id"),
         Index("ix_stock_receipts_shop_id_branch_id_created_at", "shop_id", "branch_id", "created_at"),
         Index("ix_stock_receipts_shop_id_created_at", "shop_id", "created_at"),
+        # Importdan: bitta filialga bo'lak boshiga bitta kirim (100 qatorgacha) — takror himoyasi natija
+        # jadvalida (import_stock_results), shuning uchun unikal emas
+        Index(
+            "ix_stock_receipts_import",
+            "shop_id",
+            "import_batch_id",
+            "branch_id",
+            postgresql_where=text("import_batch_id IS NOT NULL"),
+        ),
         {"schema": "commerce"},
     )
 
@@ -134,6 +145,7 @@ class StockReceipt(IdMixin, ShopScopedMixin, Base):
     note: Mapped[str | None] = mapped_column(Text)
     received_by: Mapped[UUID]  # platform.memberships.id
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    import_batch_id: Mapped[UUID | None]  # catalog.import_batches.id — importdan (bitta filialga bitta kirim)
 
 
 class StockAdjustment(IdMixin, ShopScopedMixin, VersionMixin, Base):
@@ -163,6 +175,18 @@ class StockAdjustment(IdMixin, ShopScopedMixin, VersionMixin, Base):
             "(kind = 'ADJUSTMENT' AND delta <> 0) OR (kind <> 'ADJUSTMENT' AND delta > 0)", name="delta"
         ),
         CheckConstraint("char_length(reason) >= 3", name="reason_length"),  # BL-022: sababsiz tuzatish yo'q
+        CheckConstraint(
+            "target_on_hand IS NULL OR (target_on_hand >= 0 AND kind = 'ADJUSTMENT')", name="target_on_hand"
+        ),
+        Index(
+            "uq_stock_adjustments_import",
+            "shop_id",
+            "import_batch_id",
+            "branch_id",
+            "sku_id",
+            unique=True,
+            postgresql_where=text("import_batch_id IS NOT NULL"),
+        ),
         {"schema": "commerce"},
     )
 
@@ -180,3 +204,30 @@ class StockAdjustment(IdMixin, ShopScopedMixin, VersionMixin, Base):
     decision_note: Mapped[str | None] = mapped_column(Text)
     on_hand_before: Mapped[int | None] = mapped_column(Integer)
     on_hand_after: Mapped[int | None] = mapped_column(Integer)
+    import_batch_id: Mapped[UUID | None]  # catalog.import_batches.id — import farqi (DEC-140, 1-qaror)
+    # Import tuzatishi — fayldagi ABSOLYUT qoldiq (QA F3): farq tasdiq paytida joriy qoldiqdan hisoblanadi
+    target_on_hand: Mapped[int | None] = mapped_column(Integer)
+
+
+IMPORT_STOCK_RESULTS = ("APPLIED", "NO_CHANGE", "PENDING_APPROVAL", "ERROR")
+
+
+class ImportStockResult(ShopScopedMixin, Base):
+    """Katalog importining har qoldiq qatori natijasi (db/catalog_import.md §5). Asosiy kalit — takror
+    himoyasi: event qayta kelsa qator qayta qo'llanmaydi (TC-IMP-09)."""
+
+    __tablename__ = "import_stock_results"
+    __table_args__ = (
+        PrimaryKeyConstraint("shop_id", "batch_id", "sku_id", "branch_id"),
+        CheckConstraint(f"result IN {IMPORT_STOCK_RESULTS}", name="result"),
+        {"schema": "commerce"},
+    )
+
+    batch_id: Mapped[UUID]  # catalog.import_batches.id — FK'siz (boshqa schema)
+    sku_id: Mapped[UUID]
+    branch_id: Mapped[UUID]
+    result: Mapped[str] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    receipt_id: Mapped[UUID | None]
+    adjustment_id: Mapped[UUID | None]
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

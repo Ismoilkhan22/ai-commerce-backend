@@ -40,7 +40,7 @@ Tanlov — **A**. Qoldiqning yagona yozuvchisi `commerce` bo'lib qoladi (BL-019,
 
 1. **Dry-run hech narsani yozmaydi** (BL-013). Commit faqat foydalanuvchi tasdig'idan keyin va faqat xatosiz yoki tanlangan qatorlar uchun.
 2. Commit — arq vazifasi `catalog_import`; navbatga outbox orqali tushadi (ADR-033). API `202 Accepted` + `status_url` qaytaradi.
-3. Katta fayl xotiraga to'liq yuklanmaydi — stream bilan o'qiladi, 500 qatorlik bo'laklarda yoziladi.
+3. Katta fayl xotiraga to'liq yuklanmaydi — stream bilan o'qiladi, 500 qatorlik bo'laklarda yoziladi. **Fayl so'rov ichida o'qilmaydi (5c QA F1):** yuklashda faqat arzon tekshiruv (ZIP katalogi, varaq o'lchami `<dimension>` ≤ 20 001 qator, sharedStrings ≤ 30 MB / 300 000 satr, varaq XML ≤ 100 MB, CSV kodlashi va "sarlavha + qator"); import `PARSING` holatida ochiladi. Worker faylni bir marta, alohida thread'da, 60 soniyalik chegara bilan o'qiydi (`max_row`/`max_col` bilan — bo'sh qatorlar to'ldirilmaydi) va qatorlarni `import_source_rows` ga yozadi; sinov bo'laklari shu jadvaldan o'qiydi.
 4. Bir shop uchun bir vaqtda bitta faol import (`409 IMPORT_ALREADY_RUNNING`).
 5. Importda yo'q, lekin tizimda bor SKU'lar **o'chirilmaydi va arxivlanmaydi** — arxivlash alohida aniq amal.
 6. Har commit `import_batches` yozuvi bilan; har o'zgargan SKU va ledger yozuvi audit'da `import_batch_id` bilan.
@@ -51,10 +51,11 @@ Tanlov — **A**. Qoldiqning yagona yozuvchisi `commerce` bo'lib qoladi (BL-019,
 
 | Parametr | Qiymat |
 |---|---|
-| Formatlar | `.xlsx` (birinchi yoki tanlangan varaq), `.csv` (UTF-8; `;` yoki `,` avtomatik; Windows-1251 aniqlansa — ogohlantirish va konvertatsiya) |
+| Formatlar | `.xlsx` (birinchi **ko'rinadigan** varaq — yashirin varaq o'tkaziladi), `.csv` (UTF-8, BOM'li UTF-16 — Excel "Unicode text"; `;`, `,` yoki tab avtomatik; qator oxiri `\n`, `\r\n` yoki `\r`; Windows-1251 aniqlansa — ogohlantirish va konvertatsiya; BOM'siz UTF-16 — `UNSUPPORTED_ENCODING`) |
 | Hajm | ≤ 10 MB, ≤ 20 000 qator (pilot limiti, `billing` tarifida sozlanadi) |
 | Sarlavha | Birinchi qator — ustun nomlari |
 | Formulalar | XLSX'da formula natijasi o'qiladi; `=`, `+`, `-`, `@` bilan boshlanadigan matn — `UNSAFE_VALUE` (CSV injection) |
+| Sonlar | Narx: `1.250` / `1,250` — `AMBIGUOUS_NUMBER`. Miqdor va kafolat — butun son: `1 000` (bo'shliq) to'g'ri, `1,000` / `2.000` — `AMBIGUOUS_NUMBER`, `10.5` — `INVALID_NUMBER`, `10.0` — 10. Narxdagi belgi va valyuta ustuni zid (`$250` + `UZS`) — `CURRENCY_CONFLICT` |
 | Saqlash | Asl fayl `platform/storage` private bucket'da, 30 kun (`26`) |
 
 ## 5. Ustunlar
@@ -106,6 +107,11 @@ Moslash bosqichida tanlanadi (`conflict_policy`):
 3. Idempotency kaliti: `import_stock:{batch_id}:{sku_id}:{branch_id}` — event qayta kelsa ikkinchi marta qo'llanmaydi.
 4. Oxirida outbox `commerce.import_stock.applied` (payload: `batch_id`, `applied_count`, `failed_count`, `pending_approval_count`). Xato qatorlari `commerce.import_stock_results` da; hisobot uchun `CommerceQueryPort.get_import_stock_results(batch_id)`.
 5. Har qo'llangan qator `commerce.stock.changed` event'ini chiqaradi (storefront keshi uchun) — bitta batch uchun SKU bo'yicha yig'ilgan holda.
+
+**5c QA (2026-10-26):**
+- Sinovda `stock_levels` (on_hand + band qilingan) o'qiladi: miqdor joriy qoldiqqa teng bo'lsa va katalog o'zgarmasa — qator `SKIP` (o'zgarmaydi); band qilinganidan kam bo'lsa — qator xatosi `STOCK_BELOW_COMMITTED` (yozishdagi rad etish oldindan ko'rinadi).
+- Qatorning qoldiq natijasi (SKU, filial) bo'yicha ko'rsatiladi: bitta SKU bir necha filialda bo'ladi.
+- Import tuzatishi `target_on_hand` (absolyut) bilan yaratiladi: farq **tasdiq paytida** hisoblanadi; shu SKU+filial uchun yangi import eski kutilayotgan import tuzatishini rad etadi (ustma-ust qo'shilmaydi). Tasdiqlovchi "maqsad X (hozir Y)" ni ko'radi.
 
 ## 8. Rasmlar
 
@@ -171,12 +177,18 @@ Hisobot CSV'si ham xavfsiz eksport qilinadi (`'` prefiksi bilan).
 
 | Endpoint | Vazifasi | Ruxsat |
 |---|---|---|
-| `POST /api/v1/shop/catalog/imports` (multipart) | Fayl → `import_id`, aniqlangan ustunlar, moslash taklifi | `catalog.import.run` |
-| `PUT /api/v1/shop/catalog/imports/{id}/mapping` | Moslash va `conflict_policy` | `catalog.import.run` |
-| `POST /api/v1/shop/catalog/imports/{id}/dry-run` | `202`; natija — qator statistikasi, xatolar, spec bog'lash | `catalog.import.run` |
-| `GET /api/v1/shop/catalog/imports/{id}` | Holat va ko'rib chiqish (cursor pagination) | `catalog.import.run` |
-| `POST /api/v1/shop/catalog/imports/{id}/commit` | `Idempotency-Key`; tanlangan qatorlar; `202` | `catalog.import.commit` (+ `quantity` bo'lsa `commerce.stock.receive`) |
-| `GET /api/v1/shop/catalog/imports/{id}/errors.csv` | Xato hisoboti | `catalog.import.run` |
+| `POST /api/v1/shop/files?purpose=IMPORT_FILE` | Fayl baytlari (XLSX/CSV, ≤ 10 MB) → `file_id` | `catalog.import.run` |
+| `POST /api/v1/shop/catalog/imports` `{file_id}` | `201`; aniqlangan ustunlar, moslash taklifi, qatorlar soni (`Idempotency-Key`) | `catalog.import.run` |
+| `GET /api/v1/shop/catalog/imports`, `.../mappings`, `.../template?format=` | Tarix (oxirgi 20), saqlangan shablonlar, namuna fayl | `catalog.import.run` |
+| `PUT /api/v1/shop/catalog/imports/{id}/mapping` | Moslash, `conflict_policy`, `default_branch_id`, `save_as` (`If-Match`) | `catalog.import.run` |
+| `POST /api/v1/shop/catalog/imports/{id}/dry-run` | `202` (`If-Match`); natija — `GET .../{id}` va `.../rows` | `catalog.import.run` |
+| `GET /api/v1/shop/catalog/imports/{id}/rows` | Qatorlar: harakat, xatolar, `changes` (eski → yangi), `stock` (joriy → yangi), bog'lash (cursor) | `catalog.import.run` |
+| `PATCH /api/v1/shop/catalog/imports/{id}/rows/{row_number}` | `selected`, `spec_id` (faqat `VALIDATED`) | `catalog.import.run` |
+| `POST /api/v1/shop/catalog/imports/{id}/commit` | `202` (`If-Match` + `Idempotency-Key`) | `catalog.import.run` (+ katalog siyosatlarida `catalog.product.edit`, qoldiq uchun `commerce.stock.receive`) |
+| `POST /api/v1/shop/catalog/imports/{id}/cancel` | `CANCELLED` (`If-Match`) | `catalog.import.run` |
+| `POST /api/v1/shop/catalog/imports/{id}/error-report` | Xato hisoboti — yopiq CSV, imzoli havola | `catalog.import.run` |
+
+**Amalga oshirilgani (5c, 2026-10-26):** bitta ruxsat `catalog.import.run` (ega, menejer, omborchi); omborchi — faqat `STOCK_ONLY` siyosati (mavjud SKU qoldig'i, DEC-140). Qoldiq farqi omborchi importida tasdiqqa tushadi (ogohlantirish `STOCK_REQUIRES_APPROVAL`). Bekor qilish — `CANCELLED`, 24 soat — `EXPIRED`. Rasm havolalarini yuklab olish (§8) — keyinga qoldirildi. Batafsil — [progress/M05c](progress/M05c-catalog-import.md).
 
 Ruxsatlar `../business/04` ga mos: katalog xodimi, menejer va ega import qila oladi; `quantity` ustuni bilan commit — faqat ombor tuzatish huquqi borlarga (omborchi yoki menejer), aks holda qoldiq qismi o'tkazib yuboriladi va ogohlantiriladi.
 

@@ -1,0 +1,480 @@
+// =====================================================================
+// AI Commerce OS — `messaging` schemasi: kanallar, suhbatlar, xabarlar, operatorga uzatish (5-modul)
+// Holat: TAKLIF 2026-10-26 — qarorlar qabul qilingan (founder topshirig'i bilan), founder ko'rib chiqishi kutilmoqda.
+//        Qarorlar ro'yxati: messaging.md oxirida ("Founder ko'rib chiqishi uchun qarorlar").
+// Ko‘rish: https://dbdiagram.io → shu faylni to‘liq nusxalab qo‘ying
+// Izohlar: db/messaging.md (har jadval va maydon nega kerak)
+// Manba hujjatlar: business/02 M09, M10, M17; business/03 BL-031…BL-037, BL-042, BL-060…BL-062;
+//                  business/05 FSM-03, FSM-04; business/04; engineering/04 §4.1, 05 §8.3, 06, 07 §4.5, §6.4,
+//                  08 §6, 10 §4, §6, 12 §8, §9, 13, 14 §7, 26 §4–§8; engineering/27 S2-01…S2-05;
+//                  DEC-116, DEC-116a, DEC-117, DEC-129, DEC-132 (keyin)
+// Hajm: sayt chati, Telegram bot, Instagram Direct (flag ostida), yagona inbox, AI ↔ operator fencing,
+//       chiquvchi xabarlar va yetkazish holati, fayllar. Instagram izohlari (DEC-132) — keyingi modul, §11.
+// =====================================================================
+
+Project ai_commerce_os_messaging {
+  database_type: 'PostgreSQL'
+  Note: '''
+  **Umumiy qoidalar (07 §2)** — platform, catalog, commerce schemasidagi bilan bir xil:
+  - id — UUIDv7, ilovada yaratiladi. Vaqt — timestamptz (UTC).
+  - Har jadvalda `shop_id NOT NULL`; schema ichidagi FK’lar (shop_id, ...) juftligi bilan.
+  - Holatlar — TEXT + CHECK (diagrammada Enum).
+  - Boshqa schemadagi obyekt (platform.memberships, platform.stored_files, commerce.orders, sales_ai.ai_turns,
+    platform.notifications) — faqat uuid, FK’siz (07 §6).
+  - Biznes yozuvlari o‘chirilmaydi; suhbat xabarlari faqat saqlash muddati tugaganda (12 oy) yoki xaridor
+    so‘rovi bilan tozalanadi (26 §5).
+
+  **Shop qanday aniqlanadi:** faqat server mapping orqali — webhook URL’dagi `account_ref` → channel_accounts → shop_id,
+  sayt chatida `slug` → shop. Webhook tanasidagi hech qanday maydon shopni belgilamaydi (13 §3).
+
+  **Standart texnik jadvallar** (diagrammada yo‘q, jobs.dbml): messaging.outbox_events, messaging.consumer_receipts.
+
+  **Shaxsiy ma’lumot (26):** xabar matni — at rest (disk shifrlash), RLS va 12 oylik saqlash; telefon — ustun
+  darajasida shifrlangan (EncryptedString + HMAC). Matn va telefon log, outbox, audit, WS signaliga tushmaydi.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Holatlar (enum)
+// ---------------------------------------------------------------------
+
+Enum messaging.channel {
+  TELEGRAM [note: 'Shopning Telegram boti (S2-02)']
+  INSTAGRAM [note: 'Instagram Direct, Meta ruxsati kelguncha feature flag ostida (DEC-116a)']
+  WEB_CHAT [note: 'Shop saytidagi chat (S2-01)']
+}
+
+Enum messaging.channel_status {
+  PENDING [note: 'Ulanmoqda: token tekshirilmoqda / sinov o‘tmagan']
+  CONNECTED [note: 'Ishlayapti']
+  DEGRADED [note: 'Xatolar ko‘p, token muddati yaqin yoki 24 soat jim — egaga ogohlantirish']
+  DISCONNECTED [note: 'Ega uzdi yoki ruxsat bekor (AUTH_REVOKED) — yuborish to‘xtaydi']
+}
+
+Enum messaging.provider_event_kind {
+  MESSAGE [note: 'Yangi xabar']
+  EDITED [note: 'Xaridor xabarini tahrirladi']
+  CALLBACK [note: 'Telegram tugmasi (callback_query), masalan "Olaman"']
+  DELIVERY [note: 'Provayder yetkazish/o‘qish belgisi']
+  COMMENT [note: 'Keyin — Instagram izohlari (DEC-132), hozir ishlatilmaydi']
+  OTHER [note: 'Qo‘llanmaydigan turdagi update — faqat dedup uchun yoziladi']
+}
+
+Enum messaging.provider_event_status {
+  PROCESSED [note: 'Xabar saqlandi']
+  IGNORED [note: 'Qo‘llanmaydi (guruh chati, bot o‘z xabari) — javob ham, xabar ham yo‘q']
+  FAILED [note: 'Normallashtirib bo‘lmadi — xato kodi bilan']
+}
+
+Enum messaging.conversation_status {
+  NEW [note: 'Yaratildi, hali birinchi xabar qayta ishlanmagan']
+  AI_ACTIVE [note: 'AI javob beryapti']
+  WAITING_CUSTOMER [note: 'Xaridor javobi kutilmoqda']
+  HUMAN_NEEDED [note: 'Operator kerak — navbatda, vazifa yaratilgan']
+  HUMAN_ACTIVE [note: 'Operator javob beryapti, AI yoza olmaydi']
+  RESOLVED [note: 'Operator yopdi']
+  REOPENED [note: 'Yopilgandan keyin xaridor yana yozdi, tarix saqlangan']
+}
+
+Enum messaging.speaker_mode {
+  AI [note: 'Hozir AI javob beradi']
+  HUMAN [note: 'Hozir operator javob beradi']
+  PAUSED [note: 'Hech kim avtomatik javob bermaydi: shop to‘xtatilgan, AI o‘chiq yoki limit tugagan (12 §8)']
+}
+
+Enum messaging.message_direction {
+  IN [note: 'Xaridordan']
+  OUT [note: 'Xaridorga']
+}
+
+Enum messaging.author_type {
+  CUSTOMER
+  AI
+  STAFF
+  SYSTEM [note: 'Xabarnoma, salomlashish, avtomatik javob']
+}
+
+Enum messaging.message_kind {
+  TEXT
+  IMAGE
+  VOICE
+  FILE
+  CONTACT [note: 'Xaridor "Raqamni yuborish" tugmasini bosdi — raqam customer_identities ga, matnda yo‘q']
+  LOCATION
+  STICKER
+  UNSUPPORTED [note: 'Kanal yuborgan, lekin biz ko‘rsata olmaydigan tur']
+}
+
+Enum messaging.message_origin {
+  CUSTOMER [note: 'Kiruvchi xabar']
+  AI_AUTO [note: 'AI javobi, AUTO rejimida avtomatik (fencing tekshiruvidan keyin)']
+  AI_APPROVED [note: 'AI taklifi, operator ko‘rib yubordi (SUGGEST rejimi)']
+  STAFF [note: 'Operator yozdi']
+  NOTIFICATION [note: 'platform/notifications xaridor xabarnomasi (20)']
+  GREETING [note: 'Birinchi xabarga avtomatik salomlashish']
+}
+
+Enum messaging.delivery_status {
+  RECEIVED [note: 'Kiruvchi xabar saqlandi']
+  QUEUED [note: 'Chiquvchi: navbatda (channel_send vazifasi kutilmoqda)']
+  SENDING [note: 'Provayderga yuborilmoqda']
+  SENT [note: 'Provayder qabul qildi']
+  FAILED [note: 'Yakuniy xato — inbox’da "yuborilmadi" belgisi, xodimga vazifa (TC-011)']
+  UNKNOWN [note: 'Timeout: yuborildimi noma’lum — operator ko‘radi, ko‘r-ko‘rona qayta yuborilmaydi (06 §4.2)']
+  DISCARDED [note: 'AI javobi tashlandi: speaker o‘zgargan (TC-009) yoki tekshiruvdan o‘tmadi — xaridorga ketmagan']
+}
+
+Enum messaging.attachment_status {
+  PENDING [note: 'Provayderdan yuklab olish kutilmoqda (arq vazifasi)']
+  STORED [note: 'platform/storage da, private']
+  FAILED [note: 'Yuklab bo‘lmadi — operator "fayl ochilmadi" belgisini ko‘radi']
+  PURGED [note: 'Saqlash muddati tugadi yoki xaridor so‘rovi bilan o‘chirildi']
+}
+
+Enum messaging.handoff_reason {
+  CUSTOMER_REQUEST [note: 'Xaridor operator so‘radi (/operator)']
+  PURCHASE_INTENT [note: '"Olaman" — buyurtma qoralamasi yaratildi (14 §4)']
+  AI_LOW_CONFIDENCE
+  COMPLAINT
+  PAYMENT
+  WARRANTY
+  DISCOUNT
+  AI_UNAVAILABLE [note: 'LLM ishlamayapti yoki AI limiti tugadi (BL-040)']
+  AI_STALE [note: 'ai_reply vazifasi 10 daqiqadan eski — tashlandi (06 §4.3)']
+  VALIDATION_FAILED [note: 'AI javobi tekshiruvdan o‘tmadi (TC-007)']
+  WINDOW_CLOSED [note: 'Instagram javob oynasi yopiq (BL-033)']
+  STAFF_TAKEOVER [note: 'Operator o‘zi oldi, so‘rovsiz']
+  OTHER
+}
+
+Enum messaging.handoff_status {
+  OPEN [note: 'Operator kutilmoqda']
+  TAKEN [note: 'Operator oldi']
+  CANCELLED [note: 'Kerak bo‘lmay qoldi (xaridor yozishni to‘xtatdi, suhbat yopildi, AI’ga qaytarildi)']
+}
+
+Enum messaging.requester_type {
+  AI
+  STAFF
+  SYSTEM
+  CUSTOMER
+}
+
+// ---------------------------------------------------------------------
+// Kanal akkauntlari va webhook takrorlari
+// ---------------------------------------------------------------------
+
+Table messaging.channel_accounts {
+  id uuid [pk]
+  shop_id uuid [not null]
+  channel messaging.channel [not null]
+  status messaging.channel_status [not null, default: 'PENDING', note: 'FSM-03']
+  account_ref text [not null, note: 'Webhook URL’idagi taxmin qilib bo‘lmaydigan identifikator (32+ belgi) — /webhooks/{channel}/{account_ref}']
+  external_account_id text [note: 'Telegram bot id / Instagram professional akkaunt id. WEB_CHAT da NULL']
+  display_name text [note: 'Bot @username yoki IG taxallusi — panelda ko‘rsatish uchun']
+  token_enc text [note: 'Bot tokeni / Meta uzoq muddatli tokeni — EncryptedString (AES-GCM, kalit rotatsiyasi). API javobida hech qachon qaytmaydi. WEB_CHAT da NULL']
+  webhook_secret_hash text [note: 'Telegram secret_token ning SHA-256 xeshi — header shu bilan constant-time solishtiriladi. Instagram’da NULL (app secret — platforma sozlamasi)']
+  token_expires_at timestamptz [note: 'Meta tokeni muddati — tugashidan oldin yangilash yoki egaga eslatma']
+  scopes text[] [note: 'Berilgan ruxsatlar (Meta) — tekshiruv va panel uchun']
+  settings jsonb [not null, default: '{}', note: 'Kanal sozlamalari: tillar, /start matni kaliti, Telegram Business flag — PII yo‘q']
+  last_webhook_at timestamptz [note: '24 soat jim → DEGRADED belgisi (13 §5)']
+  last_health_check_at timestamptz
+  last_error_code text [note: 'Adapter xato kodi (AUTH_REVOKED, RATE_LIMITED, ...) — matnsiz']
+  connected_by uuid [note: 'platform.memberships.id — faqat ega (messaging.channel.connect)']
+  connected_at timestamptz
+  disconnected_at timestamptz
+  disconnect_reason text [note: 'OWNER | AUTH_REVOKED | REPLACED | SHOP_CLOSED']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    account_ref [unique]
+    (channel, external_account_id) [unique, note: 'Partial: WHERE status <> DISCONNECTED — bitta bot bir vaqtda faqat bitta shopda']
+    (shop_id, channel) [unique, note: 'Partial: WHERE status <> DISCONNECTED — shopda har kanal turidan bitta faol akkaunt']
+  }
+  Note: '''
+  Shopning ulangan kanali. Webhook kelganda shop shu jadvaldan topiladi (13 §3).
+  RLS (FORCE) — identity varianti: shop konteksti YOKI `app.channel_account_ref` = account_ref
+  (webhook qabul qilinayotganda shop hali noma’lum, platform.memberships dagi kabi, 10 §4).
+  '''
+}
+
+Table messaging.provider_events {
+  id uuid [pk]
+  shop_id uuid [not null]
+  channel_account_id uuid [not null]
+  provider_event_id text [not null, note: 'Telegram update_id, Meta mid, sayt chati client_message_id — dedup kaliti']
+  kind messaging.provider_event_kind [not null]
+  status messaging.provider_event_status [not null]
+  message_id uuid [note: 'Saqlangan xabar (bo‘lsa)']
+  error_code text [note: 'FAILED bo‘lsa — matnsiz kod']
+  received_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, channel_account_id, provider_event_id) [unique, note: 'Takror webhook — hech narsa qilinmaydi (TC-010, BL-032)']
+    received_at [note: '30 kundan keyin tozalanadi']
+  }
+  Note: '''
+  Webhook takroridan himoya. Xom payload SAQLANMAYDI (PII, hajm) — faqat dedup kaliti va natija.
+  30 kun saqlanadi (provayder qayta yuborish oynasidan ancha uzun). RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Xaridor va suhbat
+// ---------------------------------------------------------------------
+
+Table messaging.customer_identities {
+  id uuid [pk]
+  shop_id uuid [not null]
+  channel messaging.channel [not null]
+  external_user_id text [not null, note: 'Telegram user id / IG scoped id / sayt visitor_id (tasodifiy)']
+  display_name text [note: 'Kanal taxallusi yoki xaridor aytgan ism']
+  username text [note: 'Telegram @username (bo‘lsa)']
+  locale text [note: 'uz | ru | en — xabarnomalar tili (20 §5)']
+  phone_enc text [note: 'Xaridor "Raqamni yuborish" bilan bergan telefon — EncryptedString']
+  phone_hmac text [note: 'Telefon bo‘yicha qidirish va buyurtmaga moslash uchun HMAC']
+  contact_consent_at timestamptz [note: 'Kontakt roziligi vaqti (BL-036, BL-042). Marketing roziligi Stage 1 da yig‘ilmaydi']
+  notice_version text [note: 'Ko‘rsatilgan maxfiylik bildirishnomasi versiyasi (26 §8)']
+  blocked_at timestamptz [note: 'Xaridor botni bloklagan (403) — xabarnoma yuborilmaydi']
+  last_seen_at timestamptz
+  erased_at timestamptz [note: 'Xaridor ma’lumoti o‘chirildi (26): ism, username, telefon tozalanadi, id qoladi']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, channel, external_user_id) [unique, note: 'Shoplararo birlashtirish yo‘q (BL-042)']
+    (shop_id, phone_hmac)
+  }
+  Note: 'Xaridorning kanaldagi shaxsi. Shoplararo hech qachon birlashtirilmaydi. RLS (FORCE).'
+}
+
+Table messaging.conversations {
+  id uuid [pk]
+  shop_id uuid [not null]
+  customer_identity_id uuid [not null]
+  channel_account_id uuid [not null, note: 'Hozirgi kanal akkaunti (bot almashtirilsa yangisiga o‘tadi)']
+  channel messaging.channel [not null, note: 'Ro‘yxat filtri uchun nusxa']
+  status messaging.conversation_status [not null, default: 'NEW', note: 'FSM-04']
+  speaker_mode messaging.speaker_mode [not null, default: 'AI']
+  speaker_version bigint [not null, default: 1, note: 'Fencing: har TAKE_OVER / RETURN_TO_AI / PAUSE da atomik +1 (12 §8, TC-009)']
+  assignee_membership_id uuid [note: 'platform.memberships.id — mas’ul operator']
+  locale text [note: 'Suhbat tili — xabarnomalar shu tilda']
+  tags text[] [not null, default: '{}', note: 'Operator teglari (M10, 4-band), shop ichida erkin']
+  message_seq bigint [not null, default: 0, note: 'Oxirgi xabar tartib raqami — messages.seq shu yerdan +1']
+  staff_last_read_seq bigint [not null, default: 0, note: 'Xodim o‘qigan oxirgi xabar — o‘qilmaganlar soni = message_seq − shu (kiruvchilar bo‘yicha)']
+  last_message_at timestamptz [note: 'Inbox tartibi']
+  last_inbound_at timestamptz [note: 'Xaridorning oxirgi xabari — Instagram 24 soatlik oyna shundan (BL-033)']
+  last_outbound_at timestamptz
+  waiting_since timestamptz [note: 'HUMAN_NEEDED ga o‘tgan vaqt — "operator kutilmoqda" eslatmasi shundan (06 §5.2)']
+  first_staff_reply_at timestamptz [note: 'Birinchi operator javobi — javob vaqti ko‘rsatkichi (M10, 6-band)']
+  last_order_id uuid [note: 'commerce.orders.id — suhbatdan yaratilgan oxirgi buyurtma (commerce.order.drafted)']
+  resolved_at timestamptz
+  resolved_by uuid [note: 'platform.memberships.id']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, customer_identity_id) [unique, note: 'Bir xaridor — bitta suhbat; yopilgani qayta ochiladi (FSM-04 REOPENED)']
+    (shop_id, last_message_at, id) [note: 'Inbox — yangisi birinchi, cursor']
+    (shop_id, status, last_message_at)
+    (shop_id, assignee_membership_id, status) [note: 'Mening suhbatlarim']
+    waiting_since [note: 'Partial: WHERE status = HUMAN_NEEDED — eslatma rejali ishi']
+  }
+  Note: '''
+  Xaridor bilan yozishma (FSM-04). Eng muhim savol — hozir kim javob beradi: speaker_mode + speaker_version.
+  Har o‘tish platform.transition_log ga yoziladi. Holat va speaker bir UPDATE’da o‘zgaradi (12 §8).
+  RLS (FORCE).
+  '''
+}
+
+Table messaging.messages {
+  id uuid [pk]
+  shop_id uuid [not null]
+  conversation_id uuid [not null]
+  seq bigint [not null, note: 'Suhbat ichidagi tartib raqami — ko‘rsatish tartibi va ?after= cursor (BL-035)']
+  direction messaging.message_direction [not null]
+  author_type messaging.author_type [not null]
+  author_membership_id uuid [note: 'STAFF bo‘lsa — platform.memberships.id']
+  origin messaging.message_origin [not null]
+  kind messaging.message_kind [not null, default: 'TEXT']
+  body text [note: 'Matn — at rest (26 §4). CONTACT turida raqam yozilmaydi']
+  intent_hint text [note: 'PURCHASE_INTENT ("Olaman" tugmasi) | OPERATOR_REQUEST — AI uchun belgi (13 §6.2)']
+  reply_to_message_id uuid
+  provider_message_id text [note: 'Telegram message_id / Meta mid; uzun xabar bo‘lib yuborilsa — birinchi bo‘lak']
+  parts int [not null, default: 1, note: 'Uzun matn nechta bo‘lakda yuborildi (Telegram 4096 belgi)']
+  occurred_at timestamptz [not null, note: 'Kiruvchida — provayder vaqti, chiquvchida — yaratilgan vaqt']
+  edited_at timestamptz [note: 'Xaridor tahrirladi — body yangilanadi, tarix saqlanmaydi']
+  speaker_version bigint [note: 'Chiquvchi AI xabari qaysi speaker_version uchun tayyorlangan (fencing)']
+  intent_key text [note: 'Chiquvchi takror himoyasi: ai:{reply_id} | notif:{notification_id} | staff:{Idempotency-Key} | greet:{conversation_id}']
+  ai_reply_id uuid [note: 'sales_ai.ai_turns.id — matn messaging’ga SalesAiQueryPort.get_reply orqali keladi (05 §8.4)']
+  notification_id uuid [note: 'platform.notifications.id — natija mark_result bilan qaytadi (20 §3)']
+  delivery_status messaging.delivery_status [not null]
+  attempts int [not null, default: 0]
+  last_error_code text [note: 'Adapter taksonomiyasi (13 §2) — matnsiz']
+  sent_at timestamptz
+  failed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, conversation_id, seq) [unique]
+    (shop_id, intent_key) [unique, note: 'Partial: WHERE intent_key IS NOT NULL — bitta niyat bir marta yuboriladi']
+    (shop_id, conversation_id, speaker_version) [unique, note: 'Partial: WHERE origin = AI_AUTO AND delivery_status IN (QUEUED, SENDING) — bir vaqtda bitta AI xabari (12 §8)']
+    (delivery_status, created_at) [note: 'Partial: WHERE delivery_status IN (QUEUED, SENDING) — rekonsilyatsiya (06 §6)']
+    (shop_id, created_at) [note: 'Saqlash muddati bo‘yicha tozalash']
+  }
+  Note: '''
+  Kiruvchi va chiquvchi xabarlar bitta jadvalda — suhbat lentasi bitta so‘rov bilan (07). Chiquvchi xabar avval
+  QUEUED holatida yoziladi + outbox → channel_send vazifasi (13 §4). Xato yo‘qolmaydi: FAILED/UNKNOWN inbox’da ko‘rinadi.
+  12 oydan keyin (suhbatdagi oxirgi faollikdan) o‘chiriladi (26 §5). RLS (FORCE).
+  '''
+}
+
+Table messaging.attachments {
+  id uuid [pk]
+  shop_id uuid [not null]
+  message_id uuid [not null]
+  file_id uuid [note: 'platform.stored_files.id — purpose CHAT_ATTACHMENT (private, signed URL). PENDING da NULL']
+  kind messaging.message_kind [not null, note: 'IMAGE | VOICE | FILE | STICKER']
+  status messaging.attachment_status [not null, default: 'PENDING']
+  provider_file_ref text [note: 'Telegram file_id / Meta media URL — yuklab olish uchun, STORED dan keyin tozalanadi']
+  mime text
+  size_bytes bigint
+  duration_seconds int [note: 'Ovozli xabar']
+  error_code text
+  purge_after timestamptz [note: 'Suhbat muddati bilan; ovozli xabar — transkripsiyadan keyin (DEC-117)']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, message_id)
+    (status, created_at) [note: 'Partial: WHERE status = PENDING — qayta urinish']
+  }
+  Note: '''
+  Xaridor yuborgan rasm, ovoz, fayl. Webhook ichida yuklab olinmaydi — arq vazifasi (13 §3).
+  Chiquvchi mahsulot rasmi ham shu yerda (file_id — katalog rasmi, ochiq). RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Operatorga uzatish va izohlar
+// ---------------------------------------------------------------------
+
+Table messaging.handoffs {
+  id uuid [pk]
+  shop_id uuid [not null]
+  conversation_id uuid [not null]
+  reason messaging.handoff_reason [not null]
+  requested_by_type messaging.requester_type [not null]
+  requested_by_membership_id uuid [note: 'STAFF bo‘lsa']
+  status messaging.handoff_status [not null, default: 'OPEN']
+  speaker_version_at_request bigint [not null, note: 'Takror so‘rov (sales_ai.handoff.requested qayta kelsa) bir xil versiya bilan — bitta handoff']
+  taken_by uuid [note: 'platform.memberships.id']
+  taken_at timestamptz
+  closed_at timestamptz
+  reminded_at timestamptz [note: '5b: "operator kutyapti" eslatmasi ketgan vaqt — bir marta']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, conversation_id) [unique, note: 'Partial: WHERE status = OPEN — suhbatda bitta ochiq uzatish (07)']
+    (shop_id, conversation_id, created_at)
+  }
+  Note: 'Operatorni chaqirish tarixi va navbati. Ochiq handoff = platform.staff_tasks dagi HANDOFF vazifasi. RLS (FORCE).'
+}
+
+Table messaging.conversation_notes {
+  id uuid [pk]
+  shop_id uuid [not null]
+  conversation_id uuid [not null]
+  author_membership_id uuid [not null, note: 'platform.memberships.id']
+  body text [not null, note: 'Ichki izoh — xaridorga ko‘rinmaydi. Xaridor ma’lumoti o‘chirilganda tozalanadi']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (shop_id, id) [unique]
+    (shop_id, conversation_id, created_at)
+  }
+  Note: 'Operatorlar uchun ichki izoh (M10, 4-band). Faqat qo‘shiladi. RLS (FORCE).'
+}
+
+// ---------------------------------------------------------------------
+// Sayt chati (anonim mehmon)
+// ---------------------------------------------------------------------
+
+Table messaging.webchat_sessions {
+  id uuid [pk]
+  shop_id uuid [not null]
+  channel_account_id uuid [not null, note: 'Shopning WEB_CHAT akkaunti']
+  customer_identity_id uuid [not null, note: 'external_user_id = visitor_id']
+  token_hash text [not null, note: 'Sessiya tokenining SHA-256 xeshi — token o‘zi saqlanmaydi']
+  created_at timestamptz [not null, default: `now()`]
+  last_seen_at timestamptz [not null, default: `now()`]
+  expires_at timestamptz [not null, note: '30 kun, har faollikda suriladi']
+  revoked_at timestamptz
+
+  indexes {
+    (shop_id, id) [unique]
+    token_hash [unique]
+    (shop_id, customer_identity_id)
+    expires_at
+  }
+  Note: '''
+  Sayt chatining anonim sessiyasi (13 §8). Login yo‘q. Token — sayt domenidagi httpOnly cookie (sayt ilovasi
+  API’ga o‘zi uzatadi, uchinchi tomon cookie kerak emas). Boshqa shop slug’i bilan sessiya — 404 (TC-CH-06).
+  RLS (FORCE).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Bog‘lanishlar
+// ---------------------------------------------------------------------
+
+Ref: messaging.provider_events.(shop_id, channel_account_id) > messaging.channel_accounts.(shop_id, id) [delete: restrict]
+Ref: messaging.provider_events.(shop_id, message_id) > messaging.messages.(shop_id, id)
+
+Ref: messaging.conversations.(shop_id, customer_identity_id) > messaging.customer_identities.(shop_id, id) [delete: restrict]
+Ref: messaging.conversations.(shop_id, channel_account_id) > messaging.channel_accounts.(shop_id, id) [delete: restrict]
+
+Ref: messaging.messages.(shop_id, conversation_id) > messaging.conversations.(shop_id, id) [delete: restrict]
+Ref: messaging.messages.(shop_id, reply_to_message_id) > messaging.messages.(shop_id, id)
+
+Ref: messaging.attachments.(shop_id, message_id) > messaging.messages.(shop_id, id) [delete: cascade]
+
+Ref: messaging.handoffs.(shop_id, conversation_id) > messaging.conversations.(shop_id, id) [delete: restrict]
+Ref: messaging.conversation_notes.(shop_id, conversation_id) > messaging.conversations.(shop_id, id) [delete: restrict]
+
+Ref: messaging.webchat_sessions.(shop_id, channel_account_id) > messaging.channel_accounts.(shop_id, id) [delete: restrict]
+Ref: messaging.webchat_sessions.(shop_id, customer_identity_id) > messaging.customer_identities.(shop_id, id) [delete: restrict]
+
+// ---------------------------------------------------------------------
+// Diagrammada guruhlash
+// ---------------------------------------------------------------------
+
+TableGroup kanallar {
+  messaging.channel_accounts
+  messaging.provider_events
+}
+
+TableGroup suhbatlar {
+  messaging.customer_identities
+  messaging.conversations
+  messaging.messages
+  messaging.attachments
+}
+
+TableGroup operator {
+  messaging.handoffs
+  messaging.conversation_notes
+}
+
+TableGroup sayt_chati {
+  messaging.webchat_sessions
+}
