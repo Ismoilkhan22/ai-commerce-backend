@@ -96,7 +96,7 @@ Muvaffaqiyatli javob **envelope'siz**: resursning o'zi yoki ro'yxat obyekti. Xat
 | `Authorization: Bearer <access>` | so'rov | `shop` va `platform` surface |
 | `X-Request-ID` | ikkala | Klient yuborishi mumkin (UUID); aks holda server yaratadi; javobda doim |
 | `traceparent` | so'rov | W3C format bo'lsa qabul qilinadi; aks holda yangi trace |
-| `Idempotency-Key` | so'rov | **Barcha yozish POST'larida majburiy** (`shop`, `storefront`, `platform`). Yo'q bo'lsa — `INVALID_REQUEST`. Doira `(shop_id, operation, key)`, natija 24 soat saqlanadi ([07](07-data-layer.md) `idempotency_keys`). Bir xil key + boshqa tana → `IDEMPOTENCY_KEY_REUSED` |
+| `Idempotency-Key` | so'rov | **Barcha yozish POST'larida majburiy** (`shop`, `storefront`, `platform`). Yo'q bo'lsa — `INVALID_REQUEST`. Doira `(shop_id, operation, key)`, natija 24 soat saqlanadi ([07](07-data-layer.md) `idempotency_keys`). Tana barmoq izi — server kaliti bilan HMAC (`h1:…`, `IDEMPOTENCY_HASH_KEY`): bazadan tanani (masalan, telefonni) tanlab topib bo'lmaydi. Bir xil key + boshqa tana → `IDEMPOTENCY_KEY_REUSED` |
 | `If-Match: "v4"` | so'rov | Narx, stok tuzatish, buyurtma o'tishlari, sozlamalar, profil. Mos kelmasa — `VERSION_CONFLICT` |
 | `ETag: "v4"` | javob | Resurs `version` bilan bir xil |
 | `Accept-Language` | so'rov | Til aniqlash (§8.2) |
@@ -158,6 +158,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `LAST_ADMIN_REQUIRED` | 409 | Oxirgi faol platforma adminini o'chirish yoki rolini olish (business/15 §5) | yo'q |
 | `FILE_IN_USE` | 409 | Fayl allaqachon boshqa mahsulot rasmi — bitta fayl bitta mahsulotda (`details.product_id`) | yo'q (faylni qayta yuklash) |
 | `SHOP_HAS_OPEN_ORDERS` | 409 | Shopni yopib bo'lmaydi: tasdiq kutayotgan, tasdiqlangan, tayyorlanayotgan yoki muammoli buyurtmalar bor — avval yakunlanadi yoki bekor qilinadi (FSM-01, TC-023) | yo'q |
+| `SITE_NOT_AVAILABLE` | 409 | Shop sayti xaridorga hozir ochiq emas: "tez orada" (sayt qoralama yoki shop faollashtirilmagan) yoki "vaqtincha ishlamayapti" (sayt yoki shop to'xtatilgan). Bunday shop yo'q yoki yopilgan — `NOT_FOUND` (storefront.md §0) | yo'q |
 | `SPEAKER_CONFLICT` | 409 | Suhbatni boshqa operator olgan yoki `speaker_version` eskirgan (TC-009) | yangilab qayta |
 | `CHANNEL_UNAVAILABLE` | 409 | Kanal `DISCONNECTED`/`DEGRADED`, xabar yuborib bo'lmaydi (TC-011) | ulangach |
 | `PAYLOAD_TOO_LARGE` | 413 | Fayl yoki audio limiti | yo'q |
@@ -184,6 +185,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `PRODUCT_NOT_AVAILABLE` | `{"lines": [{"sku_id", "product_status", "sku_status"}]}` (tasdiq va narx yangilashda + `line_id`; kirim va oshiruvchi tuzatishda arxivdagi SKU) yoki tez sotuvda narx yo'qligida `{"lines": [{"sku_id", "reason": "NO_PRICE" \| "NO_RATE"}]}`. Tez sotuv — faqat `PUBLISHED`/`HIDDEN` mahsulot va faol SKU |
 | `SHOP_NOT_ACTIVE` | `{"shop_status": "SUSPENDED" \| "CLOSED"}` |
 | `SHOP_HAS_OPEN_ORDERS` | `{"open_orders": {"CONFIRMED": 3, "PROCESSING": 2}, "total": 5}` — faqat noldan kattalari |
+| `SITE_NOT_AVAILABLE` | `{"state": "COMING_SOON" \| "PAUSED", "preview": false}` |
 | `QUOTE_EXPIRED` | `{"expired_at"}` |
 | `APPROVAL_REQUIRED` | `{"reason": "COMPATIBILITY_REVIEW" \| "QUOTE_REVIEW" \| "DISCOUNT", "approver_roles": ["MANAGER", "OWNER"]}`; chegirmada + `line_ids` |
 | `EXCHANGE_RATE_STALE` | `{"rate_effective_at", "max_age_hours"}` |
@@ -193,7 +195,7 @@ Yangi kod qo'shish — shu jadval + `DomainError` klassi + `uz/ru/en` tarjimalar
 | `RATE_LIMITED`, `AI_QUOTA_EXCEEDED` | `{"retry_after_seconds"}` / `{"period_end"}` |
 | boshqalar | `{}` |
 
-**Storefront'da** `details` ichida ichki ID va aniq qoldiq faqat shop siyosati ruxsat bersa; aks holda `{"in_stock": false}`.
+**Storefront'da** `details` ichida ichki ID va aniq qoldiq yo'q: buyurtma so'rovida mavjud bo'lmagan mahsulot — `PRODUCT_NOT_AVAILABLE` va faqat `{"lines": [{"sku_id"}]}`; boshqa shop SKU'si yoki filiali — xuddi yo'qdek (`VALIDATION_FAILED`, `invalid`). Eskirgan rozilik — `consent_version` / `invalid_choice` (`params.expected`). Buyurtma so'rovi xatolarida `*_id` kalitlari olib tashlanadi: yopiq filial — `BRANCH_CLOSED` tafsilotsiz; qatorlarda faqat xaridor yuborgan `sku_id` (QA M04 F5). `qty` — faqat butun son (`"2"` yoki `true` — 422). Sozlamada och rang — `accent_color` / `low_contrast` (`params.min_ratio`, `params.ratio`); sahifa matnida HTML — `body_md` / `invalid_format`.
 
 ---
 
@@ -231,6 +233,7 @@ class LastOwnerRequiredError(ConflictError):      code = "LAST_OWNER_REQUIRED"
 class LastAdminRequiredError(ConflictError):      code = "LAST_ADMIN_REQUIRED"
 class FileInUseError(ConflictError):              code = "FILE_IN_USE"
 class ShopHasOpenOrdersError(ConflictError):      code = "SHOP_HAS_OPEN_ORDERS"
+class SiteNotAvailableError(ConflictError):       code = "SITE_NOT_AVAILABLE"
 class SpeakerConflictError(ConflictError):        code = "SPEAKER_CONFLICT"
 class ChannelUnavailableError(ConflictError):     code = "CHANNEL_UNAVAILABLE"
 
@@ -443,7 +446,7 @@ Holat: 3-modul backend'i qurilgan (2026-10-26, [progress/M03](progress/M03-comme
 | `POST /shop/quotes`, `POST /shop/quotes/{id}/revisions`, `POST …/{id}/submit` | `commerce.quote.draft` | Idem |
 | `POST /shop/quotes/{id}/approve`, `POST …/{id}/return-to-draft` | `commerce.quote.approve` | Idem + IfM |
 | `POST /shop/quotes/{id}/send` | `commerce.quote.send` | Idem |
-| `GET /shop/orders` (`status=A,B`, `branch_id`, `assigned=me\|unassigned\|<membership_id>`, `q` — raqam/telefon/ism, `needs_review`, `sort`, cursor), `GET /shop/orders/counts`, `GET /shop/orders/review-queue` (24/72 soat), `GET /shop/orders/{id}` (`ETag`, `allowed_actions`) | `commerce.order.view` (operator — o'ziniki + biriktirilmagan; omborchi — tasdiqlanganlar) | — |
+| `GET /shop/orders` (`status=A,B`, `branch_id`, `assigned=me\|unassigned\|<membership_id>`, `q` — raqam/telefon/ism, `needs_review`, `sort`, cursor), `GET /shop/orders/counts`, `GET /shop/orders/review-queue` (24/72 soat), `GET /shop/orders/{id}` (`ETag`, `allowed_actions`; `DRAFT`/`PENDING_CONFIRMATION` da filial tanlangan bo'lsa qatorlarda `available_in_branch` va `available_qty` — filialdagi sotuvga mavjud, bitta so'rov; boshqa holatda `null`) | `commerce.order.view` (operator — o'ziniki + biriktirilmagan; omborchi — tasdiqlanganlar) | — |
 | `POST /shop/orders` (`DRAFT`, `Location`), `PATCH /shop/orders/{id}` (filial almashsa — mas'ul xodim yangi filialda ham ishlashi shart, aks holda `branch_id/out_of_scope`) | `commerce.order.create_draft` | Idem / IfM |
 | `POST /shop/orders/{id}/lines` (`Location` — buyurtma), `PATCH …/lines/{line_id}`, `DELETE …/lines/{line_id}` — faqat `DRAFT`/`PENDING_CONFIRMATION` (DEC-134) | `commerce.order.create_draft` | Idem + IfM (buyurtma versiyasi) / IfM / IfM |
 | `PUT /shop/orders/{id}/lines/{line_id}/discount` (`discount_pct`; limitgacha — darhol, undan ko'pi — so'rov) | `commerce.discount.apply` yoki `commerce.discount.request` | IfM |
@@ -484,19 +487,26 @@ Buyurtma javobida xaridor telefoni va manzili bor — takroriy so'rov himoyasi f
 | `POST /shop/ai/knowledge/{id}/publish`, `POST …/{id}/rollback` | `sales_ai.knowledge.publish` | Idem |
 | `POST /shop/ai/sandbox/messages` | `sales_ai.knowledge.test` | Idem |
 
-### 9.7 `storefront`
+### 9.7 `storefront` (4-modul, DEC-135 — [progress/M04](progress/M04-storefront.md))
 
 | Surface | Metod va yo'l | Ruxsat | Idem |
 |---|---|---|---|
-| shop | `GET /shop/site`, `PATCH /shop/site`, `GET/POST/PATCH /shop/site/pages` | `storefront.site.edit` | IfM / Idem |
-| storefront | `GET /storefront/{slug}/site`, `GET …/products`, `GET …/products/{product_slug}`, `GET …/pages/{page_slug}` | Ommaviy | — |
+| shop | `GET /shop/storefront` — sozlamalar, `state` (xaridor nima ko'radi), `site_url`, `publish_problems`; saqlanmagan bo'lsa `version: 0` | `storefront.site.view` (ega, menejer) | — |
+| shop | `PATCH /shop/storefront` — logotip (`logo_file_id`, fayl turi `SITE_LOGO`), rang, fon, shior, SEO matni, telefon, email, Telegram/Instagram username. Birinchi saqlash `If-Match: "v0"`; yuborilmagan maydon o'zgarmaydi | `storefront.site.edit` (faqat ega) | IfM |
+| shop | `POST /shop/storefront/publish` (DRAFT → LIVE, telefon majburiy), `…/pause` (LIVE → PAUSED), `…/resume` (PAUSED → LIVE) | `storefront.site.edit` | IfM + Idem |
+| shop | `POST /shop/storefront/preview` — 30 daqiqalik ko'rib chiqish tokeni va `preview_url` (`{shop}.{exp}.{nonce}.{sig}`, bazada saqlanmaydi; har chiqarishda boshqa token) | `storefront.site.view` | Idem |
+| shop | `GET /shop/storefront/pages` (uchala tur), `PUT /shop/storefront/pages/{ABOUT\|DELIVERY_PAYMENT\|WARRANTY_RETURNS}` — Markdown, HTML yo'q | view / edit | IfM (`"v0"` — birinchi) |
+| storefront | `GET /storefront/{slug}/site` — `state` (`LIVE`, `COMING_SOON`, `PAUSED`); ochiq bo'lsa ko'rinish, kontaktlar, sahifalar menyusi, `delivery_enabled`, `stock_display`, `pickup_branch_count`, `consent` (`version`, `text`), `legal` | Ommaviy | — |
+| storefront | `GET …/categories`, `GET …/products?category=&q=&sort=newest\|price_asc\|price_desc&limit=&cursor=`, `GET …/products/{product_id}` (id bo'yicha; javobda `slug` va `canonical_path` `/p/{id}/{slug}`), `GET …/pages/{kind}`, `GET …/branches`, `GET …/privacy` | Ommaviy; sayt ochiq bo'lmasa — `SITE_NOT_AVAILABLE` | — |
+
+Ommaviy o'qish: IP + shop bo'yicha 120/daq (IP — `X-Forwarded-For` faqat ishonchli proksidan: nginx va sayt serveri, `TRUSTED_PROXIES`; [22](22-infrastructure-and-deployment.md) §8), sayt javoblarida `Access-Control-Allow-Credentials` hech qachon yo'q, READ ONLY tranzaksiya, shop konteksti (RLS), faqat ruxsat etilgan maydonlar (TC-SEC-09). Ega ko'rib chiqish tokenini `X-Storefront-Preview` header'ida yoki `?preview=` da yuboradi — sayt qoralama yoki to'xtatilgan bo'lsa ham o'qiladi, buyurtma formasi esa o'chiq.
 
 ### 9.8 `commerce` va `messaging` — storefront surface
 
 | Metod va yo'l | Domen | Izoh |
 |---|---|---|
-| `POST /storefront/{slug}/order-requests` | commerce | Savatcha → buyurtma so'rovi (`PENDING_CONFIRMATION`, to'lovsiz, DEC-115). Idem; javobda kuzatuv tokeni |
-| `GET /storefront/{slug}/orders/{tracking_token}` | commerce | Faqat o'z buyurtmasi |
+| `POST /storefront/{slug}/order-requests` | commerce | Savatcha → buyurtma so'rovi: darhol `PENDING_CONFIRMATION`, biriktirilmagan, band qilinmaydi, to'lovsiz (DEC-115, DEC-100b). Majburiy: `consent_version` (joriy versiya), olib ketishda `branch_id` (ochiq olib ketish joyi), yetkazishda `delivery_address` (`delivery_enabled` bo'lsa). Idem (`Idempotency-Key` = `orders.source_request_id`): takror — o'sha buyurtma, yangi `tracking_token`. Javob 201: `number`, `status: RECEIVED`, `tracking_token`, `tracking_path`, qatorlarda `available_in_branch`. Chegara: IP + shop + telefon — 10 daqiqada 5, IP + shop — 20 |
+| `GET /storefront/{slug}/orders/{tracking_token}` | commerce | Faqat o'z buyurtmasi: raqam, xaridorga ko'rinadigan holat (`RECEIVED`, `CONFIRMED`, `PREPARING`, `READY`, `COMPLETED`, `CANCELLED`), qatorlar, summa, olib ketish filiali. Telefon, manzil, izoh yo'q. Bazada tokenning faqat SHA-256 xeshi; noto'g'ri token — 404. 30/daq per IP |
 | `GET /storefront/{slug}/quotes/{token}`, `POST …/quotes/{token}/accept`, `POST …/quotes/{token}/reject` | commerce | Taklif havolasi (FSM-06 `SENT → ACCEPTED/REJECTED`). Idem |
 | `POST /storefront/{slug}/chat/sessions`, `POST …/chat/messages`, `GET …/chat/messages?after=`, `GET …/chat/sessions/{session_id}/events` (SSE) | messaging | Saytdagi chat; real vaqt — SSE ([08](08-cache-and-realtime.md) §6.6, [13](13-integrations-and-channels.md)) |
 

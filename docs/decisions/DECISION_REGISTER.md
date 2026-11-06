@@ -624,6 +624,13 @@ Xaridor (Telegram / web) → AI maslahat, mos mahsulot / PC yig'ma
 | Stok kirimi menejer tasdig'idan o'tadimi | **Yo'q** — omborchi, menejer va ega kiritgan kirim darhol qoldiqqa qo'shiladi | Kirim qoldiqni oshiradi, xavf kam; xato kirim tuzatish bilan to'g'rilanadi. `business/04` dagi "Tasdiqlaydi" olib tashlandi |
 | Faollashtirilmagan shop (qoralama, tekshiruvda) savdo qila oladimi | **Ha** — yangi savdo faqat to'xtatilgan (SUSPENDED) va yopilgan (CLOSED) shopda bloklanadi | FSM-01 qoidasi so'zma-so'z; shop tizimni faollashtirishgacha o'rganadi. Sayt faqat faol shopda ochiladi |
 
+### DEC-141 — Saytda tugagan mahsulotga so'rov — `PROPOSED (2026-10-26, Claude — founder ko'rib chiqadi)`
+**Nima:** 4-modul QA'sida chiqdi: sayt "Hozir mavjud emas" mahsulotni savatga qo'shishga ruxsat bermasdi, backend va M07 esa bunday so'rovni qabul qiladi.
+
+| Savol | Tanlov | Nega | Muqobil |
+|---|---|---|---|
+| Hamma filialda tugagan mahsulotni saytdan so'rash mumkinmi | **Ha** — savatga qo'shiladi, yonida "Hozir mavjud emas — operator muddat va muqobilni aytadi"; so'rov odatdagidek "Tasdiq kutilmoqda" ga tushadi, band qilinmaydi | M07: operator muqobil taklif qiladi; PC shoplar ko'pincha yetkazib beruvchidan buyurtma qiladi; qoldig'i kiritilmagan shop ham so'rov oladi | Tugagan mahsulot faqat ko'rinadi, savatga qo'shilmaydi |
+
 ## 4. Eski ID'lar xaritasi
 
 | Eski ID | Yangi |

@@ -22,6 +22,7 @@ errors:
   LAST_ADMIN_REQUIRED: "The platform must keep at least one active admin"
   FILE_IN_USE: "This image is already attached to another product. Upload it again"
   SHOP_HAS_OPEN_ORDERS: "The shop has open orders — complete or cancel them first"
+  SITE_NOT_AVAILABLE: "The site is not available right now"
   SPEAKER_CONFLICT: "Another operator took over this conversation"
   CHANNEL_UNAVAILABLE: "The channel is not connected or not working"
   PAYLOAD_TOO_LARGE: "The file is too large"
@@ -35,3 +36,15 @@ errors:
   FEATURE_NOT_AVAILABLE: "This feature isn't available yet"
   PROVIDER_UNAVAILABLE: "An external service is temporarily unavailable"
   SERVICE_UNAVAILABLE: "The service is temporarily unavailable"
+
+# Site order form and privacy policy (26 §8). If changed — bump the version in app/shared/consent.py
+consent:
+  storefront_order: "I agree that my name, phone number and address are used to contact me about this order."
+privacy:
+  title: "Privacy policy"
+  intro: "When you order on the {shop_name} site ({legal_name}, TIN {tin}), your data is used under this policy."
+  data: "We collect only what the order needs: your name, phone number and, for delivery, your address and comment."
+  purpose: "Your data is used only to contact you about your order, prepare it and hand it over. We do not send advertising."
+  storage: "Phone numbers and addresses are stored encrypted. After the order and warranty period, personal data is deleted; order numbers are kept for reporting."
+  rights: "You can ask to see, correct or delete your data."
+  contact: "For questions and requests: {contact}."

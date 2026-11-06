@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from functools import lru_cache
+from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Literal, Self
 from urllib.parse import urlsplit
 
@@ -28,6 +29,9 @@ MIN_JWT_SECRET_LENGTH = 32
 # Xaridor telefoni va manzili kalitlari (26 §4). Faqat lokal — staging/production'da rad etiladi
 _DEV_PII_KEYS = "dev1:ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDAwMDA="
 _DEV_PII_HMAC_KEY = "ZGV2LW9ubHktcGlpLWhtYWMta2V5LWNoYW5nZS1tZSE="
+# Takroriy so'rov jadvalidagi barmoq izi kaliti (QA M04 F2). Faqat lokal — staging/production'da rad etiladi
+_DEV_IDEMPOTENCY_HASH_KEY = "dev-only-idempotency-hash-key-change-me"
+MIN_HASH_KEY_LENGTH = 32
 
 
 def _unsafe_db_url_reason(url: str) -> str | None:
@@ -87,11 +91,24 @@ class Settings(BaseSettings):
     public_files_url: str = "http://localhost:8000/api/v1/public/files"
     signed_url_ttl_seconds: int = 300  # yopiq fayl havolasi 5 daqiqa amal qiladi
 
+    # Shop sayti (4-modul). Manzil — shop slug'i bilan: prod'da https://{slug}.platforma.uz
+    storefront_public_url: str = "http://{slug}.localhost:3002"
+    # Sayt brauzerdan ommaviy API'ni chaqiradi (o'qish, buyurtma so'rovi) — cookie'siz CORS, shu manzillar
+    storefront_cors_origin_regex: str = r"^http://([a-z0-9-]+\.)?localhost:3002$"
+    # Sayt serverining o'zi (SSR, xaridor IP'sisiz) uchun alohida o'qish chelagi — shop bo'yicha (08 §5)
+    storefront_ssr_read_limit_per_minute: int = Field(default=3000, ge=120, le=100_000)
+
     # Xaridor ma'lumoti shifrlash (26 §4, §9): "id:base64(32 bayt),id2:...". Yangi kalit — ro'yxat oxiriga,
     # keyin `pii_active_key_id` unga o'tkaziladi; eski kalit eski yozuvlarni o'qish uchun qoladi.
     pii_encryption_keys: SecretStr = SecretStr(_DEV_PII_KEYS)
     pii_active_key_id: str = "dev1"
     pii_hmac_key: SecretStr = SecretStr(_DEV_PII_HMAC_KEY)  # telefon bo'yicha qidirish (base64)
+    idempotency_hash_key: SecretStr = SecretStr(_DEV_IDEMPOTENCY_HASH_KEY)
+
+    # Mijoz IP'si (rate limit): X-Forwarded-For faqat shu manzillardan kelsa hisobga olinadi (IP yoki CIDR).
+    # Lokalda — o'z kompyuteri (sayt serveri va brauzer shu yerda; XFF'ni soxtalash lokalda ataylab mumkin).
+    # Prod'da — Nginx va shop sayti serverining ichki manzili (22 §8)
+    trusted_proxies: list[str] = ["127.0.0.1", "::1"]
 
     @property
     def is_production(self) -> bool:
@@ -121,8 +138,23 @@ class Settings(BaseSettings):
                 or self.pii_hmac_key.get_secret_value() == _DEV_PII_HMAC_KEY
             ):
                 raise ValueError(f"PII kalitlari {self.app_env} muhitida lokal standart bo'lmasin")
+            hash_key = self.idempotency_hash_key.get_secret_value()
+            if hash_key == _DEV_IDEMPOTENCY_HASH_KEY or len(hash_key) < MIN_HASH_KEY_LENGTH:
+                raise ValueError(
+                    f"idempotency_hash_key {self.app_env} muhitida kamida {MIN_HASH_KEY_LENGTH} belgi va "
+                    "lokal standart emas"
+                )
         self.pii_keyring()  # kalit formati noto'g'ri bo'lsa — ishga tushishda xato
+        self.proxy_networks()  # noto'g'ri IP/CIDR — ishga tushishda xato
         return self
+
+    def proxy_networks(self) -> tuple[IPv4Network | IPv6Network, ...]:
+        try:
+            return tuple(
+                ip_network(item.strip(), strict=False) for item in self.trusted_proxies if item.strip()
+            )
+        except ValueError as exc:
+            raise ValueError(f"trusted_proxies noto'g'ri: {exc}") from exc
 
     def pii_keyring(self) -> PiiKeyring:
         return PiiKeyring(

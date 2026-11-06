@@ -100,6 +100,7 @@ Enum catalog.spec_request_status {
 Enum platform.file_purpose {
   PRODUCT_IMAGE [note: '2-modul']
   STOCK_EVIDENCE [note: 'Stok tuzatish dalili — 3-modul (DEC-134, commerce.dbml)']
+  SITE_LOGO [note: 'Sayt logotipi — ochiq, 2 MB gacha, PNG/JPEG/WebP (4-modul, storefront.md §8)']
   IMPORT_FILE [note: 'Keyin — 5-modul']
   EXPORT_FILE [note: 'Keyin — hisobotlar']
 }

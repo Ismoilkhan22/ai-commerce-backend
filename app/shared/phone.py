@@ -13,10 +13,11 @@ import re
 
 from app.shared.errors.base import ValidationError
 
-# Bo'shliqlar: oddiy, tab va nusxalashda keladigan "qattiq" bo'shliqlar (U+00A0, U+202F)
-_ALLOWED = re.compile("^[ \t\u00a0\u202f]*\\+?[0-9 \t\u00a0\u202f().-]*$")
+# Bo'shliqlar: oddiy, tab va nusxalashda keladigan "qattiq" bo'shliqlar (U+00A0, U+202F).
+# Faqat `fullmatch` bilan: `$` oxiridagi yangi qatordan oldin ham mos keladi ("+998…\n" o'tib ketardi)
+_ALLOWED = re.compile("[ \t\u00a0\u202f]*\\+?[0-9 \t\u00a0\u202f().-]*")
 _DIGITS = re.compile(r"[^0-9]")
-_UZ_MOBILE = re.compile(r"^998[0-9]{9}$")
+_UZ_MOBILE = re.compile(r"998[0-9]{9}")
 
 
 def _invalid(field: str) -> ValidationError:
@@ -28,12 +29,12 @@ def _invalid(field: str) -> ValidationError:
 def normalize_phone(raw: str, field: str = "phone") -> str:
     """'+998 90 123-45-67', '998901234567', '901234567' → '+998901234567'."""
     text = raw or ""
-    if not _ALLOWED.match(text):
+    if not _ALLOWED.fullmatch(text):
         raise _invalid(field)
     digits = _DIGITS.sub("", text)
     has_plus = text.lstrip().startswith("+")
     if len(digits) == 9 and not has_plus:  # mahalliy yozuv: operator kodi + 7 raqam
         digits = "998" + digits
-    if not _UZ_MOBILE.match(digits):
+    if not _UZ_MOBILE.fullmatch(digits):
         raise _invalid(field)
     return "+" + digits

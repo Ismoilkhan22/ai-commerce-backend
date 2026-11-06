@@ -57,8 +57,11 @@ PLATFORM_ADMIN_PASSWORD='...' uv run python -m app.platform.staff.cli create-pla
   --phone "+998900000001" --name "Platforma Admin"     # birinchi platforma admini
 
 # 2. Jarayonlar
-uv run uvicorn app.main:app --port 8000 --reload --no-access-log   # API; Swagger — http://localhost:8000/docs
+make run                                   # = uvicorn … --reload --no-access-log --no-proxy-headers; Swagger — :8000/docs
 # kirish logi — ilovaning o'zida (`http.request`, query qiymatlarisiz; 09 §4.2)
+# X-Forwarded-For'ni ilova o'zi o'qiydi: faqat TRUSTED_PROXIES dan (lokal — 127.0.0.1, ::1). Shuning uchun
+# lokalda XFF'ni soxtalab rate limitni chetlab o'tish mumkin — bu ataylab (shop sayti SSR serveri shu yerda),
+# prod'da emas (22 §8)
 # Fon ishlari (outbox_worker, arq, scheduler) — 5-modulda qo'shiladi
 
 # 3. Frontend (ai-commerce-frontend/README.md)
@@ -68,7 +71,7 @@ pnpm dev                                   # shop paneli :3000, platforma paneli
 pnpm test:e2e                              # Playwright (backend va admin kerak)
 ```
 
-**Demo ma'lumot:** `make seed` — platforma jamoasi (admin, yordam, taklif qilingan a'zo) va 8 ta shop turli holatda (tekshiruvda, faol pilot, to'xtatilgan, egasi kirmagan); katalog (2-modul) va savdo (3-modul: TechPC va NoutbukUz'da qoldiq, tez sotuv, har holatdagi buyurtma). Servislar orqali yaratiladi — audit va jurnal haqiqiydagidek; qayta ishga tushirish xavfsiz. Kirish ma'lumotlari skript oxirida chiqadi. **Fayllar:** lokal va testda diskda (`STORAGE_LOCAL_DIR`, standart `var/storage`, git'ga kirmaydi) — `FileStorage` portining disk adapteri (2-modul). MinIO ishlatilmaydi: obrazi Docker Hub'dan endi yuklanmaydi. Production uchun S3-mos adapter deploy bilan qo'shiladi (S0-10, TD-03). **Xaridor ma'lumoti** (telefon, manzil) shifrlanadi — `.env` dagi `PII_*` kalitlari faqat lokal uchun (26 §4).
+**Demo ma'lumot:** `make seed` — platforma jamoasi (admin, yordam, taklif qilingan a'zo) va 8 ta shop turli holatda (tekshiruvda, faol pilot, to'xtatilgan, egasi kirmagan); katalog (2-modul), savdo (3-modul: TechPC va NoutbukUz'da qoldiq, tez sotuv, har holatdagi buyurtma) va saytlar (4-modul: NoutbukUz, KompyuterPro, Hi-Tech Samarqand — ochiq; TechPC — qoralama; ByteShop — shop to'xtatilgan). Servislar orqali yaratiladi — audit va jurnal haqiqiydagidek; qayta ishga tushirish xavfsiz. Kirish ma'lumotlari skript oxirida chiqadi. **Fayllar:** lokal va testda diskda (`STORAGE_LOCAL_DIR`, standart `var/storage`, git'ga kirmaydi) — `FileStorage` portining disk adapteri (2-modul). MinIO ishlatilmaydi: obrazi Docker Hub'dan endi yuklanmaydi. Production uchun S3-mos adapter deploy bilan qo'shiladi (S0-10, TD-03). **Xaridor ma'lumoti** (telefon, manzil) shifrlanadi — `.env` dagi `PII_*` kalitlari faqat lokal uchun (26 §4). **Shop sayti:** ommaviy API — `http://localhost:8000/api/v1/storefront/{slug}/site`; sayt manzili `STOREFRONT_PUBLIC_URL` (`http://{slug}.localhost:3002`), CORS — `STOREFRONT_CORS_ORIGIN_REGEX`. Kesh — Redis (testda xotira); `make seed` ishlab turgan server keshini tozalamaydi — sayt sozlamasi 5 daqiqagacha eski ko'rinishi mumkin.
 
 **Seed ma'lumot:** har doim ikkita shop (A va B) — izolyatsiyani lokalda ham ko'rish uchun (TC-ISO). Faqat sintetik ma'lumot; haqiqiy xaridor ma'lumoti lokal yoki staging'ga hech qachon yuklanmaydi.
 

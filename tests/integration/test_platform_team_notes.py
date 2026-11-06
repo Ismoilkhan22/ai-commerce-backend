@@ -358,7 +358,8 @@ def test_dev_seed_builds_demo_data_and_is_idempotent(seed_urls: PgUrls) -> None:
         "(SELECT count(*) FROM catalog.spec_requests) AS requests, "
         "(SELECT count(*) FROM platform.stored_files) AS files",
     )[0]
-    assert dict(catalog) == {"products": 18, "approved": 12, "links": 13, "requests": 1, "files": 4}
+    # fayllar: 4 ta mahsulot rasmi + 5 ta sayt logotipi (4-modul)
+    assert dict(catalog) == {"products": 18, "approved": 12, "links": 13, "requests": 1, "files": 9}
     # 3-modul: qoldiq, har holatdagi buyurtma, 24/72 soatlik navbat; qayta yugurish hech narsa qo'shmaydi
     assert (first.commerce_receipts, first.commerce_orders) == (5, 12)
     assert (second.commerce_receipts, second.commerce_orders) == (0, 0)
@@ -383,6 +384,25 @@ def test_dev_seed_builds_demo_data_and_is_idempotent(seed_urls: PgUrls) -> None:
     assert overdue[0]["n"] == 1
     phones = _sql(seed_urls.admin, "SELECT customer_phone_enc AS p FROM commerce.orders")
     assert all(r["p"].startswith("v1.") for r in phones)  # telefon shifrlangan holda yozilgan
+    # 4-modul: saytlar — 4 ta ochiq (biri to'xtatilgan shopda), TechPC qoralama; har birida 3 sahifa
+    assert (first.storefront_sites, first.storefront_live) == (5, 4)
+    assert (second.storefront_sites, second.storefront_live) == (0, 0)
+    sites = {
+        r["slug"]: r["status"]
+        for r in _sql(
+            seed_urls.admin,
+            "SELECT s.slug, w.status FROM storefront.sites w JOIN platform.shops s ON s.id = w.shop_id",
+        )
+    }
+    assert sites == {
+        "noutbukuz": "LIVE",
+        "kompyuterpro": "LIVE",
+        "hitech-samarqand": "LIVE",
+        "techpc": "DRAFT",
+        "byteshop": "LIVE",
+    }
+    pages = _sql(seed_urls.admin, "SELECT count(*) AS n FROM storefront.pages WHERE is_published")
+    assert pages[0]["n"] == 15
 
     shops = {
         r["slug"]: r

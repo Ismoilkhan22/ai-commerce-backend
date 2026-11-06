@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, Integer, Text, func
+from sqlalchemy import CheckConstraint, DateTime, Integer, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,7 +15,10 @@ from app.shared.db.base import Base
 
 class IdempotencyKey(Base):
     __tablename__ = "idempotency_keys"
-    __table_args__ = ({"schema": "platform"},)
+    __table_args__ = (
+        CheckConstraint("request_hash LIKE 'h1:%'", name="request_hash_keyed"),  # faqat HMAC (QA M04 F2)
+        {"schema": "platform"},
+    )
 
     shop_id: Mapped[UUID] = mapped_column(primary_key=True)  # shopsiz amallar — NIL_SHOP_ID
     operation: Mapped[str] = mapped_column(Text, primary_key=True)  # "order.confirm"

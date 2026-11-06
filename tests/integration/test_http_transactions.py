@@ -27,6 +27,8 @@ from app.shared.idempotency.store import IdempotencyStore, request_hash
 from app.shared.types.manifest import DomainManifest
 from tests.integration.conftest import PgUrls
 
+TEST_HASH_KEY = b"test-idempotency-hash-key"
+
 pytestmark = pytest.mark.integration
 
 TABLE = f"zz_http_{uuid4().hex[:8]}"
@@ -66,7 +68,7 @@ store = IdempotencyStore()
 async def idempotent_action(
     body: dict[str, Any], key: Annotated[str, Depends(get_idempotency_key)], db: DbSession
 ) -> Any:
-    req_hash = request_hash("POST", "/payments-like", body)
+    req_hash = request_hash("POST", "/payments-like", body, TEST_HASH_KEY)
     stored = await store.begin(db, None, "test.action", key, req_hash)
     if stored is not None:
         return stored.body

@@ -208,7 +208,7 @@ Bonus: kutubxonaning to'liq tarixi ham shu jadvalda.
 
 **Nima uchun kerak:** rasm va boshqa fayllar haqidagi yozuv. Faylning o'zi MinIO'da (S3) turadi, bazada blob saqlanmaydi (ADR-014). Bu jadval `platform` schemasida, chunki keyin import fayllari va hisobot eksportlari ham shu yerda bo'ladi. Katalog uning birinchi foydalanuvchisi.
 
-- **`purpose`** — `PRODUCT_IMAGE` (hozir), `IMPORT_FILE` va `EXPORT_FILE` (keyin).
+- **`purpose`** — `PRODUCT_IMAGE` (hozir), `STOCK_EVIDENCE` (3-modul), `SITE_LOGO` (4-modul, ochiq), `IMPORT_FILE` va `EXPORT_FILE` (keyin).
 - **`object_key`** — ombordagi yo'l: `shops/{shop_id}/product_image/{id}`. Fayl nomi yo'lga yozilmaydi: yo'lni taxmin qilib bo'lmaydi.
 - **`is_public`** — mahsulot rasmi ochiq (DEC-133): sayt va brauzer keshlaydi. Qolgan fayllar 5 daqiqalik imzoli havola bilan beriladi.
 - **Ombor:** `FileStorage` porti. Production'da S3-mos ombor, lokal va testda disk (`MinIO` obrazi Docker Hub'dan endi yuklanmaydi — TD-03 shu bilan yopiladi).

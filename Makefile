@@ -2,7 +2,7 @@
 SCHEMAS := platform audit catalog commerce messaging sales_ai storefront support reporting
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: install up down bootstrap lint format typecheck imports test check migrate seed
+.PHONY: install up down bootstrap run lint format typecheck imports test check migrate seed
 
 install:
 	uv sync
@@ -12,6 +12,11 @@ up:
 
 down:
 	$(COMPOSE) down
+
+# Lokal API. Kirish logi ilovaning o'zida (query qiymatlarisiz); X-Forwarded-For'ni uvicorn emas, ilova o'qiydi
+# (TRUSTED_PROXIES, app/shared/client_ip.py) — shuning uchun --no-proxy-headers
+run:
+	uv run uvicorn app.main:app --port 8000 --reload --no-access-log --no-proxy-headers
 
 # Rollar (app_migrator, app_runtime) + schemalar + huquqlar (07 §10)
 bootstrap:

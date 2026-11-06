@@ -14,11 +14,17 @@ Bir vaqtda kelgan dublikat KUTMAYDI (founder, 2026-10-23): tranzaksiya qulfi
             return stored.body          # takroriy so'rov
         ... biznes o'zgarishi ...
         await idempotency.complete(db, shop_id, "order.confirm", key, 200, body)
+
+So'rov "barmoq izi" (`request_hash`) — server kaliti bilan HMAC (`h1:` + hex). Oddiy SHA-256 bo'lsa, bazani
+o'qigan odam tana ichidagi telefonni oflayn tanlab topa olardi (QA M04 F2): boshqa maydonlar buyurtmada ochiq
+turadi, telefon esa ~10^7 variant. Kalitsiz eski qatorlarni `platform_0008` o'chirgan, CHECK endi faqat `h1:`
+ga ruxsat beradi.
 """
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -35,6 +41,7 @@ from app.shared.serialization import to_json_compatible
 
 NIL_SHOP_ID = UUID(int=0)
 DEFAULT_TTL = timedelta(hours=24)
+HASH_PREFIX = "h1:"  # kalitli barmoq izi (HMAC-SHA256)
 
 
 @dataclass(frozen=True)
@@ -43,9 +50,14 @@ class StoredResponse:
     body: Any
 
 
-def request_hash(method: str, path: str, body: Any) -> str:
+def _canonical(method: str, path: str, body: Any) -> bytes:
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
-    return hashlib.sha256(f"{method.upper()} {path}\n{canonical}".encode()).hexdigest()
+    return f"{method.upper()} {path}\n{canonical}".encode()
+
+
+def request_hash(method: str, path: str, body: Any, key: bytes) -> str:
+    """Kalitli barmoq izi: kalitsiz uni tana bilan solishtirib bo'lmaydi."""
+    return HASH_PREFIX + hmac.new(key, _canonical(method, path, body), hashlib.sha256).hexdigest()
 
 
 class IdempotencyStore:
@@ -53,7 +65,12 @@ class IdempotencyStore:
         self.ttl = ttl
 
     async def begin(
-        self, db: AsyncSession, shop_id: UUID | None, operation: str, key: str, req_hash: str
+        self,
+        db: AsyncSession,
+        shop_id: UUID | None,
+        operation: str,
+        key: str,
+        req_hash: str,
     ) -> StoredResponse | None:
         """Yangi kalit — None (davom eting). Takroriy — saqlangan javob. Boshqa tana — 409."""
         scope = shop_id or NIL_SHOP_ID
@@ -94,7 +111,7 @@ class IdempotencyStore:
             row.expires_at = now + self.ttl
             await db.flush()
             return None
-        if row.request_hash != req_hash:
+        if not hmac.compare_digest(row.request_hash, req_hash):
             raise IdempotencyKeyReusedError("Idempotency key reused with a different request")
         if row.response_status is None:
             # Birinchi so'rov COMMIT qildi, lekin javob saqlamagan — dasturchi xatosi (complete yo'q)

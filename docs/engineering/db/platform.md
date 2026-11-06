@@ -88,6 +88,7 @@ Bu qarorlar har jadvalda takrorlanadi, shuning uchun bir marta tushuntiraman.
 | `exchange_rate_source` | `MANUAL` | Dollar kursi: shop o'zi kiritadi yoki Markaziy bank kursi (DEC-121) |
 | `stock_display` | `STATUS_ONLY` | Saytda qoldiq: aniq son yoki "bor / kam qoldi / yo'q" (DEC-128) |
 | `low_stock_threshold` | 2 | Nechtadan kam bo'lsa "kam qoldi" deyiladi |
+| `delivery_enabled` | `true` | Shop yetkazib beradimi: o'chiq bo'lsa saytdagi buyurtma formasida faqat "olib ketish" (4-modul, storefront.md §8) |
 | `updated_at`, `version` | — | §0. `created_at` yo'q — shop bilan birga yaratiladi |
 
 **Pul foizlari `numeric(5,2)`:** 2.5% ni aniq saqlaydi. Float'da `2.5` ba'zan `2.4999…` bo'lib qoladi.

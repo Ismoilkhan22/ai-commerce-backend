@@ -122,7 +122,7 @@ Har sahifa: kim ishlatadi, qaysi API, qaysi mutatsiyalar, qaysi muhim xato holat
 | `/inventory` | omborchi, menejer, operator | Qoldiq (`on_hand`, `reserved`, `allocated`, `available` — alohida ko'rinadi), ledger | kirim, tuzatish (sabab bilan), **tez sotuv** (mobil) | 409 versiya, yetarli emas |
 | `/support` | operator, menejer | Kafolat murojaatlari (FSM-11) | ochish, ko'rib chiqish, hal qilish | — |
 | `/reports` | ega, menejer | Metrikalar, hisobot yordamchisi | savol, eksport | ruxsat yo'q (tannarx), ma'lumot yo'q |
-| `/storefront` | ega | Sayt sozlamalari | logotip, rang, chiqarish | — |
+| `/storefront` | ega (menejer — ko'radi) | `GET /shop/storefront`, `…/pages` — sozlamalar, `state`, `publish_problems` | logotip (`POST /shop/files?purpose=SITE_LOGO`), rang, kontaktlar, sahifalar, ochish/yopish, "Ko'rib chiqish" | `low_contrast`, telefon yo'q (`contact_phone` / `required`), 409 versiya |
 | `/channels` | ega | Kanallar holati (FSM-03) | ulash, uzish | ruxsat bekor qilindi |
 | `/team`, `/branches` | ega (menejer — ko'radi) | Xodimlar, rollar, filiallar | taklif, rol, o'chirish | oxirgi egani o'chirish taqiqlangan |
 | `/notifications` | hamma | Bildirishnomalar, vazifalar | o'qildi | — |
@@ -136,14 +136,18 @@ Har sahifa: kim ishlatadi, qaysi API, qaysi mutatsiyalar, qaysi muhim xato holat
 
 | Sahifa | API | Muhim |
 |---|---|---|
-| `/` | `GET /storefront/{slug}/products` | Faqat `PUBLISHED`; kesh (`08`) |
-| `/p/{product}` | `GET /storefront/{slug}/products/{id}` | Narx va mavjudlik "holatiga" vaqti bilan |
-| `/cart` | `POST /storefront/{slug}/order-requests` | Idempotency-Key; to'lovsiz (DEC-115); javob — "qabul qilindi", "tasdiqlandi" emas |
-| `/quote/{code}` | `GET .../quotes/{code}` | Muddati o'tgan bo'lsa — aniq ko'rsatiladi |
-| `/orders/{code}` | `GET .../orders/{code}` | Faqat signed kod bilan; boshqa xaridor ma'lumoti yo'q |
-| Chat vidjeti | `/ws` (anonim sessiya) | Barcha sahifalarda |
+| Hamma sahifa | `GET /storefront/{slug}/site` | `state`: `LIVE` — sayt; `COMING_SOON` — "tez orada ochiladi"; `PAUSED` — "vaqtincha ishlamayapti"; 404 — "topilmadi". Rang (`accent_color`, `accent_text_color`), logotip, kontaktlar, sahifalar menyusi |
+| `/` | `GET /storefront/{slug}/categories`, `…/products?category=&q=&sort=&cursor=` | Faqat ko'rinadigan mahsulotlar; kesh 60 s — faqat backend'da (`08`), sayt `no-store` bilan o'qiydi; `as_of` — "narx va mavjudlik HH:MM holatiga". Qidiruv/toifa/saralash manzillari — `noindex,follow`, canonical bosh sahifaga |
+| `/p/{id}/{slug}` | `GET /storefront/{slug}/products/{id}` | Mahsulotni id topadi; `slug` boshqacha bo'lsa — `canonical_path` ga yo'naltirish. Yashirilgan — 404 |
+| `/cart` | savatcha brauzerda (`{sku_id, qty}`), `GET …/branches`, `POST /storefront/{slug}/order-requests` | `Idempotency-Key` forma ochilganda yaratiladi; `consent_version` = `site.consent.version`; to'lovsiz (DEC-115); javob — "qabul qilindi", "tasdiqlandi" emas; `available_in_branch: false` qatorlar belgilanadi |
+| `/orders/{token}` | `GET …/orders/{token}` | Javobdagi `tracking_path`; telefon va manzil yo'q |
+| `/pages/{kind}`, `/privacy` | `GET …/pages/{kind}`, `GET …/privacy` | Markdown — HTML'siz, ko'rsatishda baribir tozalanadi (XSS) |
+| `/quote/{code}` | `GET .../quotes/{code}` | 6-modul; muddati o'tgan bo'lsa — aniq ko'rsatiladi |
+| Chat vidjeti | `/ws` (anonim sessiya) | 5-modul |
 
-Saytda shop `Host` header'dan aniqlanadi, lekin faqat Nginx allowlist va tasdiqlangan domenlar ro'yxati orqali (`10`).
+**Host → slug.** `{slug}.platforma.uz` (dev'da `{slug}.localhost:3002`, `STOREFRONT_PUBLIC_URL`) — birinchi bo'lak slug; API'ga faqat slug yuboriladi. Brauzerdagi `Host` ga ko'r-ko'rona ishonilmaydi: prod'da Nginx faqat platforma domeni va (keyin) tasdiqlangan domenlarni o'tkazadi (`10`). **Ko'rib chiqish:** panel bergan `preview_url` dagi `?preview=<token>` ni sayt `X-Storefront-Preview` header'iga qo'yib yuboradi (30 daqiqa); bu rejimda buyurtma formasi o'chiq. **CORS:** sayt API'ni brauzerdan cookie'siz chaqiradi — backend faqat sayt manzillariga ruxsat beradi (`STOREFRONT_CORS_ORIGIN_REGEX`).
+
+**Absolyut manzillar** (canonical, og:url, sitemap, robots) — `site.shop.url` dan (backend `STOREFRONT_PUBLIC_URL`), so'rovning `Host` yoki `X-Forwarded-Proto` sarlavhasidan hech qachon (QA M04 U6). **Xato holatlari:** faqat haqiqiy 404 — "topilmadi"; 429, 5xx va aloqa yo'qligi — "Sayt vaqtincha band — birozdan keyin urinib ko'ring" va "qayta urinish" (xato chegarasi; robots.txt va sitemap.xml — `503` + `Retry-After`). Ro'yxatni olib bo'lmasa — "mahsulot yo'q" emas, xato va qayta urinish (QA M04 U1). **Buyurtma yuborish:** javob yo'qolsa kalit va birinchi tana saqlanadi; xaridor formani o'zgartirib qayta yuborsa va `409 IDEMPOTENCY_KEY_REUSED` kelsa — birinchi tana shu kalit bilan qayta yuboriladi va xaridor o'sha buyurtma sahifasiga "avvalgi ma'lumotlar bilan qabul qilingan" xabari bilan o'tadi; yangi kalit avtomatik yaratilmaydi (QA M04 U2). **Hozir yo'q mahsulot** ham savatchaga qo'shiladi va so'raladi — "operator muddat va muqobilni aytadi" (DEC-141). **Xavfsizlik sarlavhalari** — `10` §11.
 
 ---
 

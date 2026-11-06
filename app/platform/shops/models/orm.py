@@ -98,6 +98,8 @@ class ShopPolicy(VersionMixin, Base):
     exchange_rate_source: Mapped[str] = mapped_column(Text, server_default="MANUAL")
     stock_display: Mapped[str] = mapped_column(Text, server_default="STATUS_ONLY")
     low_stock_threshold: Mapped[int] = mapped_column(Integer, server_default="2")
+    # Shop yetkazib beradimi: o'chiq bo'lsa sayt formasida faqat "olib ketish" (storefront.md §8)
+    delivery_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

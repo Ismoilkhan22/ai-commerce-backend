@@ -133,6 +133,13 @@ class ShopHasOpenOrdersError(ConflictError):
     abstract = False
 
 
+class SiteNotAvailableError(ConflictError):
+    """Shop sayti xaridorga hozir ochiq emas: `details.state` — COMING_SOON yoki PAUSED (storefront.md §0)."""
+
+    code = "SITE_NOT_AVAILABLE"
+    abstract = False
+
+
 class SpeakerConflictError(ConflictError):
     code = "SPEAKER_CONFLICT"
     abstract = False

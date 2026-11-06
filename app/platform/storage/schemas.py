@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-UploadPurpose = Literal["PRODUCT_IMAGE", "STOCK_EVIDENCE"]
+UploadPurpose = Literal["PRODUCT_IMAGE", "STOCK_EVIDENCE", "SITE_LOGO"]
 
 
 class StoredFileOut(BaseModel):

@@ -67,6 +67,7 @@ class PolicyOut(BaseModel):
     exchange_rate_source: Literal["MANUAL", "CBU"]
     stock_display: Literal["EXACT", "STATUS_ONLY"]
     low_stock_threshold: int
+    delivery_enabled: bool
     version: int
 
 
@@ -81,6 +82,8 @@ class PolicyUpdate(BaseModel):
     exchange_rate_source: Literal["MANUAL", "CBU"]
     stock_display: Literal["EXACT", "STATUS_ONLY"]
     low_stock_threshold: int = Field(ge=0, le=1000)
+    # Yuborilmasa o'zgarmaydi (eski klientlar uchun): sayt formasida "yetkazib berish" bormi
+    delivery_enabled: bool | None = None
 
 
 class BranchIn(BaseModel):

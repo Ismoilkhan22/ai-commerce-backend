@@ -45,6 +45,7 @@ PROD_PII = {
     "pii_encryption_keys": "k1:" + base64.b64encode(b"p" * 32).decode(),
     "pii_active_key_id": "k1",
     "pii_hmac_key": base64.b64encode(b"h" * 32).decode(),
+    "idempotency_hash_key": "i" * 40,  # takroriy so'rov barmoq izi kaliti (QA M04 F2)
 }
 
 

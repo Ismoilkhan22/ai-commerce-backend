@@ -36,6 +36,7 @@ from app.shared.types.actor import ActorContext
 
 ENTITY = "platform.stored_file"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_LOGO_BYTES = 2 * 1024 * 1024  # storefront.md §8
 # Boshqaruv belgilari; ko'rinmas va yo'nalish almashtiruvchi belgilar — `strip_invisible` (shared/text.py):
 # "rasm\u202egnp.exe" ekranda "rasmexe.png" bo'lib ko'rinmasin
 _NAME_UNSAFE = re.compile(r"[\x00-\x1f\x7f]")
@@ -49,10 +50,12 @@ class PurposeRule:
     mime_types: frozenset[str]
 
 
-# Mahsulot rasmi ochiq (DEC-133); qolganlari yopiq. Import/eksport fayllari o'z modullarida yaratiladi.
+# Mahsulot rasmi va sayt logotipi ochiq (DEC-133, storefront.md §1); qolganlari yopiq. Import/eksport
+# fayllari o'z modullarida yaratiladi. SVG logotip qabul qilinmaydi: tozalovchisiz u skript tashiy oladi.
 PURPOSES: dict[str, PurposeRule] = {
     "PRODUCT_IMAGE": PurposeRule("catalog.product.edit", True, MAX_IMAGE_BYTES, IMAGE_TYPES),
     "STOCK_EVIDENCE": PurposeRule("commerce.stock.adjust_request", False, MAX_IMAGE_BYTES, IMAGE_TYPES),
+    "SITE_LOGO": PurposeRule("storefront.site.edit", True, MAX_LOGO_BYTES, IMAGE_TYPES),
 }
 
 

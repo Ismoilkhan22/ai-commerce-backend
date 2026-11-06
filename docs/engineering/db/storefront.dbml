@@ -95,7 +95,7 @@ Table storefront.sites {
   Sayt ko‘rinishi va kontaktlari. Yozuv ega birinchi marta saqlaganda yaratiladi; yozuv yo‘q — sayt DRAFT.
   Faqat ega o‘zgartiradi (storefront.site.edit, 10 §6.6). Har o‘zgarish — audit (faqat maydon nomlari),
   holat o‘zgarishi — platform.transition_log. O‘zgarganda sayt sozlamalari keshi darhol o‘chiriladi.
-  RLS yo‘q — ommaviy ma’lumot; himoya app-layer filtri va shop_id kaliti (10 §4).
+  RLS (FORCE) — qo‘shimcha himoya: ma’lumot ochiq, lekin sayt o‘qishi baribir shop kontekstini o‘rnatadi (4-modul, 10 §4).
   '''
 }
 

@@ -59,7 +59,7 @@ Xaridor nima ko'radi — shop holati (platforma) va sayt holati birga hal qiladi
 **Kim o'zgartiradi:** faqat ega (`storefront.site.edit`, engineering/10 §6.6).
 **Qachon yaratiladi:** Ali birinchi marta saqlaganda. Yozuv yo'q bo'lsa — sayt qoralama hisoblanadi.
 **Tarix:** har o'zgarish audit'ga (faqat maydon nomlari), holat o'zgarishi `platform.transition_log` ga yoziladi.
-**RLS:** kerak emas — ichidagi hamma narsa ochiq ma'lumot. Himoya — `shop_id` kaliti va kod darajasidagi filtr (engineering/10 §4).
+**RLS:** ha (FORCE), `pages` da ham — 4-modulda qo'shildi. Ichidagi hamma narsa ochiq ma'lumot, lekin sayt o'qishi baribir shop kontekstini o'rnatadi; RLS panel boshqa shop sozlamasiga tegolmasligini bazaning o'zida kafolatlaydi.
 
 **Misol:** Ali logotip yukladi, rang `#2563EB`, shior "Kompyuter qismlari — rasmiy kafolat bilan", telefon +998 71 200 00 00, Telegram `techpc_uz`. "Saytni ochish" → `LIVE`. TechPC faol, shuning uchun `techpc.platforma.uz` darhol ochiladi.
 

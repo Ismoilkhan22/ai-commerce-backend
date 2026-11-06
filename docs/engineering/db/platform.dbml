@@ -122,6 +122,7 @@ Table platform.shop_policies {
   exchange_rate_source text [not null, default: 'MANUAL', note: 'MANUAL | CBU (DEC-121)']
   stock_display text [not null, default: 'STATUS_ONLY', note: 'EXACT | STATUS_ONLY (DEC-128)']
   low_stock_threshold int [not null, default: 2, note: '"Kam qoldi" chegarasi']
+  delivery_enabled boolean [not null, default: true, note: 'Shop yetkazib beradimi: o‘chiq bo‘lsa sayt formasida faqat olib ketish (4-modul, storefront.md §8)']
   updated_at timestamptz [not null, default: `now()`]
   version bigint [not null, default: 1]
 

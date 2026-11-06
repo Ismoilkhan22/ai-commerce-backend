@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.settings import Settings
 from app.db.seed.catalog_seed import run_catalog_seed
 from app.db.seed.commerce_seed import run_commerce_seed
+from app.db.seed.storefront_seed import run_storefront_seed
 from app.dependencies import get_order_query
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
@@ -193,6 +194,8 @@ class SeedReport:
     catalog_specs: int = 0
     commerce_orders: int = 0
     commerce_receipts: int = 0
+    storefront_sites: int = 0
+    storefront_live: int = 0
 
 
 @dataclass(frozen=True)
@@ -449,6 +452,8 @@ async def run_seed(settings: Settings) -> SeedReport:
     report.catalog_products, report.catalog_specs = catalog.products, catalog.specs
     commerce = await run_commerce_seed(settings)
     report.commerce_orders, report.commerce_receipts = commerce.orders, commerce.receipts
+    storefront = await run_storefront_seed(settings)
+    report.storefront_sites, report.storefront_live = storefront.sites, storefront.live
     return report
 
 
@@ -458,6 +463,7 @@ def main() -> None:
         f"Yaratildi: shoplar {len(report.created_shops)}, jamoa {len(report.created_team)}, "
         f"katalog: mahsulotlar {report.catalog_products}, kutubxona modellari {report.catalog_specs}; "
         f"savdo: kirimlar {report.commerce_receipts}, buyurtmalar {report.commerce_orders}; "
+        f"saytlar {report.storefront_sites} (ochiq {report.storefront_live}); "
         f"o'tkazib yuborildi: {len(report.skipped_shops)}",
         "",
         "Platforma paneli (http://localhost:3001):",
@@ -471,6 +477,10 @@ def main() -> None:
     ]
     lines += [
         f"  {s.name:<18} {s.owner_phone}  ({s.state})" for s in SHOPS if not s.state.startswith("DRAFT")
+    ]
+    lines += [
+        "Shop saytlari (ochiq API): http://localhost:8000/api/v1/storefront/{slug}/site — "
+        "noutbukuz, kompyuterpro, hitech-samarqand (ochiq), techpc (tez orada), byteshop (to'xtatilgan)"
     ]
     print("\n".join(lines))  # noqa: T201 — CLI chiqishi
 

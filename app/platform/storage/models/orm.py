@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.shared.db.base import Base
 from app.shared.db.mixins import IdMixin
 
-FILE_PURPOSES = ("PRODUCT_IMAGE", "STOCK_EVIDENCE", "IMPORT_FILE", "EXPORT_FILE")
+FILE_PURPOSES = ("PRODUCT_IMAGE", "STOCK_EVIDENCE", "IMPORT_FILE", "EXPORT_FILE", "SITE_LOGO")
 
 
 class StoredFile(IdMixin, Base):

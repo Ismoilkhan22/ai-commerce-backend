@@ -9,9 +9,9 @@
    o'z endpoint'ida o'z chegarasi bilan o'qiladi.
 4. **Deadlock (`40P01`) yoki serialization (`40001`)** — butun so'rov (tranzaksiya) qayta bajariladi:
    ko'pi bilan 3 urinish, 20–200 ms jitter (12 §3). Tranzaksiya ichida tashqi effekt yo'q, shuning uchun
-   xavfsiz. Tanasi qayta yuborib bo'lmaydigan so'rov (fayl) qayta urinilmaydi. `/api/v1/auth/` ham
-   qayta urinilmaydi: u yerda tranzaksiyadan tashqari effekt bor — rate limit hisoblagichi (Redis),
-   qayta urinish uni ikki marta oshirardi. Urinishlar tugasa — 409 `VERSION_CONFLICT`
+   xavfsiz. Tanasi qayta yuborib bo'lmaydigan so'rov (fayl) qayta urinilmaydi. `/api/v1/auth/` va sayt
+   (`/api/v1/storefront/`) ham qayta urinilmaydi: u yerda tranzaksiyadan tashqari effekt bor — rate limit
+   hisoblagichi (Redis), qayta urinish uni ikki marta oshirardi. Urinishlar tugasa — 409 `VERSION_CONFLICT`
    ("ma'lumot o'zgarmoqda, qayta urinib ko'ring").
 """
 
@@ -40,7 +40,7 @@ MAX_ATTEMPTS = 3
 RETRY_JITTER_S = (0.02, 0.2)
 RETRYABLE_SQLSTATES = frozenset({"40P01", "40001"})
 # Tranzaksiyadan tashqari effekti bor yo'llar (rate limit hisoblagichi) — butun so'rov qayta bajarilmaydi
-NO_RETRY_PREFIXES = ("/api/v1/auth/",)
+NO_RETRY_PREFIXES = ("/api/v1/auth/", "/api/v1/storefront/")
 _MAX_REPORTED_FIELDS = 50
 
 

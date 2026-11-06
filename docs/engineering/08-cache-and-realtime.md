@@ -55,6 +55,15 @@ cos:v1:global:storefront:slug=techzone                      # slug → shop_id
 - Kalitda foydalanuvchi kiritgan xom matn yo'q — normallashtirilgan va hash'langan parametrlar.
 - `v1` — format o'zgarsa `v2`, eski kalitlar TTL bilan o'ladi.
 
+**4-modulda qurilgani** (`app/shared/cache/`: `Cache` — Redis yoki xotira, `keys.py` — kalit quruvchi; storefront kalitlari — `app/domains/storefront/common.py`):
+- `cos:v1:global:storefront:<hash(slug)>` → shop_id (600 s); shop holati esa har so'rovda bazadan;
+- `cos:v1:shop:{id}:storefront:site`, `…:pages` (300 s) — sayt yoki sahifa saqlanganda darhol `DEL`;
+- `…:storefront:products:list:<hash(v, cat, q, sort, limit, cursor)>`, `…:product:<hash(v, id)>`, `…:categories:<hash(v)>` (60 s + 0–10 s jitter); `v` — `…:storefront:index_version` (sayt saqlanganda `INCR`; katalog va ombor event'lari bilan — S0-06);
+- mahsulot kaliti slug emas, **id** bo'yicha (storefront.md §5); mahsulot sahifasi keshdan berilsa ham holati har safar tekshiriladi;
+- stampede himoyasi (§4.4) hali yo'q — pilot hajmida kerak emas, yuklama oshganda qo'shiladi;
+- kesh ishlamasa (Redis uzildi) javob baribir DB'dan to'g'ri chiqadi — xato logga yoziladi, foydalanuvchiga chiqmaydi;
+- **kesh faqat backend'da.** Sayt ilovasi (Next.js) API'ni `no-store` bilan o'qiydi: Next'ning "stale-while-revalidate" keshi kam tashrifli shopda ro'yxat va ma'lumot sahifalarini soatlab eskirtirardi (QA M04 U3, U5). Ega saqlagan narsa saytda darhol (backend keshi saqlanganda tozalanadi).
+
 ### 4.2 Nima keshlanadi
 
 | Ma'lumot | Kim o'qiydi | TTL | Invalidatsiya event'i |
@@ -114,6 +123,7 @@ Sozlama `storefront.public_products` proyeksiyasida (`available_qty` faqat `EXAC
 | Surface | Kalit | Limit (boshlang'ich) | Oshsa |
 |---|---|---|---|
 | `/api/v1/storefront/{slug}/*` (o'qish) | IP + shop | 120/daq | `429 RATE_LIMITED` + `Retry-After` |
+| `/api/v1/storefront/{slug}/*` (o'qish, sayt serverining o'zi — ishonchli proksi, xaridor IP'sisiz) | shop (`sf-ssr:{slug}`) | `STOREFRONT_SSR_READ_LIMIT_PER_MINUTE` (3000) | Alohida chelak: SSR chaqiruvlari xaridorlar limitini, xaridorlar SSR'ni to'xtatmaydi (QA M04 U1) |
 | `POST /storefront/{slug}/order-requests` | IP + shop, telefon hash | 5/10 daq | 429 |
 | `/api/v1/storefront/{slug}/chat/*` (sayt chati) | sessiya + IP | 20 xabar/daq | 429; xabar saqlanmaydi |
 | `/api/v1/webhooks/telegram/{bot_id}` | bot | 50/s (Telegram o'zi limitlaydi) | 429 emas — qabul qilinadi, lekin AI navbati throttle |

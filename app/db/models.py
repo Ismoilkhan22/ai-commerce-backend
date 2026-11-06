@@ -33,7 +33,7 @@ MODEL_MODULES: dict[str, tuple[str, ...]] = {
     ),
     "messaging": (),
     "sales_ai": (),
-    "storefront": (),
+    "storefront": ("app.domains.storefront.models.orm",),
     "support": (),
     "reporting": (),
 }

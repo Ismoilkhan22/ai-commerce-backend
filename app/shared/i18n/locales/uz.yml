@@ -23,6 +23,7 @@ errors:
   LAST_ADMIN_REQUIRED: "Platformada kamida bitta faol admin qolishi kerak"
   FILE_IN_USE: "Bu rasm boshqa mahsulotga biriktirilgan. Rasmni qaytadan yuklang"
   SHOP_HAS_OPEN_ORDERS: "Shopda ochiq buyurtmalar bor — avval ularni yakunlang yoki bekor qiling"
+  SITE_NOT_AVAILABLE: "Sayt hozir ishlamayapti"
   SPEAKER_CONFLICT: "Suhbatni boshqa operator oldi"
   CHANNEL_UNAVAILABLE: "Kanal ulanmagan yoki ishlamayapti"
   PAYLOAD_TOO_LARGE: "Fayl juda katta"
@@ -36,3 +37,15 @@ errors:
   FEATURE_NOT_AVAILABLE: "Bu imkoniyat hozircha mavjud emas"
   PROVIDER_UNAVAILABLE: "Tashqi xizmat vaqtincha ishlamayapti"
   SERVICE_UNAVAILABLE: "Xizmat vaqtincha ishlamayapti"
+
+# Sayt buyurtma formasi va maxfiylik siyosati (26 §8). O'zgarsa — app/shared/consent.py dagi versiya ham
+consent:
+  storefront_order: "Buyurtma bo‘yicha bog‘lanish uchun ism, telefon va manzilim ishlatilishiga roziman."
+privacy:
+  title: "Maxfiylik siyosati"
+  intro: "{shop_name} ({legal_name}, STIR {tin}) saytida buyurtma berganingizda maʼlumotlaringiz shu siyosat bo‘yicha ishlatiladi."
+  data: "Biz faqat buyurtma uchun kerakli maʼlumotni olamiz: ism, telefon raqami, yetkazib berishda — manzil va izohingiz."
+  purpose: "Maʼlumotlar faqat buyurtmangiz bo‘yicha siz bilan bog‘lanish, buyurtmani tayyorlash va topshirish uchun ishlatiladi. Reklama yuborilmaydi."
+  storage: "Telefon va manzil shifrlangan holda saqlanadi. Buyurtma va kafolat muddati tugagach shaxsiy maʼlumotlar o‘chiriladi, buyurtma raqamlari esa hisobot uchun qoladi."
+  rights: "Maʼlumotlaringizni ko‘rish, tuzatish yoki o‘chirishni so‘rashingiz mumkin."
+  contact: "Savol va so‘rovlar uchun: {contact}."

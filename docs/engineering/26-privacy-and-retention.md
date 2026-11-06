@@ -123,6 +123,8 @@ Qoidalar:
 
 Rozilik `commerce.orders.consent_version` va `messaging.customer_identities.notice_version` da saqlanadi. Marketing roziligi Stage 1 da yig'ilmaydi.
 
+**Sayt (4-modul):** rozilik matni va maxfiylik siyosati shabloni — backend tarjima fayllarida (`consent.*`, `privacy.*`, uz/ru/en), versiyasi `app/shared/consent.py` (`STOREFRONT_CONSENT_VERSION`). Sayt `GET /storefront/{slug}/site` dan matn va versiyani oladi, buyurtma so'rovi shu versiyani yuboradi — boshqa versiya rad etiladi (`consent_version` / `invalid_choice`). Matn o'zgarsa versiya ham o'zgarishi shart: test matn barmoq izini (`CONSENT_FINGERPRINT`) solishtiradi. Siyosatga shop rekvizitlari (nomi, yuridik nomi, STIR, kontakt) avtomatik qo'yiladi (`GET …/privacy`). Holat sahifasi (`…/orders/{token}`) telefon, manzil va izohni ko'rsatmaydi; token bazada faqat SHA-256 xeshi.
+
 ## 9. Texnik himoya (xulosa)
 
 - Shop izolyatsiyasi: `10-security-tenancy-rbac.md` (`shop_id` serverdan, composite FK, RLS, TC-ISO).

@@ -30,7 +30,10 @@ from app.domains.commerce.inventory.models.orm import StockBalance
 from app.domains.commerce.inventory.schemas import AdjustmentIn, ReceiptIn, ReceiptLineIn
 from app.domains.commerce.orders.schemas import OrderCreate, OrderLineIn, OrderNoteIn, OrderOut
 from app.domains.commerce.providers import CommerceServices, build_commerce_services
+from app.domains.commerce.query_port import StockQueryPortImpl
 from app.domains.commerce.quick_sales.schemas import QuickSaleIn, QuickSaleLineIn
+from app.domains.storefront.common import PreviewSigner
+from app.domains.storefront.site_gate import SiteGate
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.shops.manifest import MODULE_MANIFEST as SHOPS_MANIFEST
 from app.platform.shops.models.orm import Branch, Shop
@@ -42,6 +45,7 @@ from app.platform.storage.services.file_service import FileService
 from app.platform.storage.signing import UrlSigner
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
+from app.shared.cache import MemoryCache
 from app.shared.db.encryption import configure_pii
 from app.shared.db.session import Database, set_identity_context
 from app.shared.types.actor import ActorContext
@@ -91,7 +95,10 @@ def _services(settings: Settings) -> tuple[CommerceServices, CatalogServices, Pe
         signed_ttl=timedelta(seconds=settings.signed_url_ttl_seconds),
     )
     use = UseService(RulesRegistry.from_manifests(manifests), audit)
-    commerce = build_commerce_services(use, audit, files, CatalogQueryPortImpl())
+    catalog = CatalogQueryPortImpl()
+    # Seed saytdan buyurtma bermaydi — sayt holati porti faqat imzo uchun kerak
+    site = SiteGate(MemoryCache(), PreviewSigner(settings.jwt_secret.get_secret_value()))
+    commerce = build_commerce_services(use, audit, files, catalog, StockQueryPortImpl(catalog), site)
     return commerce, build_catalog_services(use, audit, files), PermissionRegistry.from_manifests(manifests)
 
 

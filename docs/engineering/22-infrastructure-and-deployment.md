@@ -21,7 +21,7 @@
 ```
 deploy/docker/Dockerfile  →  image: cos-backend:<git-sha>
 
-  api            uvicorn app.main:app --workers N        # stateless, ×1–N
+  api            uvicorn app.main:app --workers N --no-access-log --no-proxy-headers   # stateless, ×1–N
   outbox-worker  python -m app.workers.outbox_worker      # ×1–2 (SKIP LOCKED tufayli parallel xavfsiz)
   task-worker    arq app.workers.task_worker.WorkerSettings   # ×2–3
   scheduler      python -m app.workers.scheduler_worker   # ×1–2 (advisory lock: faqat bitta leader)
@@ -191,6 +191,21 @@ Redis — haqiqat manbai emas (ADR-006, ADR-033). Yo'qolganda: kesh qayta to'lad
 - Docker: non-root foydalanuvchi, read-only root filesystem (imkon bo'lsa), image skaneri.
 - OS va image yangilanishlari — oyiga bir marta yoki kritik zaiflikda darhol.
 - Webhook endpoint'lari faqat imzo bilan (`13`); storefront va webhook surface'larida rate limit.
+- **Mijoz IP'si (rate limit).** uvicorn `--no-proxy-headers` bilan ishlaydi: `X-Forwarded-For` ni ilovaning o'zi
+  o'qiydi (`app/shared/client_ip.py`) va faqat `TRUSTED_PROXIES` dagi manzildan kelganiga ishonadi; zanjirdan
+  o'ngdan birinchi ishonchsiz manzil olinadi. Ro'yxatga **nginx** va **shop sayti serveri** (Next.js, SSR)
+  ichki manzillari kiradi: sayt serveri API'ni bitta IP'dan chaqiradi va xaridor IP'sini XFF'da beradi — shunda
+  120/daq chegarasi har xaridorga alohida. nginx sozlamasi:
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` (haqiqiy IP zanjir oxiriga qo'shiladi; xaridor
+  chapga nima yozsa ham hisobga olinmaydi). Lokalda ro'yxat `127.0.0.1`, `::1` — XFF'ni soxtalash lokalda
+  ataylab mumkin, prod'da emas. Bir nechta XFF qatori bitta zanjirga birlashtiriladi (QA M04 B1). Sayt
+  serverining o'zi xaridor IP'sisiz chaqirsa — alohida `sf-ssr:{slug}` chelagi (`STOREFRONT_SSR_READ_LIMIT_PER_MINUTE`,
+  `08` §5). Sayt ilovasida `STOREFRONT_TRUSTED_PROXY_HOPS=1` (nginx ortida).
+- **Shop sayti va sarlavhalar.** Absolyut havolalar `STOREFRONT_PUBLIC_URL` dan (backend) — nginx'ning `Host` va
+  `X-Forwarded-Proto` qiymatiga tayanmaydi. CSP sayt ilovasining o'zida (`10` §11); CDN ishlatilsa — uning manzili
+  `STOREFRONT_ASSET_ORIGINS` ga.
+- Takroriy so'rov jadvalidagi barmoq izi — `IDEMPOTENCY_HASH_KEY` bilan HMAC (secret manager'da, kamida 32 belgi;
+  lokal standart staging/production'da rad etiladi).
 
 ---
 
@@ -229,7 +244,7 @@ Kod hozirdan `get_db()` (yozish) va `get_read_db()` (o'qish) ajratilgan holda yo
 ## 11. Production tekshiruv ro'yxati
 
 - [ ] DNS, TLS, avtomatik yangilanish
-- [ ] CORS faqat ruxsat etilgan domenlar; CSP
+- [ ] CORS faqat ruxsat etilgan domenlar; CSP (shop sayti — bor, QA M04 U7; panellar — keyin)
 - [ ] Secret'lar repo'da yo'q; kanal tokenlari DB'da shifrlangan
 - [ ] Backup ishlayapti va **tiklash mashqi o'tgan** (natija yozilgan)
 - [ ] Alertlar Telegram'ga keladi (sinov alerti yuborilgan)

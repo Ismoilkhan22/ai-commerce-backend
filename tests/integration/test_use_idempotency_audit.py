@@ -17,10 +17,16 @@ from app.platform.use.services.use_service import UseService
 from app.shared.db.partitions import month_starts
 from app.shared.db.session import Database, DatabaseConfig
 from app.shared.errors.base import IdempotencyKeyReusedError, RequestInProgressError
-from app.shared.idempotency.store import IdempotencyStore, request_hash
+from app.shared.idempotency.store import (
+    HASH_PREFIX,
+    IdempotencyStore,
+    request_hash,
+)
 from app.shared.types.actor import ActorContext
 from app.shared.types.state import StateMachineRule
 from tests.integration.conftest import PgUrls
+
+TEST_HASH_KEY = b"test-idempotency-hash-key"
 
 pytestmark = pytest.mark.integration
 
@@ -132,7 +138,7 @@ async def test_audit_entry_written_with_trace_and_actor(db: Database) -> None:
 
 async def test_idempotency_replays_response_and_rejects_reuse(db: Database) -> None:  # TC-CONV-07
     store, shop_id, key = IdempotencyStore(), uuid4(), f"key-{uuid4()}"
-    body_hash = request_hash("POST", "/api/v1/shop/orders/1/confirm", {"x": 1})
+    body_hash = request_hash("POST", "/api/v1/shop/orders/1/confirm", {"x": 1}, TEST_HASH_KEY)
     async with db.transaction(shop_id) as session:
         assert await store.begin(session, shop_id, "order.confirm", key, body_hash) is None
         await store.complete(session, shop_id, "order.confirm", key, 200, {"status": "CONFIRMED"})
@@ -143,11 +149,34 @@ async def test_idempotency_replays_response_and_rejects_reuse(db: Database) -> N
 
     with pytest.raises(IdempotencyKeyReusedError):
         async with db.transaction(shop_id) as session:
-            await store.begin(session, shop_id, "order.confirm", key, request_hash("POST", "/x", {"x": 2}))
+            await store.begin(
+                session, shop_id, "order.confirm", key, request_hash("POST", "/x", {"x": 2}, TEST_HASH_KEY)
+            )
+
+
+async def test_only_keyed_request_hash_can_be_stored(db: Database) -> None:  # QA M04 F2, 2-tur
+    """Kalitsiz (oddiy SHA-256) barmoq izini baza qabul qilmaydi — eski qatorlarni platform_0008 o'chirgan."""
+    store, shop_id = IdempotencyStore(), uuid4()
+    with pytest.raises(DBAPIError, match="ck_idempotency_keys_request_hash_keyed"):
+        async with db.transaction(shop_id) as session:
+            await store.begin(session, shop_id, "op", f"key-{uuid4()}", "0" * 64)
+    fresh = f"key-{uuid4()}"
+    async with db.transaction(shop_id) as session:
+        await store.begin(session, shop_id, "op", fresh, request_hash("POST", "op", {}, TEST_HASH_KEY))
+        stored_hash = (
+            await session.execute(
+                text("SELECT request_hash FROM platform.idempotency_keys WHERE key = :k"), {"k": fresh}
+            )
+        ).scalar_one()
+    assert stored_hash.startswith(HASH_PREFIX)
 
 
 async def test_idempotency_key_is_scoped_by_shop(db: Database) -> None:  # bir xil kalit — boshqa shop
-    store, key, body_hash = IdempotencyStore(), f"key-{uuid4()}", request_hash("POST", "/p", {})
+    store, key, body_hash = (
+        IdempotencyStore(),
+        f"key-{uuid4()}",
+        request_hash("POST", "/p", {}, TEST_HASH_KEY),
+    )
     for shop_id in (uuid4(), uuid4()):
         async with db.transaction(shop_id) as session:
             assert await store.begin(session, shop_id, "order.confirm", key, body_hash) is None
@@ -159,7 +188,7 @@ async def test_rolled_back_request_leaves_no_key(db: Database) -> None:
         IdempotencyStore(),
         uuid4(),
         f"key-{uuid4()}",
-        request_hash("POST", "/p", {}),
+        request_hash("POST", "/p", {}, TEST_HASH_KEY),
     )
     with pytest.raises(RuntimeError):
         async with db.transaction(shop_id) as session:
@@ -173,7 +202,7 @@ async def test_concurrent_duplicate_gets_request_in_progress(db: Database) -> No
     """Birinchi so'rov bajarilayotganda dublikat KUTMAYDI — darhol 409 REQUEST_IN_PROGRESS (founder).
     Birinchisi tugagach, qayta so'rov saqlangan javobni oladi. Vaqtga (sleep) emas, event'larga tayanadi."""
     store, shop_id, key = IdempotencyStore(), uuid4(), f"key-{uuid4()}"
-    body_hash = request_hash("POST", "/p", {})
+    body_hash = request_hash("POST", "/p", {}, TEST_HASH_KEY)
     first_started, release_first = asyncio.Event(), asyncio.Event()
 
     async def first_request() -> None:

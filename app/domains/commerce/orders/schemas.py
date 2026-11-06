@@ -198,6 +198,10 @@ class OrderLineOut(BaseModel):
     line_total_minor: int  # so'mda, faqat tasdiqlangan chegirma bilan
     warranty_months: int | None
     reservation: ReservationOut | None
+    # Tanlangan filialda hozir yetadimi (qoralama va tasdiq kutilayotganda, filial tanlangan bo'lsa);
+    # aks holda null. Saytdan kelgan so'rovda yo'q mahsulot — operator muqobil taklif qiladi (DEC-135)
+    available_in_branch: bool | None = None
+    available_qty: int | None = None  # filialdagi sotuvga mavjud (qoldiq − band − ajratilgan)
     version: int
 
 

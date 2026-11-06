@@ -42,3 +42,8 @@ commerce.reservation:
   - [RELEASE, ALLOCATED, RELEASED]
   - [EXPIRE, ACTIVE, EXPIRED]
   - [EXPIRE, ALLOCATED, EXPIRED]
+# Sayt holati — db/storefront.md §0 (DEC-135); business/05 da alohida FSM yo'q
+storefront.site:
+  - [PUBLISH, DRAFT, LIVE]
+  - [PAUSE, LIVE, PAUSED]
+  - [RESUME, PAUSED, LIVE]

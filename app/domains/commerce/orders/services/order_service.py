@@ -81,6 +81,21 @@ _NUMBER = re.compile(r"^#?\s*(\d{1,12})$")
 _CONFIRMER_ROLES = ("OWNER", "MANAGER", "SALES")  # buyurtmaga mas'ul bo'la oladiganlar (DEC-108)
 
 
+async def next_order_number(db: AsyncSession, shop_id: UUID) -> int:
+    """Shop ichida ketma-ket raqam (§10): shu tranzaksiyada +1, bekor bo'lsa raqam ham qaytadi."""
+    number = (
+        await db.execute(
+            text(
+                "INSERT INTO commerce.order_counters AS c (shop_id, last_number) VALUES (:shop_id, 1) "
+                "ON CONFLICT (shop_id) DO UPDATE SET last_number = c.last_number + 1 "
+                "RETURNING last_number"
+            ),
+            {"shop_id": shop_id},
+        )
+    ).scalar_one()
+    return int(number)
+
+
 class OrderService:
     def __init__(self, audit: AuditService, catalog: CatalogQueryPort, views: OrderViews) -> None:
         self.audit = audit
@@ -263,19 +278,10 @@ class OrderService:
             if item.sku_id in seen:  # bir buyurtmada bir SKU — bitta qator; 2 ta kerak bo'lsa qty = 2
                 raise ValidationError("Duplicate SKU", fields=[field(f"lines[{index}].sku_id", "not_unique")])
             seen.add(item.sku_id)
-        number = (
-            await db.execute(
-                text(
-                    "INSERT INTO commerce.order_counters AS c (shop_id, last_number) VALUES (:shop_id, 1) "
-                    "ON CONFLICT (shop_id) DO UPDATE SET last_number = c.last_number + 1 "
-                    "RETURNING last_number"
-                ),
-                {"shop_id": actor.shop_id},
-            )
-        ).scalar_one()
+        number = await next_order_number(db, actor.shop_id)
         order = Order(
             shop_id=actor.shop_id,
-            number=int(number),
+            number=number,
             status="DRAFT",
             source="STAFF",
             branch_id=data.branch_id,
@@ -672,6 +678,12 @@ class OrderService:
         if not access.can_edit(actor, order):
             raise ForbiddenError("Order is assigned to another operator")
         return order
+
+    async def add_lines(
+        self, db: AsyncSession, actor: ActorContext, order: Order, items: Sequence[OrderLineIn]
+    ) -> None:
+        """Qoralamaga qatorlar (saytdan so'rov ham): katalogdan nusxa; mavjud emas — PRODUCT_NOT_AVAILABLE."""
+        await self._add_lines(db, actor, order, items, prefix="lines")
 
     async def _add_lines(
         self,

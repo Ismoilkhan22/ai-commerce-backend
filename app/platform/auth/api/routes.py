@@ -26,6 +26,7 @@ from app.platform.shops.models.orm import Shop
 from app.platform.staff.infrastructure.guard import AnyContext, RequestContext
 from app.platform.staff.infrastructure.providers import auth_service
 from app.platform.staff.models.orm import Principal
+from app.shared.client_ip import client_ip
 from app.shared.db.session import Database
 from app.shared.ratelimit import RateLimiter, enforce
 
@@ -40,7 +41,7 @@ Auth = Annotated[AuthService, Depends(auth_service)]
 
 
 def _ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    return client_ip(request)  # XFF faqat ishonchli proksidan (TRUSTED_PROXIES)
 
 
 def _limiter(request: Request) -> RateLimiter:

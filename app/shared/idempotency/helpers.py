@@ -21,6 +21,15 @@ from app.shared.idempotency.store import IdempotencyStore, request_hash
 from app.shared.serialization import to_json_compatible
 
 _store = IdempotencyStore()
+# Faqat lokal/test standarti; ilova ishga tushganda `configure_request_hash_key` sozlamadan o'rnatadi
+DEV_HASH_KEY = b"dev-only-idempotency-hash-key-change-me"
+_hash_key = DEV_HASH_KEY
+
+
+def configure_request_hash_key(key: bytes) -> None:
+    """`IDEMPOTENCY_HASH_KEY` — barmoq izi kaliti (create_app chaqiradi)."""
+    global _hash_key  # jarayon bo'yicha bitta sozlama, ishga tushishda bir marta
+    _hash_key = key
 
 
 def _jsonable(value: Any) -> Any:
@@ -40,7 +49,8 @@ async def run_idempotent[T](
     status: int = 200,
 ) -> T | Any:
     body = _jsonable(request_body) if request_body is not None else None
-    previous = await _store.begin(db, shop_id, operation, key, request_hash("POST", operation, body))
+    req_hash = request_hash("POST", operation, body, _hash_key)
+    previous = await _store.begin(db, shop_id, operation, key, req_hash)
     if previous is not None:
         return await on_replay(previous.body) if on_replay else previous.body
     result = await produce()

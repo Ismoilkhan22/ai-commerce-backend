@@ -16,15 +16,15 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from redis.asyncio import Redis
 
 from app.config.logging import configure_logging
 from app.config.settings import Settings, get_settings
-from app.dependencies import get_catalog_query, get_order_query
+from app.dependencies import get_catalog_query, get_order_query, get_stock_query
 from app.domains.catalog.providers import build_catalog_services
 from app.domains.commerce.providers import build_commerce_services
+from app.domains.storefront.providers import build_storefront_services
 from app.platform.audit.services.audit_service import AuditService
 from app.platform.auth.passwords import PasswordHasher
 from app.platform.auth.services.auth_service import AuthService
@@ -38,13 +38,16 @@ from app.platform.storage.services.file_service import FileService
 from app.platform.storage.signing import UrlSigner
 from app.platform.use.infrastructure.rules_loader import RulesRegistry
 from app.platform.use.services.use_service import UseService
+from app.shared.cache import Cache, MemoryCache, RedisCache
 from app.shared.db.encryption import configure_pii
 from app.shared.db.session import Database
 from app.shared.errors.handlers import register_exception_handlers
 from app.shared.i18n.middleware import I18nMiddleware
+from app.shared.idempotency.helpers import configure_request_hash_key
 from app.shared.observability.health import router as health_router
 from app.shared.ratelimit import MemoryRateLimiter, RedisRateLimiter
 from app.shared.request_guard import RequestGuardMiddleware
+from app.shared.storefront_cors import PanelCorsMiddleware, StorefrontCorsMiddleware
 from app.shared.tracing.middleware import RequestContextMiddleware
 from app.shared.types.manifest import SURFACE_PREFIXES, DomainManifest, Surface
 
@@ -122,15 +125,18 @@ def create_app(
     settings = settings or get_settings()
     configure_logging(settings.log_level, json=settings.app_env != "local")
     configure_pii(settings.pii_keyring())  # xaridor telefoni va manzili kalitlari (26 §4)
+    # Redis (rate limit + kesh) — ulanish birinchi so'rovda ochiladi; testlarda ikkalasi ham xotirada
+    redis: Redis | None = (
+        Redis.from_url(settings.redis_url) if settings.rate_limit_backend == "redis" else None
+    )
+    cache: Cache = RedisCache(redis) if redis is not None else MemoryCache()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         database = Database(settings.database_config())
         app.state.db = database
         app.state.readiness_checks = {"postgres": database.ping}
-        redis: Redis | None = None
-        if settings.rate_limit_backend == "redis":
-            redis = Redis.from_url(settings.redis_url)
+        if redis is not None:
             app.state.rate_limiter = RedisRateLimiter(redis)
             app.state.readiness_checks["redis"] = redis.ping
         else:
@@ -156,14 +162,18 @@ def create_app(
     app.include_router(health_router)
     manifests = discover_manifests() if manifests is None else manifests
     mount_manifests(app, manifests)
-    _wire_services(app, settings, manifests)
+    app.state.cache = cache
+    app.state.trusted_proxies = settings.proxy_networks()  # rate limit uchun mijoz IP'si (QA M04 F3)
+    app.state.storefront_ssr_read_limit = settings.storefront_ssr_read_limit_per_minute
+    configure_request_hash_key(settings.idempotency_hash_key.get_secret_value().encode())
+    _wire_services(app, settings, manifests, cache)
 
     # Starlette middleware'larni teskari tartibda o'raydi: oxirgi qo'shilgan — eng tashqi.
     app.add_middleware(RequestGuardMiddleware)  # eng ichkisi: NUL/NaN, JSON chegarasi, deadlock retry
     app.add_middleware(I18nMiddleware, default_locale=settings.default_locale)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
-        CORSMiddleware,
+        PanelCorsMiddleware,  # cookie bilan; sayt yo'llarida ishlamaydi (QA M04 F1)
         allow_origins=settings.cors_origins,
         allow_credentials=True,  # refresh cookie
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
@@ -177,6 +187,8 @@ def create_app(
         ],
         expose_headers=["ETag", "X-Request-ID", "Retry-After"],
     )
+    # Eng tashqi: shop sayti (subdomenlar) — cookie'siz alohida CORS; panellar CORS'iga ta'sir qilmaydi
+    app.add_middleware(StorefrontCorsMiddleware, origin_regex=settings.storefront_cors_origin_regex)
     return app
 
 
@@ -185,7 +197,9 @@ def _operation_id(route: APIRoute) -> str:
     return f"{route.tags[0]}_{route.name}" if route.tags else route.name
 
 
-def _wire_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainManifest]) -> None:
+def _wire_services(
+    app: FastAPI, settings: Settings, manifests: Sequence[DomainManifest], cache: Cache
+) -> None:
     """Platform va domen servislari bir marta yaratiladi (stateless) va app.state'da turadi."""
     auth_config = settings.auth_config()
     audit = AuditService()
@@ -211,7 +225,20 @@ def _wire_services(app: FastAPI, settings: Settings, manifests: Sequence[DomainM
     )
     app.state.file_service = files
     app.state.catalog = build_catalog_services(use, audit, files)
-    app.state.commerce = build_commerce_services(use, audit, files, get_catalog_query())
+    storefront = build_storefront_services(
+        use,
+        audit,
+        files,
+        cache,
+        get_catalog_query(),
+        get_stock_query(),
+        secret=auth_config.jwt_secret,
+        site_url_template=settings.storefront_public_url,
+    )
+    app.state.storefront = storefront
+    app.state.commerce = build_commerce_services(
+        use, audit, files, get_catalog_query(), get_stock_query(), storefront.gate
+    )
 
 
 app = create_app()

@@ -18,7 +18,7 @@ Texnik asos ──▶ 1. Auth, shop, xodimlar ──▶ 1b. Platforma paneli ─
 - [x] **1b. Platforma paneli, A bosqich** — business/15 to'liq: bosh sahifa, shoplar, kartochka, jurnal, jamoa, izohlar, ⌘K, demo ma'lumot. Mustaqil QA tekshiruvi va tuzatishlar (2026-10-25) → [M01b-platform-admin.md](M01b-platform-admin.md)
 - [x] **2-modul. Katalog** — mahsulot va SKU, narx va kurs, texnik ma'lumotlar kutubxonasi, fayllar (S1-02, S1-03, S1-04, S0-08). Baza — DEC-133. Backend + frontend + e2e, mustaqil QA 2 tur (2026-10-25) → [M02-catalog.md](M02-catalog.md)
 - [ ] **3-modul. Savdo (commerce)** — ombor (S1-05), tez sotuv, buyurtmalar va band qilish, saytdan buyurtma so'rovi. Baza tasdiqlangan — DEC-134 ([db/commerce.dbml](../db/commerce.dbml)). Backend bitdi (2026-10-26) → [M03-commerce.md](M03-commerce.md). Hozir: frontend. Lead va PC taklifi — 6-modul bilan
-- [ ] **4-modul. Shop sayti** — S1-07. Baza tasdiqlangan — DEC-135 ([db/storefront.dbml](../db/storefront.dbml))
+- [ ] **4-modul. Shop sayti** — S1-07. Baza tasdiqlangan — DEC-135 ([db/storefront.dbml](../db/storefront.dbml)). Backend bitdi (2026-10-26) → [M04-storefront.md](M04-storefront.md). Hozir: frontend (xaridor sayti va "Shop sayti" bo'limi)
 - [ ] **5-modul. Kanallar va inbox** — S2, fon ishlari (S0-06), katalog importi (S1-06)
 - [ ] **6-modul. AI sotuvchi** — S3, PC moslik engine'i
 - [ ] **Instagram izohlari** — DEC-132: 5 va 6-modullardan keyin

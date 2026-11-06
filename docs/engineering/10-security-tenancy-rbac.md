@@ -83,7 +83,7 @@ RLS — ikkinchi qavat. Birinchi qavat — repository'dagi `WHERE shop_id = :sho
    USING (principal_id = <app.principal_id> OR id = <app.session_id> OR shop_id = <app.shop_id>)
    ```
    Kontekst `set_identity_context(...)` bilan, xuddi shu `set_config(..., true)` orqali o'rnatiladi. Sozlamasiz — baribir 0 qator (testda tekshirilgan).
-5. Ommaviy o'qish (storefront) private jadvallarga kirmaydi — `storefront.public_products` proyeksiyasidan.
+5. Ommaviy o'qish (storefront) private jadvallarga kirmaydi. Stage 1 da (DEC-135) — `CatalogQueryPort` / `StockQueryPort` ning ommaviy metodlari orqali: READ ONLY tranzaksiya, shop konteksti, faqat ruxsat etilgan maydonlar (TC-SEC-09). `storefront.public_products` proyeksiyasi — fon ishlari bilan (5-modul).
 6. Platforma uchun "bypass" roli yo'q. Shoplararo rejali ishlar (`scheduler`) — `SECURITY DEFINER` funksiyalar orqali faqat "qaysi shopda ish bor" ro'yxati, keyin har shop uchun alohida tranzaksiya va `set_config` ([07](07-data-layer.md) §10).
 
 **RLS yoqiladigan jadvallar (S0 oxiri, spike o'tsa):**
@@ -96,8 +96,9 @@ RLS — ikkinchi qavat. Birinchi qavat — repository'dagi `WHERE shop_id = :sho
 | `support` | `support_cases` |
 | `platform` | `memberships`, `sessions`, `notifications`, `staff_tasks`, `stored_files` |
 | `catalog` | `price_versions`, `current_prices`, `exchange_rates` (tannarx qo'shilganda — o'sha ham) |
+| `storefront` | `sites`, `pages` (4-modul): ichidagi ma'lumot ochiq, lekin RLS qo'shimcha himoya — sayt o'qishi baribir shop kontekstini o'rnatadi, panel boshqa shop sozlamasiga tegolmaydi |
 
-Qolgan jadvallar (katalog, sayt) — app-layer filtri + composite FK; keyin kerak bo'lsa RLS qo'shiladi.
+Qolgan jadvallar (katalog) — app-layer filtri + composite FK; keyin kerak bo'lsa RLS qo'shiladi.
 
 **RLS spike (S0-04) — nimani isbotlash kerak:**
 - asyncpg + SQLAlchemy async pool: `set_config(..., true)` tranzaksiya oxirida tozalanadi; keyingi so'rov boshqa shop bilan kelganda eski qiymat qolmaydi (TC-ISO-09).
@@ -132,7 +133,7 @@ Qolgan jadvallar (katalog, sayt) — app-layer filtri + composite FK; keyin kera
 | Surface | Auth | Rate limit (taklif) |
 |---|---|---|
 | `/api/v1/shop/*` | Access JWT + a'zolik + ruxsat | 600/daq per principal |
-| `/api/v1/storefront/{slug}/*` | Anonim; buyurtma kuzatuvi va taklif — bitta resursga signed token (hash DB'da, muddatli) | 60/daq per IP; buyurtma so'rovi — 5/daq per IP + captcha keyin |
+| `/api/v1/storefront/{slug}/*` | Anonim; buyurtma kuzatuvi va taklif — bitta resursga token (hash DB'da). Egasining ko'rib chiqishi — 30 daqiqalik HMAC token (bazada yo'q) | O'qish 120/daq per IP + shop; buyurtma so'rovi — 10 daqiqada 5 (IP + shop + telefon xeshi) va 20 (IP + shop); holat sahifasi 30/daq per IP; captcha keyin. IP — `X-Forwarded-For` faqat `TRUSTED_PROXIES` dan (nginx, sayt SSR serveri; 22 §8). CORS — alohida, cookie'siz (`Access-Control-Allow-Credentials` hech qachon yo'q; panel CORS'i bu yo'llarda ishlamaydi), faqat sayt manzillari (`storefront_cors_origin_regex`) |
 | `/api/v1/webhooks/*` | Provayder imzosi (Telegram `secret_token` header, Meta `X-Hub-Signature-256`), `account_ref` | Provayder bo'yicha |
 | `/api/v1/platform/*` | Platforma xodimi JWT + platform roli; muhim amallar sabab bilan auditga | 120/daq |
 | `/api/v1/auth/*` | — | Login 10/daq per IP+telefon (Redis; testda xotirada) |
@@ -240,7 +241,8 @@ Rollar: **OWN** (OWNER), **MGR** (MANAGER), **SAL** (SALES — operator), **WH**
 
 | Kod | OWN | MGR | SAL | WH | FIN | CAT | ANL | AIE | AI | `business/04` qatori |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `storefront.site.edit` | ✓ | — | — | — | — | — | — | — | — | Shop sozlamalari (sayt) |
+| `storefront.site.view` | ✓ | ✓ | — | — | — | — | — | — | — | "Shop sayti" bo'limini ko'rish, ko'rib chiqish havolasi (4-modul) |
+| `storefront.site.edit` | ✓ | — | — | — | — | — | — | — | — | Shop sozlamalari (sayt): logotip, rang, kontaktlar, sahifalar, ochish/yopish; logotip yuklash (`SITE_LOGO`) |
 | `support.case.view` | ✓ | ✓ | ✓ | ✓ | — | — | agg | — | — | Kafolat murojaatlari |
 | `support.case.create` | ✓ | ✓ | ✓ | — | — | — | — | — | — | Operator ochadi va ma'lumot yig'adi (founder, 2026-10-22) |
 | `support.case.decide` | ✓ | ✓ | — | — | — | — | — | — | — | Qabul / rad (UAT-M16) |
@@ -352,7 +354,7 @@ Batafsil: [14-ai-sales-agent-and-tools.md](14-ai-sales-agent-and-tools.md).
 | Secret'lar | Secret manager (S0 da: Docker secrets / shifrlangan `.env`, keyin Vault yoki ekvivalent). Kodda va repo'da yo'q. Rotatsiya: JWT kaliti (`kid` bilan), webhook secret, LLM kaliti — runbook bo'yicha |
 | Bot token, Meta token | `channel_accounts.secret_ref` → secret manager; log va event'ga tushmaydi |
 | TLS | Hamma tashqi trafik HTTPS; HSTS |
-| Header'lar | CSP (storefront), `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors` |
+| Header'lar | Storefront (QA M04 U7): CSP har so'rovga nonce bilan (`script-src 'nonce-…' 'strict-dynamic'`, `img-src`/`connect-src` — backend va `STOREFRONT_ASSET_ORIGINS`, `frame-ancestors 'none'`, `object-src 'none'`) — `apps/shop-storefront/src/proxy.ts`; `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` (buyurtma holati — `no-referrer`), `Permissions-Policy` — `next.config.ts` |
 | Fayl yuklash | MIME aniqlash (kontent bo'yicha), hajm limiti, private bucket, signed URL (5 daqiqa), egalik tekshiruvi |
 | SSRF | Import va havola oldindan ko'rishda tashqi URL — egress allowlist, private IP'lar taqiqlangan |
 | XSS | Mahsulot nomi/tavsifi — escape; HTML faqat sanitize qilingan |

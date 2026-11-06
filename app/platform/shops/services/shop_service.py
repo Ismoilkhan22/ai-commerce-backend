@@ -162,7 +162,8 @@ class ShopService:
                 "Sales limit exceeds manager limit",
                 max=data.discount_limit_manager_pct,
             )
-        changed = {k: v for k, v in data.model_dump().items() if getattr(policy, k) != v}
+        wanted = data.model_dump(exclude_none=True)
+        changed = {k: v for k, v in wanted.items() if getattr(policy, k) != v}
         for key, value in changed.items():
             setattr(policy, key, value)
         await db.flush()

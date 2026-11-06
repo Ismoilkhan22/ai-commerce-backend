@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.commerce import permissions as perm
 from app.domains.commerce.common import Policy, branch_names, discount_limit, member_names
+from app.domains.commerce.inventory.models.orm import StockBalance
 from app.domains.commerce.orders import access
 from app.domains.commerce.orders.models.orm import Order, OrderLine, OrderNote, Reservation
 from app.domains.commerce.orders.schemas import (
@@ -29,6 +30,8 @@ from app.domains.commerce.schemas import member_ref
 from app.shared.types.actor import ActorContext
 
 OPEN_RESERVATIONS = ("ACTIVE", "ALLOCATED")
+# Qatorda "filialda bormi?" ko'rsatiladigan holatlar: tasdiqdan keyin band bor, son kerak emas
+AVAILABILITY_STATUSES = ("DRAFT", "PENDING_CONFIRMATION")
 # 72 soatlik ko'rib chiqish: ochiq bandi bor holatlar. Muammoli buyurtma ham mahsulotni ushlab turadi
 REVIEWABLE = ("CONFIRMED", "PROCESSING", "EXCEPTION")
 _DIGITS = re.compile(r"\D")
@@ -182,6 +185,7 @@ class OrderViews:
         ]
         names = await member_names(db, order.shop_id, people)
         branches = await branch_names(db, order.shop_id, [order.branch_id])
+        available = await self.branch_available(db, order, lines)
         phone, address = order.customer_phone_enc, order.delivery_address_enc
         if access.is_warehouse(actor):
             # Omborchiga to'liq raqam kerak emas (10 §6.8): ism va yashirilgan raqam;
@@ -213,7 +217,7 @@ class OrderViews:
             pii_erased_at=order.pii_erased_at,
             currency="UZS",
             total_minor=order.total_minor,
-            lines=[self._line_out(line, reservations.get(line.id), names) for line in lines],
+            lines=[self._line_out(line, reservations.get(line.id), names, available) for line in lines],
             notes=[
                 OrderNoteOut(
                     id=n.id,
@@ -292,7 +296,32 @@ class OrderViews:
         return items
 
     @staticmethod
-    def _line_out(line: OrderLine, reservation: Reservation | None, names: dict[UUID, str]) -> OrderLineOut:
+    async def branch_available(
+        db: AsyncSession, order: Order, lines: Sequence[OrderLine]
+    ) -> dict[UUID, int] | None:
+        """Tasdiqdan oldin: filialdagi sotuvga mavjud son har SKU uchun, bitta so'rov. Aks holda None."""
+        if order.status not in AVAILABILITY_STATUSES or order.branch_id is None or not lines:
+            return None
+        rows = await db.execute(
+            select(
+                StockBalance.sku_id,
+                StockBalance.on_hand - StockBalance.reserved - StockBalance.allocated,
+            ).where(
+                StockBalance.shop_id == order.shop_id,
+                StockBalance.branch_id == order.branch_id,
+                StockBalance.sku_id.in_({line.sku_id for line in lines}),
+            )
+        )
+        return {sku_id: int(qty) for sku_id, qty in rows}
+
+    @staticmethod
+    def _line_out(
+        line: OrderLine,
+        reservation: Reservation | None,
+        names: dict[UUID, str],
+        available: dict[UUID, int] | None = None,
+    ) -> OrderLineOut:
+        qty = None if available is None else available.get(line.sku_id, 0)
         return OrderLineOut(
             id=line.id,
             position=line.position,
@@ -323,5 +352,7 @@ class OrderViews:
             )
             if reservation
             else None,
+            available_in_branch=None if qty is None else qty >= line.qty,
+            available_qty=qty,
             version=line.version,
         )

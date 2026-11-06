@@ -101,7 +101,7 @@ Xabar yoki chat matni, telefon, email, manzil, ism, karta, chek rasmi, signed UR
 **Kirish logi va query string** (3-modul QA, 2026-10-26): qidiruv parametri xaridor telefonini olib kelishi mumkin (`GET /shop/orders?q=+998…`). Shuning uchun:
 - uvicorn'ning o'z kirish logi o'chirilgan (`app/config/logging.py`; ishga tushirishda `--no-access-log` ham); uning o'rniga `RequestContextMiddleware` bitta `http.request` qatorini yozadi: metod, yo'l, holat, davomiylik va query parametrlarining **faqat nomlari** (`query_keys`), qiymatlarsiz;
 - **proksi (nginx) va har qanday oldingi qatlam yo'lni query string'siz yozadi** (`$uri`, `$request_uri` emas); span'da `http.url` o'rniga route template.
-- `path` maydonida haqiqiy yo'l emas, **route shabloni** yoziladi (`/api/v1/auth/invites/{token}/accept`, `/api/v1/shop/orders/{order_id}`): bir martalik havola tokeni va ID'lar logga tushmaydi (QA 2-tur N3). Route topilmagan so'rov (404) — yo'l bo'laklari niqoblanadi (`/api/v1/x/{seg}`);
+- `path` maydonida haqiqiy yo'l emas, **route shabloni** yoziladi (`/api/v1/auth/invites/{token}/accept`, `/api/v1/shop/orders/{order_id}`): bir martalik havola tokeni va ID'lar logga tushmaydi (QA 2-tur N3). Route topilmagan so'rov (404) — yo'l bo'laklari niqoblanadi (`/api/v1/x/{seg}`). Ichma-ich router'larda (masalan `/api/v1/storefront/{slug}/…`) FastAPI route'ni middleware'ga bermaydi — u yerda ham niqoblash ishlaydi: shop slug'i (oddiy so'z) ko'rinadi, sayt buyurtmasi holat havolasi tokeni (43 belgi) doim `{seg}` (4-modul);
 - SQLAlchemy engine'lari `hide_parameters=True` bilan: DB xatosi matnida (`IntegrityError` va h.k.) SQL parametrlari — telefon, ism — ko'rinmaydi, faqat "parameters hidden" (QA 2-tur N1).
 
 ---
