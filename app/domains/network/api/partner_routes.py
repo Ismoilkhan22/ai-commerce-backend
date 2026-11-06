@@ -9,12 +9,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.network.models.orm import ApiKey, StockReport
@@ -129,7 +128,7 @@ class StockItemIn(BaseModel):
     sku_id: UUID
     branch_id: UUID
     on_hand: int = Field(ge=0, le=1_000_000)
-    observed_at: datetime  # kassada qachon sanalgan — eskisi yangi o'zgarish ustidan yozmaydi
+    observed_at: AwareDatetime  # kassada qachon sanalgan (vaqt zonasi bilan) — eskisi ustidan yozmaydi
 
 
 class StockReportIn(BaseModel):

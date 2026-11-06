@@ -22,6 +22,7 @@ from app.platform.shops.services.signup_service import (
 from app.shared.client_ip import client_ip
 from app.shared.db.session import Database
 from app.shared.errors.base import ValidationError
+from app.shared.phone import normalize_phone
 from app.shared.ratelimit import RateLimiter, enforce
 
 router = APIRouter(prefix="/signup", tags=["signup"])
@@ -50,7 +51,11 @@ async def signup_status(request: Request) -> SignupStatusOut:
 async def signup_start(body: SignupStartIn, request: Request) -> SignupStartOut:
     ip = client_ip(request)
     await enforce(_limiter(request), f"signup-ip:{ip}", limit=10, window_seconds=HOUR)
-    await enforce(_limiter(request), f"signup-phone:{body.phone}", limit=3, window_seconds=600)
+    try:  # bir raqamning turli yozilishi limitni aylanib o'tmasin
+        phone_key = normalize_phone(body.phone)
+    except ValidationError:
+        phone_key = body.phone
+    await enforce(_limiter(request), f"signup-phone:{phone_key}", limit=3, window_seconds=600)
     database: Database = request.app.state.db
     async with database.transaction() as db:
         return await _svc(request).start(db, body.phone, ip)

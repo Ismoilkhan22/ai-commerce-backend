@@ -57,6 +57,12 @@ async def support_case_notify(ctx: EventContext) -> None:
     await from_state(ctx.services).notifier.on_support_event(ctx.session, ctx.envelope)
 
 
+@subscriber("messaging.quote_reminder", "commerce.quote.reminder_due", schema="messaging")
+async def quote_reminder_notify(ctx: EventContext) -> None:
+    """DEC-149: javobsiz taklifga bitta eslatma — suhbat bo'lsa va xaridor voz kechmagan bo'lsa."""
+    await from_state(ctx.services).notifier.on_quote_reminder(ctx.session, ctx.envelope)
+
+
 # ------------------------------------------------------------------ Instagram izohlari (DEC-148)
 # Uchala tinglovchi `ig_comment.received` ga alohida: javob, kayfiyat va post media bir-birini kutmaydi.
 @subscriber("messaging.ig_comment_reply", "messaging.ig_comment.received", schema="messaging")

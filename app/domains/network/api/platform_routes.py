@@ -17,6 +17,8 @@ router = APIRouter(prefix="/network", tags=["network-platform"])
 
 Network = Annotated[NetworkServices, Depends(network_services)]
 CanReview = Annotated[RequestContext, Depends(require_platform_permission("platform.network.review"))]
+# Shoplarga ta'sir qiluvchi moderatsiya (taklifni yashirish, reklama) — faqat PLATFORM_ADMIN (QA #9)
+CanModerate = Annotated[RequestContext, Depends(require_platform_permission("platform.network.moderate"))]
 
 
 @router.get("/review", response_model=ReviewList)
@@ -62,7 +64,7 @@ async def revoke_badge(shop_id: UUID, body: BadgeRevokeIn, ctx: CanVerify, svc: 
 
 @router.get("/reports", response_model=ReportList)
 async def offer_reports(
-    ctx: CanReview,
+    ctx: CanModerate,
     svc: Network,
     status: Annotated[str, Query(pattern="^(OPEN|DISMISSED|ACTIONED)$")] = "OPEN",
 ) -> ReportList:
@@ -70,22 +72,22 @@ async def offer_reports(
 
 
 @router.post("/reports/{report_id}/resolve", status_code=204)
-async def resolve_report(report_id: UUID, body: ReportResolveIn, ctx: CanReview, svc: Network) -> None:
+async def resolve_report(report_id: UUID, body: ReportResolveIn, ctx: CanModerate, svc: Network) -> None:
     """Rad etish yoki taklifni yashirish (`SUSPENDED`, `PLATFORM_REPORT` — ega o'zi qaytara olmaydi)."""
     await svc.trust.resolve(ctx.db, ctx.actor, report_id, body)
 
 
 # ------------------------------------------------------------------ M37: reklamani tasdiqlash
 @router.get("/ads", response_model=AdList)
-async def pending_ads(ctx: CanReview, svc: Network) -> AdList:
+async def pending_ads(ctx: CanModerate, svc: Network) -> AdList:
     return await svc.ads.pending(ctx.db)
 
 
 @router.post("/ads/{ad_id}/approve", response_model=AdOut)
-async def approve_ad(ad_id: UUID, ctx: CanReview, svc: Network) -> AdOut:
+async def approve_ad(ad_id: UUID, ctx: CanModerate, svc: Network) -> AdOut:
     return await svc.ads.review(ctx.db, ctx.actor, ad_id, True, None)
 
 
 @router.post("/ads/{ad_id}/reject", response_model=AdOut)
-async def reject_ad(ad_id: UUID, body: AdRejectIn, ctx: CanReview, svc: Network) -> AdOut:
+async def reject_ad(ad_id: UUID, body: AdRejectIn, ctx: CanModerate, svc: Network) -> AdOut:
     return await svc.ads.review(ctx.db, ctx.actor, ad_id, False, body.reason)

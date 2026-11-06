@@ -228,7 +228,8 @@ async def marketplace_visit(
         if target is None:
             raise NotFoundError("Offer is no longer available")
         if ad is not None:  # M37: reklama bosilishi
-            await request.app.state.network.ads.click(db, ad)
+            if target.sku_id is not None:
+                await request.app.state.network.ads.click(db, ad, target.shop_id, target.sku_id)
         await set_shop_context(db, target.shop_id)  # yozuv shop jadvalida (RLS)
         db.add(
             Referral(

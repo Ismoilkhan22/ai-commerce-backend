@@ -68,7 +68,14 @@ class Invoice(IdMixin, Base):
     __tablename__ = "invoices"
     __table_args__ = (
         UniqueConstraint("number"),
-        UniqueConstraint("shop_id", "period_start"),  # bir davrga bitta hisob
+        # Bir davrga bitta amaldagi hisob; bekor qilingani (VOID) o'rniga yangisi chiqishi mumkin (QA #4)
+        Index(
+            "uq_invoices_shop_period_live",
+            "shop_id",
+            "period_start",
+            unique=True,
+            postgresql_where=text("status <> 'VOID'"),
+        ),
         Index("ix_invoices_status_due_at", "status", "due_at"),
         CheckConstraint(f"status IN {INVOICE_STATUSES}", name="status"),
         CheckConstraint("amount_uzs_minor >= 0", name="amount"),

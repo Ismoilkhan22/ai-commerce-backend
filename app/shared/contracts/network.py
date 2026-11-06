@@ -65,6 +65,7 @@ class VisitTarget:
     shop_id: UUID
     shop_slug: str
     product_id: UUID | None
+    sku_id: UUID | None = None
 
 
 class NetworkQueryPort(Protocol):

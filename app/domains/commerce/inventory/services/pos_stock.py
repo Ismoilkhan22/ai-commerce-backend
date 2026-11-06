@@ -12,7 +12,7 @@ Natija — `commerce.pos_stock.applied` (faqat sonlar va qator holatlari).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -22,11 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.commerce.inventory.models.orm import StockBalance, StockLedger
 from app.domains.commerce.inventory.schemas import AdjustmentIn
 from app.domains.commerce.inventory.services.stock_service import StockService
+from app.shared.clock import utcnow
 from app.shared.errors.base import DomainError
 from app.shared.events.outbox import write_outbox
 from app.shared.types.actor import ActorContext
 
 APPROVE = "commerce.stock.adjust_approve"
+FUTURE_TOLERANCE = timedelta(minutes=5)  # kassa soati biroz oldinda bo'lishi mumkin
 
 
 class PosStockService:
@@ -47,7 +49,10 @@ class PosStockService:
         )
         counts: dict[str, int] = {}
         for item in payload.get("items") or []:
-            status = await self._one(db, actor, report_id, item)
+            try:
+                status = await self._one(db, actor, report_id, item)
+            except (ValueError, TypeError, KeyError):  # buzuq qator butun paketni to'xtatmaydi (QA #3)
+                status = "ERROR"
             counts[status] = counts.get(status, 0) + 1
         await write_outbox(
             db,
@@ -66,6 +71,10 @@ class PosStockService:
         assert actor.shop_id is not None
         sku_id, branch_id = UUID(str(item["sku_id"])), UUID(str(item["branch_id"]))
         target, observed = int(item["on_hand"]), datetime.fromisoformat(str(item["observed_at"]))
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=UTC)
+        if observed > utcnow() + FUTURE_TOLERANCE:
+            return "FUTURE"  # kelajakdagi vaqt STALE tekshiruvini aylanib o'tmasin
         last = await db.scalar(
             select(func.max(StockLedger.created_at)).where(
                 StockLedger.shop_id == actor.shop_id,

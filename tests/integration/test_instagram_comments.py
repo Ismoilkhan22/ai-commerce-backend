@@ -1063,3 +1063,41 @@ def test_meta_data_deletion_disconnects_accounts_of_that_facebook_user(world: Wo
     assert [c["status"] for c in channels if c["channel"] == "INSTAGRAM"] == ["DISCONNECTED"]
     status = world.client.get(f"/api/v1/webhooks/instagram/data-deletion/{code}")
     assert status.status_code == 200 and code in status.text
+
+
+def test_direct_image_is_stored_and_voice_is_transcribed(world: World, flag: None, llm: FakeProvider) -> None:
+    """DEC-149 (pilot paytida): Direct rasmi yopiq omborga, ovozi matnga; begona host — yuklanmaydi."""
+    from tests.images import png
+
+    ig = Ig(world)
+    stamp = int(time.time() * 1000)
+    image_url = "https://scontent.cdninstagram.com/v/img-1.png"
+    voice_url = "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1"
+    ig.fake.dm_media[image_url] = png()
+    ig.fake.dm_media[voice_url] = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 200
+    llm.push_light(FakeText("RTX 4060 bormi?"))
+    base = {"sender": {"id": "IGSID-9"}, "recipient": {"id": ig.account_id}}
+    image = {"type": "image", "payload": {"url": image_url}}
+    voice = {"type": "audio", "payload": {"url": voice_url}}
+    evil = {"type": "image", "payload": {"url": "https://evil.example.com/x.png"}}
+    assert (
+        _dm(
+            ig, {**base, "timestamp": stamp, "message": {"mid": "mid-img", "attachments": [image, evil]}}
+        ).status_code
+        == 200
+    )
+    assert (
+        _dm(
+            ig, {**base, "timestamp": stamp + 1, "message": {"mid": "mid-voice", "attachments": [voice]}}
+        ).status_code
+        == 200
+    )
+    _drain_now(world)
+    rows = _admin_sql(
+        world,
+        "SELECT m.kind, m.body, a.status, a.error_code FROM messaging.messages m "
+        "JOIN messaging.attachments a ON a.message_id = m.id WHERE m.shop_id = $1 ORDER BY m.seq",
+        ig.shop.id,
+    )
+    assert [(r["kind"], r["status"]) for r in rows] == [("IMAGE", "STORED"), ("VOICE", "PURGED")]  # evil yo'q
+    assert rows[1]["body"] == "RTX 4060 bormi?" and rows[1]["error_code"] == "TRANSCRIBED"

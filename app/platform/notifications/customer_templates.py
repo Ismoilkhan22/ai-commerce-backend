@@ -72,6 +72,16 @@ CUSTOMER_TEMPLATES: dict[str, CustomerTemplate] = {
             "en": "Order #{order_number} has been cancelled. If you have questions, write to the operator.",
         },
     ),
+    # DEC-149: javobsiz taklifga bitta eslatma — reklama emas, xaridor boshlagan suhbat davomi (BL-061)
+    "customer.quote_reminder": _template(
+        {"quote_number"},
+        {"expires_line", "shop_name"},
+        {
+            "uz": "PC taklifi #{quote_number} hali amal qiladi. {expires_line} Savol bo'lsa, yozing.",
+            "ru": "Предложение #{quote_number} ещё действует. {expires_line} Вопросы — пишите сюда.",
+            "en": "Quote #{quote_number} is still valid. {expires_line} If you have questions, write here.",
+        },
+    ),
     # 7b (DEC-145): kafolat murojaati — faqat suhbat bo'lsa, bir holatga bitta xabar (BL-060)
     "customer.support_case_opened": _template(
         {"case_number"},

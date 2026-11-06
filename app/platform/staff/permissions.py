@@ -32,6 +32,7 @@ PLATFORM_ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = {
             "platform.ai_eval.view",  # 6c: AI baholash, bake-off, shoplar "AI sifati"
             "platform.ai_eval.manage",  # to'plamlar va yugurishlar (LLM xarajati bor)
             "platform.network.review",  # Stage 2: umumiy mahsulotga bog'lashni ko'rib chiqish (BR-X08)
+            "platform.network.moderate",  # shikoyat bo'yicha taklifni yashirish, reklamani tasdiqlash (QA #9)
             "platform.billing.manage",  # M26: tariflar, hisoblar, to'lovni belgilash
         }
     ),

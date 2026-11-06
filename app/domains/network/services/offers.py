@@ -16,6 +16,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.network.models.orm import CanonicalProduct, PublicOffer, SkuLink
@@ -152,6 +153,8 @@ class OfferService:
         offer = await self._offer(db, actor.shop_id, sku_id, lock=True)
         if offer is None:
             raise NotFoundError("Offer not found")
+        if offer.withdraw_reason == "PLATFORM_REPORT":
+            return offer  # platforma yashirgan — ega sababni almashtira olmaydi (QA #1, BL-088)
         if offer.status != "WITHDRAWN" or offer.withdraw_reason != "OWNER":
             offer.status, offer.withdraw_reason, offer.withdrawn_at = "WITHDRAWN", "OWNER", utcnow()
             offer.listing_version += 1
@@ -308,6 +311,24 @@ class OfferService:
                 )
             ).scalar_one_or_none()
             if canonical is None:
+                canonical = await self._create_canonical(db, fact, brand)
+            canonical_id = canonical.id
+        if link is None:
+            link = SkuLink(shop_id=shop_id, sku_id=fact.sku_id, status="UNLINKED", version=1)
+            db.add(link)
+        link.canonical_id = canonical_id
+        link.status = "LINKED" if canonical_id else "PENDING_REVIEW"
+        link.method = "EXACT_MPN" if canonical_id else "NONE"
+        link.reason = reason
+        await db.flush()
+        return link
+
+    @staticmethod
+    async def _create_canonical(db: AsyncSession, fact: NetworkSkuFacts, brand: str) -> CanonicalProduct:
+        """Ikki shop bir vaqtda bir xil (brend, MPN) chiqarsa — noyoblik buzilmaydi: savepoint, keyin qayta
+        o'qiladi (QA #11)."""
+        try:
+            async with db.begin_nested():
                 canonical = CanonicalProduct(
                     brand=fact.brand,
                     brand_norm=brand,
@@ -319,16 +340,18 @@ class OfferService:
                 )
                 db.add(canonical)
                 await db.flush()
-            canonical_id = canonical.id
-        if link is None:
-            link = SkuLink(shop_id=shop_id, sku_id=fact.sku_id, status="UNLINKED", version=1)
-            db.add(link)
-        link.canonical_id = canonical_id
-        link.status = "LINKED" if canonical_id else "PENDING_REVIEW"
-        link.method = "EXACT_MPN" if canonical_id else "NONE"
-        link.reason = reason
-        await db.flush()
-        return link
+                return canonical
+        except IntegrityError:
+            existing = (
+                await db.execute(
+                    select(CanonicalProduct).where(
+                        CanonicalProduct.brand_norm == brand,
+                        CanonicalProduct.mpn_norm == fact.mpn_norm,
+                        CanonicalProduct.status == "ACTIVE",
+                    )
+                )
+            ).scalar_one()
+            return existing
 
     @staticmethod
     async def _offer(

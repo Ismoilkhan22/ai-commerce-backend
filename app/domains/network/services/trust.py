@@ -242,7 +242,9 @@ class TrustService:
                     select(PublicOffer).where(PublicOffer.id == report.offer_id).with_for_update()
                 )
             ).scalar_one_or_none()
-            if offer is not None and offer.status == "ACTIVE":
+            # Har qanday holatda (faol, tizim sababi bilan yashirilgan, ega yopgan) — PLATFORM_REPORT: tizim
+            # sababi tuzalsa ham, ega qayta chiqarsa ham qaytmaydi (QA #2)
+            if offer is not None and offer.withdraw_reason != "PLATFORM_REPORT":
                 offer.status, offer.withdraw_reason, offer.withdrawn_at = (
                     "SUSPENDED",
                     "PLATFORM_REPORT",

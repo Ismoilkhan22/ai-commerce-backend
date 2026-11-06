@@ -18,7 +18,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.audit.services.audit_service import AuditService
@@ -28,6 +28,7 @@ from app.platform.shops.models.orm import Branch, Shop
 from app.platform.staff.models.orm import Membership
 from app.shared.clock import utcnow
 from app.shared.contracts.catalog import CatalogQueryPort
+from app.shared.db.session import set_shop_context
 from app.shared.errors.base import InvalidTransitionError, NotFoundError, ValidationError
 from app.shared.types.actor import ActorContext
 
@@ -221,7 +222,7 @@ class BillingService:
         shop = await db.get(Shop, shop_id)
         if shop is None:
             raise NotFoundError("Shop not found")
-        start = shop.created_at
+        start = utcnow()  # sinov obuna ochilgan paytdan (eski shoplar ham to'liq 30 kun oladi — QA #8)
         sub = Subscription(
             shop_id=shop_id,
             plan_code=DEFAULT_PLAN,
@@ -254,6 +255,9 @@ class BillingService:
         )
 
     async def overview(self, db: AsyncSession, shop_id: UUID) -> BillingOut:
+        await set_shop_context(
+            db, shop_id
+        )  # platforma panelidan ham foydalanish to'g'ri sanalsin (RLS, QA #5)
         sub = await self.subscription(db, shop_id)
         plan = await db.get(Plan, sub.plan_code)
         assert plan is not None
@@ -285,6 +289,19 @@ class BillingService:
             )
         sub = await self.subscription(db, actor.shop_id, lock=True)
         sub.pending_plan_code = None if plan.code == sub.plan_code else plan.code
+        issued = (
+            await db.execute(
+                select(Invoice).where(
+                    Invoice.shop_id == actor.shop_id,
+                    Invoice.period_start == sub.period_end,
+                    Invoice.status == "ISSUED",
+                )
+            )
+        ).scalar_one_or_none()
+        target = sub.pending_plan_code or sub.plan_code
+        if issued is not None and issued.plan_code != target:
+            # Keyingi davr hisobi eski tarifga chiqqan — bekor, yangi tarifga qayta chiqadi (QA #6)
+            issued.status, issued.payment_note = "VOID", "Tarif o'zgardi — yangi hisob chiqadi"
         await db.flush()
         await self.audit.record(
             db,
@@ -390,17 +407,21 @@ class BillingService:
         next_plan = await db.get(Plan, sub.pending_plan_code or sub.plan_code)
         next_invoice = (
             await db.execute(
-                select(Invoice).where(Invoice.shop_id == shop_id, Invoice.period_start == sub.period_end)
+                select(Invoice).where(
+                    Invoice.shop_id == shop_id,
+                    Invoice.period_start == sub.period_end,
+                    Invoice.status != "VOID",  # bekor qilingan hisob o'rniga yangisi chiqadi (QA #4)
+                )
             )
         ).scalar_one_or_none()
         priced = next_plan is not None and next_plan.monthly_price_uzs_minor not in (None, 0)
         if next_invoice is None and priced and now >= sub.period_end - INVOICE_AHEAD:
             assert next_plan is not None and next_plan.monthly_price_uzs_minor is not None
-            count = await db.scalar(select(func.count()).select_from(Invoice)) or 0
+            seq = await db.scalar(text("SELECT nextval('platform.invoice_number_seq')"))
             db.add(
                 Invoice(
                     shop_id=shop_id,
-                    number=f"INV-{now:%Y}-{int(count) + 1:06d}",
+                    number=f"INV-{now:%Y}-{int(seq or 0):06d}",
                     plan_code=next_plan.code,
                     period_start=sub.period_end,
                     period_end=sub.period_end + PERIOD,

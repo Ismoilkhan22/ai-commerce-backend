@@ -13,7 +13,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app.domains.reporting import permissions as perm
 from app.domains.reporting.providers import ReportingServices, reporting_services
@@ -30,9 +30,11 @@ from app.domains.reporting.schemas import (
     WarrantyStats,
 )
 from app.domains.reporting.services import export
+from app.domains.reporting.services.assistant import AssistantIn, AssistantOut
 from app.domains.reporting.services.reports import Scope, hide_ai_cost, hide_stock_cost
 from app.platform.staff.infrastructure.guard import RequestContext, require_permission
 from app.shared.errors.base import ForbiddenError
+from app.shared.ratelimit import RateLimiter, enforce
 
 router = APIRouter(prefix="/reporting", tags=["reporting"])
 
@@ -215,3 +217,12 @@ async def export_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
     )
+
+
+@router.post("/assistant", response_model=AssistantOut)
+async def report_assistant(body: AssistantIn, request: Request, ctx: CanView, svc: Reporting) -> AssistantOut:
+    """Hisobot yordamchisi (19 §10): savol → registrdagi metrika → raqam shablon bilan. Ruxsat yo'q metrika —
+    `forbidden` va audit (TC-013); AI limiti tugagan — 422 `ai_unavailable`. Limit: xodimga 20/daqiqa."""
+    limiter: RateLimiter = request.app.state.rate_limiter
+    await enforce(limiter, f"report-assistant:{ctx.actor.actor_id}", limit=20)
+    return await svc.assistant.ask(request.app.state.db, ctx.actor, body)

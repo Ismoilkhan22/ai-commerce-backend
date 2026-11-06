@@ -191,10 +191,11 @@ class AdService:
         verified = await verified_shop_ids(db, list({shop.id for _, _, shop in items}))
         return [(ad_id, offer_view(offer, shop, verified)) for ad_id, offer, shop in items]
 
-    async def click(self, db: AsyncSession, ad_id: UUID) -> None:
+    async def click(self, db: AsyncSession, ad_id: UUID, shop_id: UUID, sku_id: UUID) -> None:
+        """Faqat shu reklama shu taklifniki bo'lsa sanaladi (begona `?ad=` bilan sun'iy bosish yo'q)."""
         await db.execute(text("SELECT set_config('app.network_public', 'on', true)"))
         ad = (await db.execute(select(AdCampaign).where(AdCampaign.id == ad_id))).scalar_one_or_none()
-        if ad is None or ad.status != "ACTIVE":
+        if ad is None or ad.status != "ACTIVE" or ad.shop_id != shop_id or ad.sku_id != sku_id:
             return
         await set_shop_context(db, ad.shop_id)  # yozish — faqat shop konteksti bilan (RLS)
         await db.execute(

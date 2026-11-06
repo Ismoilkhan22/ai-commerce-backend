@@ -8,6 +8,7 @@ Saytdan kelgan, suhbatsiz buyurtmaga xabar yo'q — xaridor holat sahifasidan ko
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from app.domains.messaging.services.outbound import MessageWriter, reachability
 from app.platform.notifications.customer_templates import safe_render
 from app.platform.notifications.services.customer_templates import CustomerTemplateService
 from app.platform.shops.models.orm import Branch, Shop
+from app.shared.clock import utcnow
 from app.shared.events.envelope import EventEnvelope
 from app.shared.types.actor import ActorContext
 
@@ -32,6 +34,11 @@ ORDER_TEMPLATES: dict[str, str] = {
 }
 _CURRENCY = {"uz": "so'm", "ru": "сум", "en": "UZS"}
 _PICKUP = {"uz": "Olib ketish: {address}", "ru": "Самовывоз: {address}", "en": "Pickup: {address}"}
+_EXPIRES = {
+    "uz": "Amal qilish muddati: {when} (UTC).",
+    "ru": "Действует до: {when} (UTC).",
+    "en": "Valid until: {when} (UTC).",
+}
 _PHONE = {"uz": "Tel: {phone}.", "ru": "Тел.: {phone}.", "en": "Phone: {phone}."}
 _DELIVERY = {
     "uz": "Yetkazish bo'yicha operator siz bilan kelishadi.",
@@ -182,6 +189,47 @@ class CustomerNotifier:
             author_type="SYSTEM",
             body=text,
             intent_key=f"support:{payload.get('case_id')}:{template_key.rsplit('_', 1)[-1]}",
+            require_reachable=False,
+        )
+        return "sent"
+
+    async def on_quote_reminder(self, db: AsyncSession, envelope: EventEnvelope) -> str:
+        """DEC-149: taklif eslatmasi — bitta (`intent_key = quote:{id}:reminder`), xaridor voz kechgan yoki
+        bloklagan bo'lsa yuborilmaydi."""
+        payload = envelope.payload
+        raw = payload.get("conversation_id")
+        if not raw or envelope.shop_id is None:
+            return "skipped:no_conversation"
+        expires = payload.get("expires_at")
+        if expires and datetime.fromisoformat(str(expires)) <= utcnow():
+            return "skipped:expired"  # navbatda turib qolgan — muddati o'tgan taklifga eslatma yo'q (QA #16)
+        conversation = await db.get(Conversation, UUID(str(raw)), with_for_update=True)
+        if conversation is None or conversation.shop_id != envelope.shop_id:
+            return "skipped:no_conversation"
+        reach = await reachability(db, conversation)
+        if not reach.ok:
+            return f"skipped:{reach.reason}"
+        locale = str(conversation.locale or "uz")
+        lang = locale if locale in _EXPIRES else "uz"
+        body, _ = await self.templates.resolve(db, conversation.shop_id, "customer.quote_reminder", locale)
+        shop = await db.get(Shop, envelope.shop_id)
+        expires = payload.get("expires_at")
+        variables: dict[str, Any] = {
+            "quote_number": payload.get("number"),
+            "expires_line": _EXPIRES[lang].format(when=str(expires)[:16].replace("T", " "))
+            if expires
+            else "",
+            "shop_name": shop.name if shop is not None else "",
+        }
+        text = safe_render("customer.quote_reminder", body, variables, locale)
+        await self.writer.append_outbound(
+            db,
+            ActorContext.system(conversation.shop_id),
+            conversation,
+            origin="NOTIFICATION",
+            author_type="SYSTEM",
+            body=text,
+            intent_key=f"quote:{payload.get('quote_id')}:reminder",
             require_reachable=False,
         )
         return "sent"

@@ -20,6 +20,7 @@ from app.domains.messaging.subscribers import (
     ig_post_fetch,
     ig_reply_send,
     order_status_notify,
+    quote_reminder_notify,
     support_case_notify,
 )
 from app.shared.types.manifest import DomainManifest
@@ -41,6 +42,7 @@ DOMAIN_MANIFEST = DomainManifest(
         attachment_fetch,
         order_status_notify,
         support_case_notify,
+        quote_reminder_notify,
         ig_comment_reply,
         ig_reply_send,
         ig_comment_classify,

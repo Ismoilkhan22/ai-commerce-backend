@@ -172,7 +172,11 @@ class NetworkQueryPortImpl:
             return None
         offer, shop = rows[0]
         return VisitTarget(
-            offer_id=offer.id, shop_id=offer.shop_id, shop_slug=shop.slug, product_id=offer.product_id
+            offer_id=offer.id,
+            shop_id=offer.shop_id,
+            shop_slug=shop.slug,
+            product_id=offer.product_id,
+            sku_id=offer.sku_id,
         )
 
     async def sitemap(self, db: AsyncSession, limit: int = 50_000) -> list[tuple[UUID, datetime]]:

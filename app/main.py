@@ -387,6 +387,7 @@ def wire_services(
     # DEC-149: narx ro'yxati va kartochka qoralamasi — shop AI limiti sotuvchi bilan umumiy
     state.catalog.price_lists.connect(main_router, state.sales_ai.gate)
     state.catalog.card_drafts.connect(main_router, state.sales_ai.gate)
+    state.reporting.assistant.connect(main_router, state.sales_ai.gate)  # hisobot yordamchisi (19 §10)
     state.network.advisor.connect(main_router if state.sales_ai.gate.provider_ready else None)  # M34
 
 

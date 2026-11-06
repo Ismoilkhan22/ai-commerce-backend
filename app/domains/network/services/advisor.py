@@ -159,15 +159,21 @@ class AdvisorService:
                 messages.append(LlmMessage("tool", tuple(results)))
         except LlmError as exc:
             logger.warning("market.advisor.llm_failed", code=exc.code)
+            await self._save(database, responses)  # to'langan javoblar xarajati yo'qolmasin
             raise ProviderUnavailableError("AI advisor failed", provider="llm") from exc
-        async with database.transaction() as db:
-            for response in responses:
-                await _record(db, self.llm, response)
+        await self._save(database, responses)
         answer = responses[-1].text if responses and not responses[-1].tool_calls else ""
         return AdvisorOut(
             answer=answer or "Kechirasiz, hozir javob bera olmadim. Qidiruvdan foydalanib ko'ring.",
             sources=list(seen.sources.values()),
         )
+
+    async def _save(self, database: Database, responses: list[LlmResponse]) -> None:
+        if not responses or self.llm is None:
+            return
+        async with database.transaction() as db:
+            for response in responses:
+                await _record(db, self.llm, response)
 
     async def _tool(self, db: AsyncSession, name: str, args: dict[str, Any], seen: _Seen) -> str:
         if name == "market_search":
@@ -177,8 +183,8 @@ class AdvisorService:
                 db,
                 q=query,
                 category=None,
-                max_price_uzs_minor=int(max_price) * 100
-                if isinstance(max_price, int) and max_price > 0
+                max_price_uzs_minor=min(max_price, 10**11) * 100  # model bergan son chegaralanadi (QA #12)
+                if isinstance(max_price, int) and not isinstance(max_price, bool) and max_price > 0
                 else None,
                 in_stock=bool(args.get("in_stock_only")),
                 sort="relevance",

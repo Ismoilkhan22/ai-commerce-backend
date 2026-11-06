@@ -21,6 +21,7 @@ import structlog
 from app.domains.messaging.channels.base import (
     ChannelConnectError,
     ChannelSendError,
+    InboundAttachment,
     InboundMessage,
     SendResult,
 )
@@ -117,6 +118,10 @@ class InstagramClient(Protocol):
     ) -> SendResult: ...
 
     async def fetch_media(self, token: str, media_id: str) -> MediaInfo | None: ...
+
+    async def download_attachment(self, url: str) -> bytes:
+        """DEC-149: Direct rasmi/ovozi — faqat Meta CDN'dan (`media_url_allowed`), ≤ 10 MB."""
+        ...
 
 
 class HttpInstagramClient:
@@ -404,6 +409,27 @@ class HttpInstagramClient:
             raise ChannelSendError("AUTH_REVOKED")
         raise ChannelSendError(_private_reply_error(response))
 
+    async def download_attachment(self, url: str) -> bytes:
+        if not media_url_allowed(url):
+            raise ChannelSendError("MEDIA_HOST_NOT_ALLOWED")
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as client:
+                async with client.stream("GET", url) as response:
+                    if response.status_code >= 500:
+                        raise ChannelSendError(f"HTTP_{response.status_code}", retryable=True)
+                    if response.status_code != 200:
+                        raise ChannelSendError("FILE_UNAVAILABLE")  # muddati o'tgan CDN havolasi
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in response.aiter_bytes():  # cheklov o'qish paytida (QA #15)
+                        total += len(chunk)
+                        if total > MAX_MEDIA_BYTES:
+                            raise ChannelSendError("FILE_TOO_LARGE")
+                        chunks.append(chunk)
+        except httpx.HTTPError as exc:
+            raise ChannelSendError("NETWORK_ERROR", retryable=True) from exc
+        return b"".join(chunks)
+
     async def fetch_media(self, token: str, media_id: str) -> MediaInfo | None:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
@@ -473,6 +499,7 @@ def _iso(value: Any) -> datetime | None:
 @dataclass
 class FakeInstagramClient:
     accounts: dict[str, InstagramAccount] = field(default_factory=dict)
+    dm_media: dict[str, bytes] = field(default_factory=dict)  # Direct biriktirmasi: CDN url -> baytlar
     sent: list[tuple[str, str, str]] = field(default_factory=list)
     private_replies: list[tuple[str, str, str]] = field(default_factory=list)  # (akkaunt, izoh id, matn)
     private_reply_errors: list[ChannelSendError] = field(
@@ -495,6 +522,12 @@ class FakeInstagramClient:
 
     async def get_user_id(self, token: str) -> str | None:
         return self.user_ids.get(token)
+
+    async def download_attachment(self, url: str) -> bytes:
+        found = self.dm_media.get(url)
+        if found is None:
+            raise ChannelSendError("FILE_UNAVAILABLE")
+        return found
 
     async def subscribe(self, token: str, account: InstagramAccount) -> bool:
         self.subscribed.append(account.id)
@@ -574,6 +607,8 @@ def parse_webhook(payload: dict[str, Any]) -> list[tuple[str, InboundMessage]]:
             if occurred is None:
                 continue  # hayotiy bo'lmagan vaqt: hodisa e'tiborsiz, yetkazib berish 200
             text = message.get("text") if isinstance(message.get("text"), str) else None
+            attachments = () if echo else _attachments(message.get("attachments"))
+            kind = "TEXT" if text is not None else (attachments[0].kind if attachments else "UNSUPPORTED")
             result.append(
                 (
                     account_id,
@@ -582,13 +617,45 @@ def parse_webhook(payload: dict[str, Any]) -> list[tuple[str, InboundMessage]]:
                         event_kind="ECHO" if echo else "MESSAGE",
                         external_user_id=str(other["id"]),
                         occurred_at=occurred,
-                        kind="TEXT" if text is not None else "UNSUPPORTED",
+                        kind=kind,
                         body=text,
                         provider_message_id=mid,
+                        attachments=attachments,
                     ),
                 )
             )
     return result
+
+
+# DEC-149 (pilot paytida): Direct'dagi rasm va ovoz. Meta havolasi — qisqa muddatli CDN manzili; yuklab olish
+# fon vazifasida va faqat shu hostlardan (SSRF himoyasi)
+_ATTACHMENT_KINDS = {"image": "IMAGE", "audio": "VOICE"}
+MEDIA_HOSTS = ("fbcdn.net", "cdninstagram.com", "fbsbx.com")
+MAX_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def media_url_allowed(url: str) -> bool:
+    try:
+        parts = httpx.URL(url)
+    except (TypeError, ValueError):
+        return False
+    host = parts.host or ""
+    return parts.scheme == "https" and any(host == h or host.endswith("." + h) for h in MEDIA_HOSTS)
+
+
+def _attachments(raw: Any) -> tuple[InboundAttachment, ...]:
+    if not isinstance(raw, list):
+        return ()
+    items: list[InboundAttachment] = []
+    for entry in raw[:4]:
+        if not isinstance(entry, dict):
+            continue
+        kind = _ATTACHMENT_KINDS.get(str(entry.get("type") or ""))
+        url = (entry.get("payload") or {}).get("url") if isinstance(entry.get("payload"), dict) else None
+        if kind is None or not isinstance(url, str) or not media_url_allowed(url):
+            continue
+        items.append(InboundAttachment(kind, url[:2000], "audio/mp4" if kind == "VOICE" else None))
+    return tuple(items)
 
 
 def parse_comment_events(payload: dict[str, Any]) -> list[tuple[str, InboundComment]]:

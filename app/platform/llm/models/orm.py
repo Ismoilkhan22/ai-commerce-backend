@@ -41,6 +41,7 @@ PURPOSES = (
     "VOICE_TRANSCRIBE",  # DEC-149: Telegram ovozli xabari
     "CARD_DRAFT",  # DEC-149: mahsulot kartochkasi qoralamasi
     "MARKET_ADVISOR",  # Stage 3 (M34): xaridorning global AI maslahatchisi — platforma xarajati
+    "REPORT_ASSISTANT",  # hisobot yordamchisi (19 §10) — shop AI limitiga kiradi
 )
 PROVIDERS = ("anthropic", "gemini", "fake")
 

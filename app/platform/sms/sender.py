@@ -57,7 +57,10 @@ class EskizSmsSender:
         )
         if response.status_code != 200:
             raise SmsError("SMS_AUTH_FAILED")
-        token = (response.json().get("data") or {}).get("token")
+        try:
+            token = (response.json().get("data") or {}).get("token")
+        except (ValueError, AttributeError) as exc:  # HTML yoki kutilmagan JSON
+            raise SmsError("SMS_AUTH_FAILED") from exc
         if not token:
             raise SmsError("SMS_AUTH_FAILED")
         return str(token)

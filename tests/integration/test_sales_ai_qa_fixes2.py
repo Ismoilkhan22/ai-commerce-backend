@@ -421,7 +421,8 @@ def test_signals_payload_ids_only(world: World, fake: FakeProvider) -> None:
     )
     payloads = [(r["event_type"], sorted(_json.loads(r["envelope"])["payload"].keys())) for r in rows]
     _say("signals", payloads)
-    assert "765" not in str([r["envelope"] for r in rows])
+    # Faqat payload: konvertdagi vaqt belgisi (mikrosekund) tasodifan "765" bo'lishi mumkin
+    assert "765" not in str([_json.loads(r["envelope"])["payload"] for r in rows])
 
 
 def test_takeover_during_debounce_leaves_turn_queued(world: World, fake: FakeProvider) -> None:

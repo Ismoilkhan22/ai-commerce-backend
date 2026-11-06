@@ -390,7 +390,10 @@ class SendingService:
             message = await db.get(Message, message_id)
             conversation = await db.get(Conversation, message.conversation_id) if message else None
             account = await db.get(ChannelAccount, conversation.channel_account_id) if conversation else None
-            token = account.token_enc if account is not None and account.channel == "TELEGRAM" else None
+            channel = account.channel if account is not None else None
+            token = (
+                account.token_enc if account is not None and channel in ("TELEGRAM", "INSTAGRAM") else None
+            )
             fake = bool((account.settings or {}).get("fake")) if account is not None else False
             jobs = [
                 (r.id, r.kind, r.provider_file_ref, r.mime, r.duration_seconds, r.size_bytes) for r in rows
@@ -407,14 +410,14 @@ class SendingService:
                 and self.voice.eligible(duration, size)
             ):
                 stored += await self._transcribe(
-                    database, shop_id, message_id, attachment_id, token, ref, mime
+                    database, shop_id, message_id, attachment_id, token, ref, mime, channel=channel
                 )
                 continue
             if kind not in DOWNLOADABLE or not ref or not token or fake:
                 await self._attachment_result(database, shop_id, attachment_id, None, "UNSUPPORTED_TYPE")
                 continue
             try:
-                data, _ = await self.adapters.telegram.download_file(token, ref)
+                data = await self._download(channel, token, ref)
             except ChannelSendError as exc:
                 if exc.retryable:
                     raise RetryLater(_backoff(1)) from exc
@@ -433,10 +436,12 @@ class SendingService:
         token: str,
         ref: str,
         mime: str | None,
+        *,
+        channel: str | None = "TELEGRAM",
     ) -> int:
-        """Ovoz → matn (DEC-149): audio faqat xotirada, saqlanmaydi (DEC-117)."""
+        """Ovoz → matn (DEC-149): audio faqat xotirada, saqlanmaydi (DEC-117). Telegram va Instagram."""
         try:
-            data, _ = await self.adapters.telegram.download_file(token, ref)
+            data = await self._download(channel, token, ref)
             result, response = await self.voice.transcribe(data, mime)
         except ChannelSendError as exc:
             if exc.retryable:
@@ -453,10 +458,10 @@ class SendingService:
                     .with_for_update()
                 )
             ).scalar_one_or_none()
+            if response is not None:  # xarajat har holda yoziladi (QA #15)
+                await self.voice.record(db, shop_id, response, message_id)
             if row is None or row.status != "PENDING":
                 return 0
-            if response is not None:
-                await self.voice.record(db, shop_id, response, message_id)
             row.provider_file_ref = None
             if result.text is None:
                 row.status, row.error_code = "FAILED", result.error
@@ -468,6 +473,12 @@ class SendingService:
                 message.body = f"{caption}\n{result.text}" if caption else result.text
         logger.info("messaging.voice.transcribed", chars=len(result.text))
         return 1
+
+    async def _download(self, channel: str | None, token: str, ref: str) -> bytes:
+        if channel == "INSTAGRAM":  # Meta CDN havolasi (faqat ruxsat etilgan hostlar)
+            return await self.adapters.instagram.download_attachment(ref)
+        data, _ = await self.adapters.telegram.download_file(token, ref)
+        return data
 
     async def _attachment_result(
         self, database: Database, shop_id: UUID, attachment_id: UUID, data: bytes | None, error: str | None

@@ -1074,6 +1074,52 @@ class QuoteService:
             await self._transition(db, actor, quote, revision, "EXPIRE", "EXPIRED")
         return len(quotes)
 
+    async def remind_due(
+        self, db: AsyncSession, shop_id: UUID, after: timedelta = timedelta(hours=12)
+    ) -> int:
+        """DEC-149: yuborilganiga 12 soat bo'lgan, hali amal qiladigan, suhbatga bog'langan taklif — bitta
+        eslatma (`commerce.quote.reminder_due`; messaging yuboradi, xaridor voz kechgan bo'lsa — yo'q)."""
+        now = utcnow()
+        quotes = (
+            (
+                await db.execute(
+                    select(Quote)
+                    .where(
+                        Quote.shop_id == shop_id,
+                        Quote.status == "SENT",
+                        Quote.conversation_id.is_not(None),
+                        Quote.reminder_sent_at.is_(None),
+                        Quote.sent_at <= now - after,
+                        Quote.expires_at > now + timedelta(hours=1),
+                    )
+                    .with_for_update(skip_locked=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        actor = ActorContext.system(shop_id)
+        for quote in quotes:
+            quote.reminder_sent_at = now
+            await db.flush()
+            await write_outbox(
+                db,
+                schema="commerce",
+                event_type="commerce.quote.reminder_due",
+                actor=actor,
+                shop_id=shop_id,
+                aggregate_type="commerce.quote",
+                aggregate_id=quote.id,
+                aggregate_version=quote.version,
+                payload={
+                    "quote_id": quote.id,
+                    "number": quote.number,
+                    "conversation_id": quote.conversation_id,
+                    "expires_at": quote.expires_at,
+                },
+            )
+        return len(quotes)
+
     # ================================================================== ichki
     async def check(self, db: AsyncSession, shop_id: UUID, lines: Sequence[QuoteLine]) -> CompatibilityResult:
         # PC yig'ma (protsessor yoki ona plata bor) — to'liqlik qoidalari bilan; faqat qismlar yoki noutbuk —

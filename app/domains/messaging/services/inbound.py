@@ -165,8 +165,9 @@ class InboundService:
             if identity is not None
             else None
         )
-        if ours is not None or conversation is None:
-            event.status = "IGNORED"  # o'zimizniki yoki suhbat yo'q (xaridor hali yozmagan)
+        if ours is not None or conversation is None or not (inbound.body or "").strip():
+            # bo'sh echo (stiker, rasm) — matn bo'yicha takror tekshiruvi mumkin emas, yozilmaydi (QA #16)
+            event.status = "IGNORED"  # o'zimizniki, suhbat yo'q yoki matnsiz
             return IngestResult(duplicate=False, ignored=True)
         recent_send = await db.scalar(  # yuborish javobi (mid) hali yozilmagan bo'lishi mumkin: matn bo'yicha
             select(Message.id).where(

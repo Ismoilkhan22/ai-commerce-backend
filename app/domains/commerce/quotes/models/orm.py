@@ -182,6 +182,8 @@ class Quote(IdMixin, ShopScopedMixin, TimestampMixin, VersionMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_by: Mapped[UUID | None]
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # DEC-149: javobsiz taklifga bitta eslatma (faqat xaridor boshlagan suhbatda) — qachon yuborilgani
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     accepted_order_id: Mapped[UUID | None]
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -38,6 +38,16 @@ async def quote_expiry(ctx: JobContext) -> JobResult:
     return JobResult(processed=processed, affected=processed)
 
 
+async def quote_reminder(ctx: JobContext) -> JobResult:
+    """DEC-149: javobsiz taklifga bitta eslatma (har 30 daqiqada tekshiriladi)."""
+    commerce: CommerceServices = ctx.services.commerce
+    processed = 0
+    for shop_id in await open_shop_ids(ctx.database):
+        async with ctx.database.transaction(shop_id) as db:
+            processed += await commerce.quotes.remind_due(db, shop_id)
+    return JobResult(processed=processed, affected=processed)
+
+
 async def lead_followup(ctx: JobContext) -> JobResult:
     processed = created = 0
     cutoff = ctx.now - timedelta(days=LEAD_FOLLOWUP_DAYS)
@@ -79,6 +89,7 @@ async def lead_followup(ctx: JobContext) -> JobResult:
 
 QUOTE_JOBS = (
     ScheduledJob("quote_expiry", quote_expiry, every_seconds=900),
+    ScheduledJob("quote_reminder", quote_reminder, every_seconds=1800),
     ScheduledJob("lead_followup", lead_followup, cron="0 9 * * *"),
 )
 
